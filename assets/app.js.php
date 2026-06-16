@@ -1078,7 +1078,7 @@ function prepCall(donorId) {
     //  log_call server-side session থেকে নম্বর নেয় — এখানে শুধু confirm popup UX।
     const _a = (typeof _authState === 'function') ? _authState() : null;
     const callerPhone = (_a && (_a.verify_phone || _a.phone)) || '';
-    const callerName  = (_a && _a.name) || 'Blood Arena ইউজার';
+    const callerName  = (_a && _a.name) || callerPhone;
     showConfirmPopup(callerName, callerPhone);
     // ── Pre-fetch phone number in background — ready before user taps Call ──
     // Without this: user taps Call → ⏳ wait for fetch → then dials (noticeable delay).
