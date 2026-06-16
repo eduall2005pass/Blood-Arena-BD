@@ -334,3 +334,65 @@ can call donors.
 | Telegram `/send` returns `404 not linked` | User hasn't DMed the bot their number yet. Send them `t.me/<TELEGRAM_BOT_USERNAME>`. |
 | `curl https://.../health` fails with cert error | Self-signed (Option A) → use `curl -k`, and set `*_INSECURE_TLS=true` in `config.php`. |
 | Channel shows "এখনো চালু হয়নি" on the site | That channel's constants in `config.php` are blank — fill them in. |
+
+---
+
+## 🌐 ডোমেইন পরিবর্তন করলে যা যা করতে হবে (Domain change checklist)
+
+সাইটের ডোমেইন এখন **`bloodarenabd.tech`**, যা `config.php`-এর `const SITE_URL`-এ
+কেন্দ্রীভূত করা আছে। নতুন ডোমেইনে যেতে চাইলে নিচের ধাপগুলো অনুসরণ করুন।
+
+### 🔧 ১) কোডে যেসব ফাইল বদলাতে হবে
+
+1. **`config.php` → `SITE_URL`** — মূল লিভার। এটি বদলালে নিচের সবগুলো স্বয়ংক্রিয়ভাবে
+   আপডেট হয় (এগুলো আর hardcoded নয়, `SITE_URL` থেকে আসে):
+   - `partials/head.php` — canonical / `og:image` / JSON-LD
+   - `includes/backend.php` — FCM push লিংক
+   - `admin.php` — broadcast push-এর icon/badge/url/link
+   - `assets/head-init.js.php` — push-click fallback লিংক
+   ```php
+   const SITE_URL = 'https://new-domain.com';   // ← এখানে নতুন ডোমেইন
+   ```
+
+2. **`firebase-messaging-sw.js`** (≈ লাইন ১৭, `const SITE_URL`) — এটি **static service
+   worker ফাইল, PHP দিয়ে process হয় না**, তাই এখানে নতুন ডোমেইন **হাতে লিখে** দিতে হবে।
+   ```js
+   const SITE_URL = 'https://new-domain.com';   // hardcoded literal — PHP নয়
+   ```
+
+3. **`sw.js` → `APP_VERSION`** — version সংখ্যা বাড়িয়ে দিন, যাতে clients পুরোনো
+   cache ফেলে নতুন SW রি-ফেচ করে।
+
+4. **`robots.txt`** — `Sitemap:` লাইনে নতুন ডোমেইন বসান।
+
+5. *(ঐচ্ছিক)* **`admin.php`**-এ একটি fallback `define('SITE_URL', 'https://bloodarenabd.tech')`
+   guard আছে (শুধু `config.php` না থাকলে ব্যবহৃত হয়) — চাইলে সেটাও আপডেট করতে পারেন।
+
+### ☁️ ২) Infra / Console-এ যা করতে হবে (skip করলে login ভেঙে যাবে)
+
+এগুলো repo-তে নেই, কিন্তু **না করলে Google/Phone sign-in কাজ করবে না**:
+
+- নতুন ডোমেইনের জন্য **DNS + TLS (HTTPS)** সেট করুন।
+- **Firebase Console → Authentication → Settings → Authorized domains**-এ নতুন
+  ডোমেইন (hostname হুবহু) **যোগ করুন** — না করলে Google/Phone sign-in fail করবে।
+  > ⚠️ `www` ও apex (`example.com` vs `www.example.com`) আলাদা — দুটো লাগলে দুটোই যোগ করুন।
+- কাস্টম **Google Cloud OAuth client** ব্যবহার করলে তার **Authorized origins**-এ
+  নতুন ডোমেইন যোগ করুন।
+- পুরোনো ডোমেইন → নতুন ডোমেইনে **301 redirect** দিন।
+- **Search Console**-এ নতুন sitemap রি-সাবমিট করুন।
+
+### 🤖 ৩) Bot সম্পর্কে নোট
+
+বট দুটো **আলাদা VM**-এ চলে; তাদের ঠিকানা `config.php`-এর `WA_BOT_URL` ও
+`TELEGRAM_BOT_URL`-এ আছে (যেমন `wabot.bloodarenabd.tech` বা bare IP)। মূল সাইটের
+ডোমেইন বদলালে **বটের কিছু বদলাতে হয় না** — শুধু যদি বটের subdomain-ও সরান, তবেই
+এই দুটো constant আপডেট করুন (এবং Caddy/DNS অনুযায়ী)।
+
+### ✅ যা **বদলাতে হয় না** (domain-agnostic)
+
+- **PWA manifest** (`backend.php` → `/?manifest=1`) — relative `start_url`/`scope` ব্যবহার করে।
+- **Session cookie domain** (`admin.php`) — `HTTP_HOST` থেকে নিজে নেয়।
+
+> 📌 সংক্ষেপে: **`config.php` `SITE_URL`** + **`firebase-messaging-sw.js`** +
+> **`sw.js` APP_VERSION** + **`robots.txt`** বদলান → তারপর **Firebase Authorized
+> domains**-এ নতুন ডোমেইন যোগ করুন। ব্যস, login আর সব লিংক ঠিক থাকবে।
