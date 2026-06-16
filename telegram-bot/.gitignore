@@ -1,0 +1,4 @@
+node_modules/
+.env
+phone_map.json
+npm-debug.log*

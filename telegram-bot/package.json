@@ -1,0 +1,13 @@
+{
+  "name": "bloodarena-tg-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Blood Arena Telegram OTP bot — long-polling receive + /send HTTP for PHP backend.",
+  "main": "bot.js",
+  "scripts": { "start": "node bot.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

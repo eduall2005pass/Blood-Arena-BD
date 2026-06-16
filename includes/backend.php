@@ -1,0 +1,2543 @@
+<?php  
+// ── PWA Manifest endpoint — no separate file needed ──────────
+if (isset($_GET['manifest'])) {
+    while (ob_get_level()) ob_end_clean();
+    header('Content-Type: application/manifest+json; charset=utf-8');
+    header('Cache-Control: public, max-age=86400');
+    echo json_encode([
+        "name"                    => BRAND_NAME,
+        "short_name"              => BRAND_SHORT,
+        "description"             => APP_DESC,
+        "start_url"               => "/",
+        "scope"                   => "/",
+        "display"                 => "standalone",
+        "orientation"             => "portrait-primary",
+        "background_color"        => SPLASH_BG,
+        "theme_color"             => COLOR_THEME,
+        "lang"                    => "bn",
+        "categories"              => ["health","medical"],
+        "prefer_related_applications" => false,
+        "icons" => [
+            ["src"=>"/icon-192.png","sizes"=>"192x192","type"=>"image/png","purpose"=>"any"],
+            ["src"=>"/icon-192.png","sizes"=>"192x192","type"=>"image/png","purpose"=>"maskable"],
+            ["src"=>"/icon-512.png","sizes"=>"512x512","type"=>"image/png","purpose"=>"any"],
+            ["src"=>"/icon-512.png","sizes"=>"512x512","type"=>"image/png","purpose"=>"maskable"]
+        ],
+        "shortcuts" => [
+            ["name"=>"রক্তদাতা খুঁজুন","short_name"=>"Donors","url"=>"/?tab=donors","icons"=>[["src"=>"/icon-192.png","sizes"=>"192x192","type"=>"image/png"]]],
+            ["name"=>"Emergency Request","short_name"=>"Emergency","url"=>"/","icons"=>[["src"=>"/icon-192.png","sizes"=>"192x192","type"=>"image/png"]]]
+        ]
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ── Badge SVG endpoint — monochrome white blood drop for Android status bar ──
+// Android notification status bar শুধু monochrome icon support করে।
+// /icon.png colorful হওয়ায় white square দেখায়।
+// এই endpoint থেকে proper monochrome blood drop SVG serve করা হয়।
+if (isset($_GET['badge_icon'])) {
+    while (ob_get_level()) ob_end_clean();
+    header('Content-Type: image/svg+xml');
+    header('Cache-Control: public, max-age=86400');
+    echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">'
+       . '<path fill="#ffffff" fill-rule="evenodd" d="'
+       . 'M48 8 C48 8 18 46 18 62 a30 30 0 0 0 60 0 C78 46 48 8 48 8z '
+       . 'M44 52 L44 74 L52 74 L52 52 Z '
+       . 'M37 59 L59 59 L59 67 L37 67 Z'
+       . '"/>'
+       . '</svg>';
+    exit;
+}
+// ─────────────────────────────────────────────────────────────
+ob_start(); // Buffer output — prevents PHP warnings/notices from corrupting JSON responses
+include __DIR__ . "/../db.php";
+
+// === EXTREME SQL INJECTION PROTECTION ===
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+// === SCHEMA MIGRATION — file-flag ensures this runs only ONCE ever, not every request ===
+// Running ALTER TABLE + UPDATE on every request caused 2-3s delay on all AJAX calls
+$_schema_flag = dirname(__DIR__) . '/.schema_v1_done';
+if (!file_exists($_schema_flag)) {
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS total_donations INT DEFAULT 0");
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS badge_level VARCHAR(10) DEFAULT 'New'");
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS willing_to_donate VARCHAR(3) DEFAULT 'yes'");
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS reg_geo VARCHAR(300) DEFAULT 'Not captured'");
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS reg_ip VARCHAR(50) DEFAULT NULL");
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS reg_device VARCHAR(300) DEFAULT NULL");
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+    $conn->query("UPDATE donors SET badge_level = CASE WHEN total_donations>=10 THEN 'Legend' WHEN total_donations>=5 THEN 'Hero' WHEN total_donations>=2 THEN 'Active' ELSE 'New' END WHERE badge_level IS NULL OR badge_level=''");
+    // Also fix any badge_level that's out of sync with total_donations
+    $conn->query("UPDATE donors SET badge_level = CASE WHEN total_donations>=10 THEN 'Legend' WHEN total_donations>=5 THEN 'Hero' WHEN total_donations>=2 THEN 'Active' ELSE 'New' END");
+    $conn->query("UPDATE donors SET willing_to_donate='yes' WHERE willing_to_donate IS NULL OR willing_to_donate=''");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_flag, date('Y-m-d H:i:s'));
+}
+// ── One-time badge sync fix (v2) ─────────────────────────────
+$_schema_v2 = dirname(__DIR__) . '/.schema_v2_done';
+if(!file_exists($_schema_v2) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("UPDATE donors SET badge_level = CASE WHEN total_donations>=10 THEN 'Legend' WHEN total_donations>=5 THEN 'Hero' WHEN total_donations>=2 THEN 'Active' ELSE 'New' END");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v2, date('Y-m-d H:i:s'));
+}
+// ── Schema v3: fix blood_requests table for delete_token ──────
+// Runs ONCE on first page load after deploy. Silently adds delete_token
+// column and converts ENUM columns to VARCHAR for InfinityFree MySQL 5.7 compat.
+$_schema_v3 = dirname(__DIR__) . '/.schema_v3_done';
+if(!file_exists($_schema_v3) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    // Create table fresh if not exists (with correct schema)
+    $conn->query("CREATE TABLE IF NOT EXISTS `blood_requests` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `patient_name` VARCHAR(100) NOT NULL,
+        `blood_group` VARCHAR(5) NOT NULL,
+        `hospital` VARCHAR(200) NOT NULL,
+        `contact` VARCHAR(20) NOT NULL,
+        `urgency` VARCHAR(10) DEFAULT 'High',
+        `bags_needed` INT DEFAULT 1,
+        `note` VARCHAR(500) DEFAULT '',
+        `status` VARCHAR(20) DEFAULT 'Active',
+        `delete_token` VARCHAR(10) DEFAULT NULL,
+        `req_ip` VARCHAR(50) DEFAULT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Add delete_token if missing (error suppressed if already exists)
+    $conn->query("ALTER TABLE blood_requests ADD COLUMN delete_token VARCHAR(10) DEFAULT NULL");
+    // Convert ENUM → VARCHAR (error suppressed if already VARCHAR)
+    $conn->query("ALTER TABLE blood_requests MODIFY COLUMN urgency VARCHAR(10) DEFAULT 'High'");
+    $conn->query("ALTER TABLE blood_requests MODIFY COLUMN status VARCHAR(20) DEFAULT 'Active'");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v3, date('Y-m-d H:i:s'));
+}
+// ── Schema v5: tie blood_requests to signed-in account ───────
+// Adds auth_uid so a logged-in user can manage/delete their own
+// requests directly from the Account Dashboard — no token needed.
+$_schema_v5 = dirname(__DIR__) . '/.schema_v5_done';
+if(!file_exists($_schema_v5) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("ALTER TABLE blood_requests ADD COLUMN auth_uid VARCHAR(128) DEFAULT NULL");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v5, date('Y-m-d H:i:s'));
+}
+// ── Schema v4: persistent analytics_counters table ───────────
+// This table stores ever-increasing counters that never decrease,
+// even if call_logs are cleared or donors are deleted.
+$_schema_v4 = dirname(__DIR__) . '/.schema_v4_done';
+if(!file_exists($_schema_v4) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `analytics_counters` (
+        `counter_name` VARCHAR(50) PRIMARY KEY,
+        `counter_value` BIGINT UNSIGNED NOT NULL DEFAULT 0
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Seed initial values from existing data so counts don't reset on first deploy
+    $conn->query("INSERT INTO analytics_counters (counter_name, counter_value)
+        SELECT 'total_calls_ever', COUNT(*) FROM call_logs
+        ON DUPLICATE KEY UPDATE counter_value = VALUES(counter_value)");
+    $conn->query("INSERT INTO analytics_counters (counter_name, counter_value)
+        SELECT 'total_donations_ever', COALESCE(SUM(total_donations),0) FROM donors
+        ON DUPLICATE KEY UPDATE counter_value = VALUES(counter_value)");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v4, date('Y-m-d H:i:s'));
+}
+if(isset($conn)){
+    // Set strictly to utf8mb4 to prevent multi-byte encoding SQL injection attacks
+    $conn->set_charset("utf8mb4");
+}
+// ── Schema v5: service notifications ─────────────────────────
+//  (পুরনো secret_code recovery — ref_code ও security_code_requests — বাদ
+//   দেওয়া হয়েছে; এখন donor identity হলো Firebase account।)
+$_schema_v5 = dirname(__DIR__) . '/.schema_v5_done';
+if(!file_exists($_schema_v5) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `service_notifications` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `device_id` VARCHAR(100) NOT NULL,
+        `type` VARCHAR(30) NOT NULL,
+        `message` TEXT NOT NULL,
+        `is_read` TINYINT DEFAULT 0,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v5, date('Y-m-d H:i:s'));
+}
+// ── Schema v6: admin_messages table ──────────────────────
+$_schema_v6 = dirname(__DIR__) . '/.schema_v6_done';
+if(!file_exists($_schema_v6) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `admin_messages` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `sender_name` VARCHAR(100) NOT NULL,
+        `sender_phone` VARCHAR(20) NOT NULL,
+        `message` TEXT NOT NULL,
+        `device_id` VARCHAR(100) NOT NULL,
+        `is_read` TINYINT DEFAULT 0,
+        `admin_reply` TEXT DEFAULT NULL,
+        `replied_at` TIMESTAMP NULL DEFAULT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v6, date('Y-m-d H:i:s'));
+}
+// ── Schema v7: (retired — secret-code recovery removed) ──────
+// ── Schema v8: Firebase auth users (Google sign-in + phone OTP) ──
+$_schema_v8 = dirname(__DIR__) . '/.schema_v8_done';
+if(!file_exists($_schema_v8) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `auth_users` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `firebase_uid` VARCHAR(128) NOT NULL,
+        `provider` VARCHAR(20) NOT NULL,
+        `email` VARCHAR(190) DEFAULT NULL,
+        `phone` VARCHAR(20) DEFAULT NULL,
+        `name` VARCHAR(120) DEFAULT NULL,
+        `device_id` VARCHAR(100) DEFAULT NULL,
+        `last_login` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY `uniq_uid` (`firebase_uid`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v8, date('Y-m-d H:i:s'));
+}
+// ── Schema v9: link donor rows to a signed-in account (Google / Phone OTP) ──
+//  secret_code পদ্ধতি বাদ — এখন donor identity হলো Firebase account (auth_uid)।
+//  auth_uid = firebase_uid (registration-এ set হয়); legacy donor রা একই phone-এ
+//  OTP sign-in করলে load_my_donor স্বয়ংক্রিয়ভাবে auth_uid বসিয়ে দেয়।
+$_schema_v9 = dirname(__DIR__) . '/.schema_v9_done';
+if(!file_exists($_schema_v9) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS auth_uid VARCHAR(128) DEFAULT NULL");
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS auth_email VARCHAR(190) DEFAULT NULL");
+    $conn->query("ALTER TABLE donors ADD INDEX idx_auth_uid (auth_uid)");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v9, date('Y-m-d H:i:s'));
+}
+// ── Schema v10: online visitor tracking ──────────────────────
+$_schema_v10 = dirname(__DIR__) . '/.schema_v10_done';
+if(!file_exists($_schema_v10) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `online_visitors` (
+        `visitor_token` VARCHAR(100) PRIMARY KEY,
+        `last_seen` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v10, date('Y-m-d H:i:s'));
+}
+// ── Schema v11: account verification via Telegram / WhatsApp bot OTP ──
+//  auth_users-এ verified state, আর OTP code রাখার জন্য otp_verifications টেবিল।
+//  bind না করলে account unverified → call করা যাবে না (get_phone/log_call gate)।
+$_schema_v11 = dirname(__DIR__) . '/.schema_v11_done';
+if(!file_exists($_schema_v11) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS verified TINYINT(1) NOT NULL DEFAULT 0");
+    $conn->query("ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS verify_channel VARCHAR(20) DEFAULT NULL");
+    $conn->query("ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS verify_phone VARCHAR(20) DEFAULT NULL");
+    $conn->query("ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR(40) DEFAULT NULL");
+    $conn->query("ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS verified_at DATETIME DEFAULT NULL");
+    $conn->query("CREATE TABLE IF NOT EXISTS `otp_verifications` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `auth_uid` VARCHAR(128) DEFAULT NULL,
+        `channel` VARCHAR(20) NOT NULL,
+        `token` VARCHAR(64) DEFAULT NULL,
+        `phone` VARCHAR(20) DEFAULT NULL,
+        `tg_chat_id` VARCHAR(40) DEFAULT NULL,
+        `code_hash` VARCHAR(255) DEFAULT NULL,
+        `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+        `attempts` INT NOT NULL DEFAULT 0,
+        `expires_at` DATETIME DEFAULT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY `idx_token` (`token`),
+        KEY `idx_auth_uid` (`auth_uid`),
+        KEY `idx_phone` (`phone`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v11, date('Y-m-d H:i:s'));
+}
+// === ENHANCED SECURITY HEADERS (XSS + Clickjacking + HSTS + Permissions) ===
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://www.myinstants.com https://www.gstatic.com https://www.gstatic.com/firebasejs/ https://cdn.firebase.com https://apis.google.com https://www.google.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.basemaps.cartocdn.com https://nominatim.openstreetmap.org https://fcm.googleapis.com https://*.firebaseio.com https://*.googleapis.com https://firebaseinstallations.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src 'self' https://shsmc-blood-portal.firebaseapp.com https://*.firebaseapp.com https://apis.google.com https://www.google.com https://accounts.google.com; media-src 'self' https://www.myinstants.com; worker-src 'self' blob:;");
+header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
+header("Permissions-Policy: geolocation=(self)");
+header("Cache-Control: no-store, no-cache, must-revalidate, private");
+header("X-Permitted-Cross-Domain-Policies: none");
+
+// === XSS ESCAPE HELPER ===
+function esc($str) {
+    return htmlspecialchars($str ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
+}
+
+// === CSRF & HIGH SECURITY SESSION ===
+// Detect HTTPS — works on both localhost (HTTP) and production (HTTPS)
+$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+        || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+// Strip port from HTTP_HOST for cookie domain (e.g. "localhost:8080" → "localhost")
+$cookieDomain = strtok($_SERVER['HTTP_HOST'] ?? '', ':');
+
+session_set_cookie_params([
+    'lifetime' => 86400,
+    'path' => '/',
+    'domain' => $cookieDomain,
+    'secure' => $isHttps, // true on HTTPS production, false on HTTP localhost
+    'httponly' => true, // Prevents JS access to session
+    'samesite' => 'Strict' // Prevents cross-site request forgery
+]);
+session_start();
+
+// Prevent Session Fixation — only regenerate once per new session, not every request
+if (empty($_SESSION['_initiated'])) {
+    session_regenerate_id(true);
+    $_SESSION['_initiated'] = true;
+}
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+// ── Online visitor ping — no CSRF needed (just a heartbeat) ──
+if (!empty($_POST['ping_online'])) {
+    $vt = substr(preg_replace('/[^a-zA-Z0-9_-]/', '', trim($_POST['visitor_token'] ?? '')), 0, 100);
+    if ($vt && isset($conn)) {
+        $e = mysqli_real_escape_string($conn, $vt);
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $conn->query("INSERT INTO online_visitors (visitor_token,last_seen) VALUES('$e',NOW()) ON DUPLICATE KEY UPDATE last_seen=NOW()");
+        $conn->query("DELETE FROM online_visitors WHERE last_seen < DATE_SUB(NOW(), INTERVAL 2 MINUTE)");
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    }
+    $cnt = 1;
+    if (isset($conn)) {
+        $r = @$conn->query("SELECT COUNT(*) c FROM online_visitors");
+        if ($r) $cnt = max(1, (int)$r->fetch_assoc()['c']);
+    }
+    while(ob_get_level()) ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['online' => $cnt]);
+    exit;
+}
+
+// === RATE LIMITING (session-based) ===
+function checkRateLimit($action, $maxAttempts = 10, $windowSeconds = 60) {
+    $key = 'rl_' . $action;
+    $now = time();
+    if (!isset($_SESSION[$key])) {
+        $_SESSION[$key] = ['count' => 0, 'window_start' => $now];
+    }
+    if ($now - $_SESSION[$key]['window_start'] > $windowSeconds) {
+        $_SESSION[$key] = ['count' => 0, 'window_start' => $now];
+    }
+    $_SESSION[$key]['count']++;
+    if ($_SESSION[$key]['count'] > $maxAttempts) {
+        http_response_code(429);
+        header('Content-Type: application/json; charset=utf-8');
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        die(json_encode(["status" => "error", "msg" => "অনেক বেশি চেষ্টা করা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।"]));
+    }
+}
+
+// === INPUT LENGTH LIMITS ===
+function validateLength($value, $max, $label) {
+    if (mb_strlen($value, 'UTF-8') > $max) {
+        header('Content-Type: application/json; charset=utf-8');
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        die(json_encode(["status" => "error", "msg" => "$label অনেক বড়। সর্বোচ্চ $max অক্ষর।"]));
+    }
+}
+
+// CSRF check function — also enforces POST-only for all sensitive actions
+function checkCSRF() {
+    // Block GET requests from ever triggering sensitive actions
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        header('Content-Type: application/json; charset=utf-8');
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        die(json_encode(["status" => "error", "msg" => "Method not allowed."]));
+    }
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        http_response_code(403);
+        die(json_encode(["status" => "error", "msg" => "Security check failed. Please refresh the page."]));
+    }
+}
+
+// === AUTH HELPERS (Firebase account = donor identity) ===
+// signed-in account-এর firebase_uid ফেরত দেয়, না থাকলে null
+function currentAuthUid() {
+    return !empty($_SESSION['auth_uid']) ? $_SESSION['auth_uid'] : null;
+}
+// sensitive handler-এর শুরুতে কল করো — sign-in না থাকলে JSON error দিয়ে exit করে
+function requireAuth() {
+    if (empty($_SESSION['auth_uid'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        die(json_encode([
+            "status"   => "error",
+            "code"     => "auth_required",
+            "msg"      => "⚠️ আগে সাইন ইন করুন (Google অথবা ফোন নম্বর দিয়ে)।"
+        ]));
+    }
+    return $_SESSION['auth_uid'];
+}
+
+// === ACCOUNT VERIFICATION HELPERS (Telegram / WhatsApp bot OTP) ===
+//  verified = Telegram বা WhatsApp bind করা আছে। Firebase Phone-OTP (SMS) sign-in
+//  নিজেই phone প্রমাণ করে — config-এ PHONE_OTP_COUNTS_VERIFIED true হলে সেটাও verified।
+//  $_SESSION['auth_verified'] login/bind-এর সময় সেট হয়; এখানে সেটাই পড়া হয়।
+function _auth_is_verified() {
+    if (empty($_SESSION['auth_uid'])) return false;
+    if (!empty($_SESSION['auth_verified'])) return true;
+    if (PHONE_OTP_COUNTS_VERIFIED && ($_SESSION['auth_provider'] ?? '') === 'phone'
+        && !empty($_SESSION['auth_phone'])) return true;
+    return false;
+}
+
+// signed-in account verified কিনা DB থেকে নির্ণয় করে $_SESSION['auth_verified'] সেট করে
+function _refresh_auth_verified($conn) {
+    if (empty($_SESSION['auth_uid']) || !isset($conn)) return;
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $q = $conn->prepare("SELECT verified, verify_channel, verify_phone FROM auth_users WHERE firebase_uid=? LIMIT 1");
+    if ($q) {
+        $q->bind_param("s", $_SESSION['auth_uid']); $q->execute();
+        $r = $q->get_result()->fetch_assoc(); $q->close();
+        if ($r) {
+            $_SESSION['auth_verified'] = !empty($r['verified']) ? true : false;
+            $_SESSION['auth_verify_channel'] = $r['verify_channel'] ?? null;
+            $_SESSION['auth_verify_phone'] = $r['verify_phone'] ?? null;
+        }
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+}
+
+// bot-এর /send endpoint-এ কোড পাঠানোর curl helper (WhatsApp ও Telegram দুটোই ব্যবহার করে)
+//  $base = bot base URL, $payload = ["secret"=>..,"phone"=>..,"message"=>..], $insecure = self-signed হলে true
+//  ফেরত দেয়: ["http"=>int, "body"=>string]  (http===0 মানে সংযোগই হয়নি)
+function _bot_send($base, $payload, $insecure, $path = '/send') {
+    $ch = curl_init(rtrim($base, '/') . $path);
+    $opts = [
+        CURLOPT_POST           => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 12,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS     => json_encode($payload)
+    ];
+    if ($insecure) { $opts[CURLOPT_SSL_VERIFYPEER] = false; $opts[CURLOPT_SSL_VERIFYHOST] = 0; }
+    curl_setopt_array($ch, $opts);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ["http" => $http, "body" => (string)$body];
+}
+
+// === AJAX DETECTION — skip heavy queries on every AJAX call ===
+$_is_ajax = !empty($_POST['log_call']) || !empty($_POST['get_phone'])
+         || !empty($_POST['ajax_filter']) || !empty($_POST['ajax_submit'])
+         || !empty($_POST['get_blood_requests']) || !empty($_POST['ajax_update'])
+         || !empty($_POST['load_my_donor']) || !empty($_POST['submit_report'])
+         || !empty($_POST['submit_blood_request']) || !empty($_POST['save_push_sub'])
+         || !empty($_POST['delete_blood_request']) || !empty($_POST['delete_donor'])
+         || !empty($_POST['get_analytics']) || !empty($_POST['get_map_data'])
+         || !empty($_POST['get_nearby_donors'])
+         || !empty($_POST['get_service_notifs'])
+         || !empty($_POST['mark_service_notif_read'])
+         || !empty($_POST['delete_service_notif'])
+         || !empty($_POST['submit_admin_message'])
+         || !empty($_POST['get_admin_messages'])
+         || !empty($_POST['mark_admin_msg_read'])
+         || !empty($_POST['save_device_id'])
+         || !empty($_POST['save_fcm_token'])
+         || !empty($_POST['firebase_auth'])
+         || !empty($_POST['firebase_logout'])
+         || !empty($_POST['account_info'])
+         || !empty($_POST['get_my_messages'])
+         || !empty($_POST['find_my_request'])
+         || !empty($_POST['get_my_requests'])
+         || !empty($_POST['delete_my_request'])
+         || !empty($_POST['wa_send_otp'])
+         || !empty($_POST['wa_verify_otp'])
+         || !empty($_POST['tg_send_otp'])
+         || !empty($_POST['tg_verify_otp']);
+
+// === LIVE COUNTS — only on full page load, never on AJAX ===
+$avail_counts = ["A+"=>0,"A-"=>0,"B+"=>0,"B-"=>0,"AB+"=>0,"AB-"=>0,"O+"=>0,"O-"=>0];
+$total_donors_count = 0;
+if (!$_is_ajax) {
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $avail_q = $conn->query("SELECT blood_group, COUNT(*) as cnt FROM donors 
+        WHERE (willing_to_donate IS NULL OR willing_to_donate='yes' OR willing_to_donate='')
+          AND (last_donation='no' OR last_donation='' OR last_donation='0000-00-00'
+               OR DATEDIFF(CURDATE(), last_donation) >= 120)
+        GROUP BY blood_group");
+    if ($avail_q) {
+        while ($rowc = $avail_q->fetch_assoc())
+            if (isset($avail_counts[$rowc['blood_group']]))
+                $avail_counts[$rowc['blood_group']] = (int)$rowc['cnt'];
+    }
+    $tc = $conn->query("SELECT COUNT(*) as c FROM donors");
+    $total_donors_count = $tc ? (int)($tc->fetch_assoc()['c'] ?? 0) : 0;
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+}
+
+// --- AJAX: Log Call Activity ---
+if(isset($_POST['log_call'])){
+    checkCSRF();
+    header('Content-Type: text/plain; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start(); // flush any buffered warnings before output
+    checkRateLimit('log_call', 20, 60);
+    // ── Verification gate — unverified account call log করতে পারবে না ──
+    if(!_auth_is_verified()){ ob_clean(); echo "unverified"; exit(); }
+    $d_id = (int)$_POST['donor_id'];
+    // ── Caller identity = signed-in verified account, never client-supplied ──
+    //  verified number (Telegram/WhatsApp bind) অগ্রাধিকার; নইলে phone-OTP নম্বর।
+    //  client থেকে আর number/name চাওয়া হয় না — spoof বন্ধ।
+    $c_phone = trim($_SESSION['auth_verify_phone'] ?? '') ?: trim($_SESSION['auth_phone'] ?? '');
+    $c_name = trim($_SESSION['auth_name'] ?? '') ?: $c_phone;
+    $loc = trim($_POST['location_data'] ?? 'Not provided');
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $device = mb_substr($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown', 0, 300, 'UTF-8');
+
+    // Server-side validation
+    if(!preg_match('/^\+8801\d{9}$/', $c_phone)) { ob_clean(); echo "invalid"; exit(); }
+    validateLength($c_name, 100, 'নাম');
+    validateLength($loc, 500, 'Location');
+    if(empty($c_name)) { ob_clean(); echo "invalid"; exit(); }
+
+    $stmt = $conn->prepare("INSERT INTO call_logs (donor_id, caller_name, caller_phone, caller_ip, caller_location, device_info) VALUES (?,?,?,?,?,?)");
+    $stmt->bind_param("isssss", $d_id, $c_name, $c_phone, $ip, $loc, $device);
+    $stmt->execute();
+    $stmt->close();
+    // Increment persistent counter — never decreases even if call_logs is cleared
+    $conn->query("INSERT INTO analytics_counters (counter_name, counter_value) VALUES ('total_calls_ever', 1)
+        ON DUPLICATE KEY UPDATE counter_value = counter_value + 1");
+
+    // ── FCM push to donor: "[number] [name] [place] blood dite iccuk" ──
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $dinfo = $conn->prepare("SELECT name, location, device_id FROM donors WHERE id=?");
+    $dinfo->bind_param("i", $d_id);
+    $dinfo->execute();
+    $donor_row = $dinfo->get_result()->fetch_assoc();
+    $dinfo->close();
+    if ($donor_row && !empty($donor_row['device_id'])) {
+        $d_name = $donor_row['name'];
+        $d_loc  = $donor_row['location'];
+        // Look up FCM token for this donor's device_id
+        $ftq = $conn->prepare("SELECT fcm_token FROM fcm_tokens WHERE device_id=? LIMIT 1");
+        $ftq->bind_param("s", $donor_row['device_id']);
+        $ftq->execute();
+        $ftrow = $ftq->get_result()->fetch_assoc();
+        $ftq->close();
+        if ($ftrow && !empty($ftrow['fcm_token'])) {
+            $push_title = "📞 {$c_phone}";
+            $push_body  = "{$c_name} ({$c_phone}) — {$d_loc} রক্ত দিতে ইচ্ছুক।";
+            $oauth_token = @_fcm_get_oauth_token();
+            if ($oauth_token) {
+                $fcm_endpoint = "https://fcm.googleapis.com/v1/projects/shsmc-blood-portal/messages:send";
+                // Data-only payload — notification field সরানো।
+                // notification থাকলে FCM bypass করে, onBackgroundMessage call হয় না।
+                $msg_payload = json_encode([
+                    "message" => [
+                        "token" => $ftrow['fcm_token'],
+                        "webpush" => [
+                            "fcm_options" => ["link" => SITE_URL . "/"]
+                        ],
+                        "data" => [
+                            "type"   => "donor_called",
+                            "caller" => $c_name,
+                            "phone"  => $c_phone,
+                            "title"  => $push_title,
+                            "body"   => $push_body,
+                            "tag"    => "donor-call-{$d_id}"
+                        ]
+                    ]
+                ]);
+                $ch = curl_init($fcm_endpoint);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json','Authorization: Bearer '.$oauth_token]);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, $msg_payload);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+                curl_exec($ch);
+                curl_close($ch);
+            }
+        }
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    echo "logged";
+    exit();
+}
+
+// --- AJAX: Report Harassment ---
+if(isset($_POST['submit_report'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start(); // flush any buffered warnings before JSON output
+    checkRateLimit('submit_report', 5, 300); // Max 5 reports per 5 min
+    $d_phone = trim($_POST['donor_phone'] ?? '');
+    $h_info = trim($_POST['harasser_info'] ?? '');
+    $comment = trim($_POST['report_comment'] ?? '');
+
+    // Server-side validation
+    if(!preg_match('/^\+8801\d{9}$/', $d_phone)) {
+        echo json_encode(["status"=>"error","msg"=>"সঠিক ফোন নম্বর দিন।"]);
+        exit();
+    }
+    validateLength($h_info, 200, 'হয়রানিকারীর তথ্য');
+    validateLength($comment, 1000, 'অভিযোগ');
+    if(empty($h_info) || empty($comment)) {
+        echo json_encode(["status"=>"error","msg"=>"সব তথ্য দিন।"]);
+        exit();
+    }
+
+    $stmt = $conn->prepare("INSERT INTO reports (donor_phone, harasser_info, report_comment) VALUES (?,?,?)");
+    $stmt->bind_param("sss", $d_phone, $h_info, $comment);
+    if($stmt->execute()){
+        $to = "2005siam1hasan@gmail.com";
+        $subject = "Donor Harassment Report - Blood Arena";
+        // FIX: strip newlines to prevent email header injection
+        $safe_phone   = str_replace(["\r", "\n"], '', $d_phone);
+        $safe_hinfo   = str_replace(["\r", "\n"], '', $h_info);
+        $safe_comment = str_replace(["\r", "\n"], '', $comment);
+        $message = "Donor Phone: $safe_phone\nHarasser Details: $safe_hinfo\nComment: $safe_comment";
+        mail($to, $subject, $message);
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        echo "success";
+    } else {
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        echo json_encode(["status"=>"error","msg"=>"রিপোর্ট জমা দেওয়া ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"]);
+    }
+    $stmt->close();
+    exit();
+}
+
+// --- Secure Phone Fetch ---
+if(isset($_POST['get_phone'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start(); // flush any buffered warnings before JSON output
+    checkRateLimit('get_phone', 10, 60); // FIX: prevent phone number enumeration
+    // ── Verification gate: unverified account দাতার নম্বর পাবে না (call করতে পারবে না) ──
+    if(!_auth_is_verified()){
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        echo "unverified"; exit();
+    }
+    $id = (int)$_POST['id'];
+    $stmt = $conn->prepare("SELECT phone FROM donors WHERE id=?");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $res = $stmt->get_result()->fetch_assoc();
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    echo $res ? trim($res['phone']) : "error";
+    exit();
+}
+
+// === LOAD MY DONOR INFO (signed-in account → own donor record) ===
+//  পুরনো verify_secret (secret code) এর বদলে — এখন session auth_uid দিয়ে
+//  নিজের donor record load হয়। legacy donor (auth_uid খালি) একই phone-এ OTP
+//  sign-in করলে এখানে auth_uid বসিয়ে claim করা হয়।
+if(isset($_POST['load_my_donor'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('load_my_donor', 30, 60);
+    $uid   = requireAuth();
+    $phone = $_SESSION['auth_phone'] ?? null;
+
+    mysqli_report(MYSQLI_REPORT_OFF);
+    // 1) auth_uid দিয়ে খোঁজো
+    $stmt = $conn->prepare("SELECT name, location, last_donation, willing_to_donate, total_donations, reg_geo FROM donors WHERE auth_uid=? LIMIT 1");
+    $stmt->bind_param("s", $uid);
+    $stmt->execute();
+    $res = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    // 2) না পেলে legacy fallback: একই phone, auth_uid খালি → claim করো
+    if(!$res && $phone){
+        $lc = $conn->prepare("SELECT id, name, location, last_donation, willing_to_donate, total_donations, reg_geo FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
+        $lc->bind_param("s", $phone);
+        $lc->execute();
+        $res = $lc->get_result()->fetch_assoc();
+        $lc->close();
+        if($res){
+            $email = $_SESSION['auth_email'] ?? null;
+            $cl = $conn->prepare("UPDATE donors SET auth_uid=?, auth_email=? WHERE id=?");
+            $cl->bind_param("ssi", $uid, $email, $res['id']);
+            $cl->execute(); $cl->close();
+        }
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+    if(!$res){
+        echo json_encode(["status"=>"error","code"=>"no_donor","msg"=>"আপনার কোনো donor profile পাওয়া যায়নি। প্রথমে রেজিস্ট্রেশন করুন।"]);
+        exit();
+    }
+    $display_last = ($res['last_donation'] == 'no' || empty($res['last_donation']) || $res['last_donation']=='0000-00-00') ? 'no' : date('d/m/Y', strtotime($res['last_donation']));
+    $badge = getBadgeInfo((int)$res['total_donations']);
+    $geo_lat = ''; $geo_lng = '';
+    if(!empty($res['reg_geo']) && preg_match('/Lat:\s*([\-0-9.]+),\s*Lon:\s*([\-0-9.]+)/', $res['reg_geo'], $gm)){
+        $geo_lat = $gm[1]; $geo_lng = $gm[2];
+    }
+    echo json_encode([
+        "status"=>"success",
+        "name"=>$res['name'],
+        "location"=>$res['location'],
+        "last_donation"=>$display_last,
+        "willing"=>$res['willing_to_donate'],
+        "total_donations"=>(int)$res['total_donations'],
+        "badge_level"=>$badge['level'],
+        "badge_icon"=>$badge['icon'],
+        "geo_lat"=>$geo_lat,
+        "geo_lng"=>$geo_lng
+    ]);
+    exit();
+}
+
+// === UPDATE DONOR INFO (signed-in account) ===
+if(isset($_POST['ajax_update'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('ajax_update', 10, 60);
+    $uid        = requireAuth();
+    $name       = trim($_POST['name']);
+    $location   = trim($_POST['location']);
+    $last_input = trim($_POST['last_donation']);
+
+    validateLength($name, 100, 'নাম');
+    validateLength($location, 300, 'Location');
+
+    if(empty($name) || !preg_match('/^[\p{Bengali}a-zA-Z\s]+$/u', $name)){
+        echo json_encode(["status"=>"error", "msg"=>"❌ নামে শুধুমাত্র অক্ষর ও স্পেস থাকতে পারবে।"]);
+        exit();
+    }
+
+    // Resolve which donor row this account owns (auth_uid; legacy phone fallback)
+    $phone = $_SESSION['auth_phone'] ?? null;
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $find = $conn->prepare("SELECT id, last_donation FROM donors WHERE auth_uid=? LIMIT 1");
+    $find->bind_param("s", $uid); $find->execute();
+    $drow = $find->get_result()->fetch_assoc(); $find->close();
+    if(!$drow && $phone){
+        $find2 = $conn->prepare("SELECT id, last_donation FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
+        $find2->bind_param("s", $phone); $find2->execute();
+        $drow = $find2->get_result()->fetch_assoc(); $find2->close();
+        if($drow){ // claim legacy row for this account
+            $email = $_SESSION['auth_email'] ?? null;
+            $cl = $conn->prepare("UPDATE donors SET auth_uid=?, auth_email=? WHERE id=?");
+            $cl->bind_param("ssi", $uid, $email, $drow['id']); $cl->execute(); $cl->close();
+        }
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    if(!$drow){
+        echo json_encode(["status"=>"error","code"=>"no_donor","msg"=>"আপনার donor profile পাওয়া যায়নি। প্রথমে রেজিস্ট্রেশন করুন।"]);
+        exit();
+    }
+    $donor_id = (int)$drow['id'];
+
+    $today = date("Y-m-d");
+    $last_to_save = "no";
+    $reg_geo_update = trim($_POST['reg_geo_update'] ?? '');
+    validateLength($reg_geo_update, 200, 'Geo location');
+
+    if(strtolower($last_input) != 'no' && !empty($last_input)){
+        $d = DateTime::createFromFormat('d/m/Y', $last_input);
+        if(!$d || $d->format('d/m/Y') !== $last_input){
+            echo json_encode(["status"=>"error", "msg"=>"Error: Last Blood Donation Date must be 'no' or in dd/mm/yyyy format."]);
+            exit();
+        }
+        $formatted = $d->format('Y-m-d');
+        if($formatted > $today || (int)$d->format('Y') < 1940){
+            echo json_encode(["status"=>"error", "msg"=>"Error: Invalid date."]);
+            exit();
+        }
+        $last_to_save = $formatted;
+    }
+
+    $willing      = trim($_POST['willing_to_donate'] ?? 'yes');
+    $just_donated = (int)($_POST['just_donated'] ?? 0);
+    if(!in_array($willing, ['yes','no'], true)) $willing = 'yes';
+    // Save device_id to donors table so admin can send notifications
+    $upd_device_id = trim($_POST['device_id'] ?? '');
+    if(!empty($upd_device_id)){
+        @$conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS device_id VARCHAR(100) DEFAULT NULL");
+        $udq = $conn->prepare("UPDATE donors SET device_id=? WHERE id=? AND (device_id IS NULL OR device_id='')");
+        $udq->bind_param("si", $upd_device_id, $donor_id);
+        $udq->execute(); $udq->close();
+    }
+
+    // Server-side guard: just_donated=1 is only valid if last_donation is today
+    // Prevents double-counting if user clicks "I just donated" multiple times
+    if($just_donated === 1){
+        if($last_to_save !== date('Y-m-d')){
+            $just_donated = 0; // Silently ignore — date mismatch means it's not a fresh donation
+        } elseif(($drow['last_donation'] ?? '') === date('Y-m-d')){
+            $just_donated = 0; // Already counted today
+        }
+    }
+
+    // Build query — optionally include reg_geo update
+    $geo_set  = !empty($reg_geo_update) ? ", reg_geo=?" : "";
+    $badge_expr_inc = "CASE WHEN total_donations+1>=10 THEN 'Legend' WHEN total_donations+1>=5 THEN 'Hero' WHEN total_donations+1>=2 THEN 'Active' ELSE 'New' END";
+    $badge_expr_cur = "CASE WHEN total_donations>=10 THEN 'Legend' WHEN total_donations>=5 THEN 'Hero' WHEN total_donations>=2 THEN 'Active' ELSE 'New' END";
+
+    if($just_donated === 1){
+        $stmt = $conn->prepare("UPDATE donors SET name=?, location=?, last_donation=?, willing_to_donate=?, total_donations=total_donations+1, badge_level=$badge_expr_inc$geo_set WHERE id=?");
+        if(!empty($reg_geo_update)) { $stmt->bind_param("sssssi", $name, $location, $last_to_save, $willing, $reg_geo_update, $donor_id); }
+        else { $stmt->bind_param("ssssi", $name, $location, $last_to_save, $willing, $donor_id); }
+    } else {
+        $stmt = $conn->prepare("UPDATE donors SET name=?, location=?, last_donation=?, willing_to_donate=?, badge_level=$badge_expr_cur$geo_set WHERE id=?");
+        if(!empty($reg_geo_update)) { $stmt->bind_param("sssssi", $name, $location, $last_to_save, $willing, $reg_geo_update, $donor_id); }
+        else { $stmt->bind_param("ssssi", $name, $location, $last_to_save, $willing, $donor_id); }
+    }
+
+    if($stmt->execute()){
+        $stmt->close();
+        $s2 = $conn->prepare("SELECT total_donations FROM donors WHERE id=?");
+        $s2->bind_param("i", $donor_id);
+        $s2->execute();
+        $r2 = $s2->get_result()->fetch_assoc();
+        $s2->close();
+        if($r2){
+            $badge = getBadgeInfo((int)$r2['total_donations']);
+            // Increment persistent donation counter if donor just donated
+            if($just_donated === 1){
+                $conn->query("INSERT INTO analytics_counters (counter_name, counter_value) VALUES ('total_donations_ever', 1)
+                    ON DUPLICATE KEY UPDATE counter_value = counter_value + 1");
+            }
+            echo json_encode([
+                "status"          => "success",
+                "msg"             => "✅ তথ্য সফলভাবে আপডেট হয়েছে!",
+                "badge_level"     => $badge['level'],
+                "badge_icon"      => $badge['icon'],
+                "total_donations" => (int)$r2['total_donations']
+            ]);
+        } else {
+            echo json_encode(["status"=>"error", "msg"=>"❌ Donor record খুঁজে পাওয়া যায়নি।"]);
+        }
+    } else {
+        $stmt->close();
+        echo json_encode(["status"=>"error", "msg"=>"❌ Update failed. Please try again."]);
+    }
+    exit();
+}
+
+// === DELETE DONOR (Self-delete by signed-in account) ===
+if(isset($_POST['delete_donor'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('delete_donor', 5, 300); // Max 5 attempts per 5 min
+
+    $uid     = requireAuth();
+    $phone   = $_SESSION['auth_phone'] ?? null;
+    $confirm = trim($_POST['confirm'] ?? '');
+
+    if($confirm !== 'DELETE'){
+        echo json_encode(["status"=>"error","msg"=>"❌ নিশ্চিত করতে DELETE লিখুন।"]);
+        exit();
+    }
+
+    // Find this account's donor row (auth_uid; legacy phone fallback)
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $stmt = $conn->prepare("SELECT id FROM donors WHERE auth_uid=? LIMIT 1");
+    $stmt->bind_param("s", $uid); $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
+    if(!$row && $phone){
+        $s2 = $conn->prepare("SELECT id FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
+        $s2->bind_param("s", $phone); $s2->execute();
+        $row = $s2->get_result()->fetch_assoc(); $s2->close();
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+    if(!$row){
+        echo json_encode(["status"=>"error","msg"=>"❌ আপনার donor profile পাওয়া যায়নি।"]);
+        exit();
+    }
+
+    $del = $conn->prepare("DELETE FROM donors WHERE id=?");
+    $del->bind_param("i", $row['id']);
+    if($del->execute()){
+        echo json_encode(["status"=>"success","msg"=>"✅ আপনার সকল তথ্য database থেকে সম্পূর্ণ মুছে ফেলা হয়েছে।"]);
+    } else {
+        echo json_encode(["status"=>"error","msg"=>"❌ মুছতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"]);
+    }
+    $del->close();
+    exit();
+}
+
+// === AJAX Registration (signed-in account) ===
+if(isset($_POST['ajax_submit'])){
+    checkCSRF();
+    while(ob_get_level()) ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+    checkRateLimit('register', 5, 300);
+    $uid        = requireAuth();
+    $auth_email = $_SESSION['auth_email'] ?? null;
+
+    $name       = trim($_POST['name']             ?? '');
+    $phone      = trim($_POST['phone']            ?? '');
+    $location   = trim($_POST['location']         ?? '');
+    $group      = trim($_POST['group']            ?? '');
+    $last_input = trim($_POST['last_donation']    ?? '');
+    $reg_geo    = trim($_POST['reg_geo_location'] ?? 'Not captured');
+    $reg_ip     = $_SERVER['REMOTE_ADDR'];
+    $reg_device = mb_substr($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown', 0, 300, 'UTF-8');
+
+    validateLength($name,     100, 'নাম');
+    validateLength($location, 300, 'Location');
+    validateLength($reg_geo,  200, 'Geo location');
+
+    if(empty($name) || !preg_match('/^[\p{Bengali}a-zA-Z\s]+$/u', $name)){
+        echo json_encode(["status"=>"error","msg"=>"নামে শুধুমাত্র অক্ষর ও স্পেস থাকতে পারবে।"]);
+        exit();
+    }
+    $valid_groups = ["A+","A-","B+","B-","AB+","AB-","O+","O-"];
+    if(!in_array($group, $valid_groups, true)){
+        echo json_encode(["status"=>"error","msg"=>"Invalid blood group."]);
+        exit();
+    }
+    if(!preg_match('/^\+8801\d{9}$/', $phone)){
+        echo json_encode(["status"=>"error","msg"=>"Phone must start with +8801 followed by 9 digits."]);
+        exit();
+    }
+
+    $today        = date("Y-m-d");
+    $last_to_save = "no";
+    if(strtolower($last_input) !== 'no' && !empty($last_input)){
+        $d = DateTime::createFromFormat('d/m/Y', $last_input);
+        if(!$d || $d->format('d/m/Y') !== $last_input){
+            echo json_encode(["status"=>"error","msg"=>"Last donation date must be 'no' or dd/mm/yyyy."]);
+            exit();
+        }
+        $formatted_last = $d->format('Y-m-d');
+        if($formatted_last > $today || (int)$d->format('Y') < 1940){
+            echo json_encode(["status"=>"error","msg"=>"Invalid date."]);
+            exit();
+        }
+        $last_to_save = $formatted_last;
+    }
+
+    $reg_total_donations = max(0, (int)($_POST['total_donations_reg'] ?? 0));
+    if($last_to_save === 'no') $reg_total_donations = 0;
+    if($reg_total_donations > 999) $reg_total_donations = 999;
+    $reg_badge   = getBadgeInfo($reg_total_donations)['level'];
+
+    // Ensure account-link + device columns exist on donors
+    @$conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS device_id VARCHAR(100) DEFAULT NULL");
+    @$conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS auth_uid VARCHAR(128) DEFAULT NULL");
+    @$conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS auth_email VARCHAR(190) DEFAULT NULL");
+    $reg_device_id = trim($_POST['device_id'] ?? '');
+
+    // Phone already registered? Decide claim vs. block.
+    $chk = $conn->prepare("SELECT id, auth_uid FROM donors WHERE phone=? LIMIT 1");
+    $chk->bind_param("s", $phone);
+    $chk->execute();
+    $existing = $chk->get_result()->fetch_assoc();
+    $chk->close();
+    if($existing){
+        if(!empty($existing['auth_uid']) && $existing['auth_uid'] === $uid){
+            echo json_encode(["status"=>"error","msg"=>"আপনি ইতিমধ্যে রেজিস্ট্রেশন করেছেন। তথ্য বদলাতে \"Update My Info\" ব্যবহার করুন।"]);
+            exit();
+        }
+        if(!empty($existing['auth_uid']) && $existing['auth_uid'] !== $uid){
+            echo json_encode(["status"=>"error","msg"=>"এই নম্বরটি দিয়ে ইতোমধ্যে অন্য একটি অ্যাকাউন্টে রেজিস্ট্রেশন করা হয়েছে।"]);
+            exit();
+        }
+        // Legacy row (no auth_uid) with same phone → claim & update it for this account
+        // 11 params: name,location,group,last,geo,total(i),badge,device,uid,email + id(i)
+        $up = $conn->prepare("UPDATE donors SET name=?, location=?, blood_group=?, last_donation=?, reg_geo=?, total_donations=?, badge_level=?, device_id=?, auth_uid=?, auth_email=? WHERE id=?");
+        $up->bind_param("sssssissssi", $name,$location,$group,$last_to_save,$reg_geo,$reg_total_donations,$reg_badge,$reg_device_id,$uid,$auth_email,$existing['id']);
+        if($up->execute()){
+            $up->close();
+            if($reg_total_donations > 0){
+                $conn->query("INSERT INTO analytics_counters (counter_name,counter_value) VALUES ('total_donations_ever',$reg_total_donations)
+                    ON DUPLICATE KEY UPDATE counter_value=counter_value+$reg_total_donations");
+            }
+            echo json_encode(["status"=>"success","claimed"=>true,"msg"=>"✅ আপনার পুরনো প্রোফাইল এই অ্যাকাউন্টের সাথে যুক্ত ও আপডেট হয়েছে!"]);
+        } else {
+            $up->close();
+            echo json_encode(["status"=>"error","msg"=>"Registration failed. Please try again."]);
+        }
+        exit();
+    }
+
+    $stmt = $conn->prepare("INSERT INTO donors (name,phone,location,blood_group,last_donation,reg_ip,reg_device,reg_geo,total_donations,badge_level,device_id,auth_uid,auth_email) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    $stmt->bind_param("ssssssssissss", $name,$phone,$location,$group,$last_to_save,$reg_ip,$reg_device,$reg_geo,$reg_total_donations,$reg_badge,$reg_device_id,$uid,$auth_email);
+    if($stmt->execute()){
+        if($reg_total_donations > 0){
+            $conn->query("INSERT INTO analytics_counters (counter_name,counter_value) VALUES ('total_donations_ever',$reg_total_donations)
+                ON DUPLICATE KEY UPDATE counter_value=counter_value+$reg_total_donations");
+        }
+        // ── Welcome service notification — শুধু এই নতুন user পাবে ──
+        if (!empty($reg_device_id)) {
+            $welcome_msg = "আসসালামু আলাইকুম! 🩸 BloodArena-এ আপনাকে স্বাগতম, {$name}!\n\n"
+                         . "✅ আপনার নিবন্ধন সফলভাবে সম্পন্ন হয়েছে।\n\n"
+                         . "যেকোনো সময় Google বা ফোন নম্বর দিয়ে সাইন ইন করে \"Update My Info\" থেকে আপনার তথ্য বদলাতে পারবেন।\n"
+                         . "আল্লাহ আপনার এই মহৎ সিদ্ধান্তে উত্তম প্রতিদান দিন! ❤️";
+            @$conn->query("CREATE TABLE IF NOT EXISTS `service_notifications`(
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `device_id` VARCHAR(100) NOT NULL,
+                `type` VARCHAR(30) NOT NULL,
+                `message` TEXT NOT NULL,
+                `is_read` TINYINT DEFAULT 0,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            $wn = $conn->prepare("INSERT INTO service_notifications (device_id, type, message) VALUES (?,?,?)");
+            $wn_type = 'welcome';
+            $wn->bind_param("sss", $reg_device_id, $wn_type, $welcome_msg);
+            $wn->execute(); $wn->close();
+        }
+        echo json_encode(["status"=>"success"]);
+    } else {
+        echo json_encode(["status"=>"error","msg"=>"Registration failed. Please try again."]);
+    }
+    $stmt->close();
+    exit();
+}
+
+function getLiveStatus($last_donation, $willing = 'yes') {
+    if($willing === 'no') return "Unavailable";
+    if($last_donation == 'no' || empty($last_donation) || $last_donation == '0000-00-00') {
+        return "Available";
+    }
+    $today = new DateTime();
+    $last  = new DateTime($last_donation);
+    $diff  = $today->diff($last)->days;
+    return ($diff >= 120) ? "Available" : "Not Available";
+}
+
+function getBadgeInfo($total) {
+    if($total >= 10) return ['level'=>'Legend','icon'=>'👑','color'=>'#f59e0b','bg'=>'rgba(245,158,11,0.15)','border'=>'rgba(245,158,11,0.4)'];
+    if($total >= 5)  return ['level'=>'Hero',  'icon'=>'🦸','color'=>'#8b5cf6','bg'=>'rgba(139,92,246,0.15)','border'=>'rgba(139,92,246,0.4)'];
+    if($total >= 2)  return ['level'=>'Active', 'icon'=>'⭐','color'=>'#3b82f6','bg'=>'rgba(59,130,246,0.15)','border'=>'rgba(59,130,246,0.4)'];
+    return ['level'=>'New','icon'=>'🌱','color'=>'#10b981','bg'=>'rgba(16,185,129,0.15)','border'=>'rgba(16,185,129,0.4)'];
+}
+
+// === FULL AJAX FILTER WITH PAGINATION & NEW LOCATION FILTER ===
+if(isset($_POST['ajax_filter'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start(); // flush any buffered warnings before JSON output
+    checkRateLimit('ajax_filter', 60, 60);
+    $f_group = trim($_POST['filter_group'] ?? 'All');
+    $f_search = trim($_POST['search_query'] ?? '');
+    $f_status = $_POST['filter_status'] ?? 'All';
+    $f_location = trim($_POST['filter_location'] ?? 'All'); 
+    $page = isset($_POST['page']) ? max(1, (int)$_POST['page']) : 1;
+
+    // Whitelist blood group
+    $valid_groups = ["A+","A-","B+","B-","AB+","AB-","O+","O-","All"];
+    if(!in_array($f_group, $valid_groups, true)) $f_group = "All";
+    $valid_status = ["All","Available","Unavailable"];
+    if(!in_array($f_status, $valid_status, true)) $f_status = "All";
+    $f_badge = trim($_POST['filter_badge'] ?? 'All');
+    $valid_badges = ["All","New","Active","Hero","Legend"];
+    if(!in_array($f_badge, $valid_badges, true)) $f_badge = "All";
+    // Recently-donated mode: only donors with a real last_donation date, newest first
+    $f_donated = ($_POST['filter_donated'] ?? '0') === '1';
+
+    // Length limits on filter inputs
+    $f_search = mb_substr($f_search, 0, 100, 'UTF-8');
+    $f_location = mb_substr($f_location, 0, 200, 'UTF-8');
+    $limit = 20;
+    $start = ($page - 1) * $limit;
+
+    $query_parts = [];
+    $params =[];
+    $types = "";
+
+    if($f_group != "All" && $f_group != "") { 
+        $query_parts[] = "blood_group = ?";
+        $params[] = $f_group;
+        $types .= "s";
+    }
+    if($f_location != "All" && $f_location != "") { 
+        $query_parts[] = "location LIKE ?";
+        $params[] = $f_location . "%"; 
+        $types .= "s";
+    }
+    if($f_search != "") { 
+        $query_parts[] = "(name LIKE ? OR location LIKE ?)";
+        $like = "%$f_search%";
+        $params[] = $like;
+        $params[] = $like;
+        $types .= "ss";
+    }
+    if($f_status == "Available") {
+        $query_parts[] = "(willing_to_donate='yes' AND (last_donation = 'no' OR last_donation = '' OR last_donation = '0000-00-00' OR DATEDIFF(CURDATE(), last_donation) >= 120))";
+    } elseif($f_status == "Unavailable") {
+        $query_parts[] = "(willing_to_donate='no' OR (willing_to_donate='yes' AND last_donation != 'no' AND last_donation != '' AND last_donation != '0000-00-00' AND DATEDIFF(CURDATE(), last_donation) < 120))";
+    }
+    if($f_badge != "All" && $f_badge != "") {
+        $query_parts[] = "badge_level = ?";
+        $params[] = $f_badge;
+        $types .= "s";
+    }
+    if($f_donated) {
+        $query_parts[] = "(last_donation IS NOT NULL AND last_donation != 'no' AND last_donation != '' AND last_donation != '0000-00-00')";
+    }
+
+    $where = count($query_parts) > 0 ? "WHERE " . implode(" AND ", $query_parts) : "";
+    // Recently-donated view sorts by donation date (newest first); default keeps newest-registered first
+    $order_by = $f_donated ? "ORDER BY last_donation DESC, id DESC" : "ORDER BY id DESC";
+    
+    $count_q = "SELECT COUNT(*) as total FROM donors $where";
+    $stmt_count = $conn->prepare($count_q);
+    if($types !== "") $stmt_count->bind_param($types, ...$params);
+    $stmt_count->execute();
+    $total_records = $stmt_count->get_result()->fetch_assoc()['total'];
+    $stmt_count->close();
+
+    $data_q = "SELECT * FROM donors $where $order_by LIMIT ?, ?";
+    $stmt = $conn->prepare($data_q);
+    $types_limit = $types . "ii";
+    $params_limit = array_merge($params, [$start, $limit]);
+    if($types !== "") {
+        $stmt->bind_param($types_limit, ...$params_limit);
+    } else {
+        $stmt->bind_param("ii", $start, $limit);
+    }
+    $stmt->execute();
+    $res = $stmt->get_result();
+    
+    $output = "";   // desktop table rows
+    $cards  = "";   // mobile cards
+    $serial = $start + 1;
+    $found = false;
+    $counts =["A+"=>0,"A-"=>0,"B+"=>0,"B-"=>0,"AB+"=>0,"AB-"=>0,"O+"=>0,"O-"=>0];
+    
+    while($row = $res->fetch_assoc()){
+        $last_val = $row['last_donation'];
+        $willing_val = $row['willing_to_donate'] ?? 'yes';
+        $current_status = getLiveStatus($last_val, $willing_val);
+        // Use DB badge_level directly — avoids mismatch with total_donations
+        $db_badge_level = $row['badge_level'] ?? '';
+        if($db_badge_level === 'Legend') $donor_badge = getBadgeInfo(10);
+        elseif($db_badge_level === 'Hero') $donor_badge = getBadgeInfo(5);
+        elseif($db_badge_level === 'Active') $donor_badge = getBadgeInfo(2);
+        else $donor_badge = getBadgeInfo(0); // New
+        
+        if($current_status == "Available") { 
+            if (isset($counts[$row['blood_group']])) $counts[$row['blood_group']]++; 
+        }
+        
+        $found = true;
+        
+        if($last_val == 'no' || empty($last_val) || $last_val == '0000-00-00'){
+            $display_last = 'Never donated';
+        } else {
+            $display_last = date("d M Y", strtotime($last_val));
+            if(strpos($display_last, '1970') !== false || strpos($display_last, '-0001') !== false) { $display_last = 'Never donated'; }
+        }
+        
+        if($current_status == 'Available')      { $st_class='available';   $st_icon='✔'; $st_text='Available'; }
+        elseif($current_status == 'Unavailable') { $st_class='unavailable';  $st_icon='⛔'; $st_text='Unavailable'; }
+        else                                      { $st_class='notavailable'; $st_icon='✖'; $st_text='Not Available'; }
+        $bg_class   = 'bg' . preg_replace('/[^a-zA-Z]/', '', $row['blood_group']) . (strpos($row['blood_group'],'+') !== false ? 'pos' : 'neg');
+        $sn         = $serial++;
+
+        // ── Call button state based on availability ──────────────────
+        $is_available = ($current_status == 'Available');
+        $call_btn_desktop = $is_available
+            ? "<button class='phone-link' onclick=\"prepCall('".$row['id']."')\">📞 Call</button>"
+            : "<button class='phone-link-disabled' disabled title='দাতা এখন Available নেই'>🚫 Unavailable</button>";
+        $call_btn_mobile = $is_available
+            ? "<button class='dc-call-btn unselectable' onclick=\"prepCall('".$row['id']."')\" oncontextmenu='return false;' aria-label='Call donor'>📞</button>"
+            : "<button class='dc-call-btn-disabled' disabled title='দাতা এখন Available নেই' aria-label='Not available'>🚫</button>";
+
+        // ── Desktop table row ──────────────────────────────────────────
+        $output .= "<tr>
+            <td><span class='serial-num'>$sn</span></td>
+            <td style='text-align:left; font-weight:600;'>".esc($row['name'])." <span style='font-size:0.85em;opacity:0.85;' title='".$donor_badge['level']." Donor'>".$donor_badge['icon']."</span></td>
+            <td><span class='blood-badge $bg_class'>".esc($row['blood_group'])."</span></td>
+            <td><span class='$st_class'>$st_icon $st_text</span></td>
+            <td style='text-align:left; color:var(--text-muted); font-size:0.88em;'>📍 ".esc($row['location'])."</td>
+            <td style='color:var(--text-muted); font-size:0.88em;'>🗓 ".esc($display_last)."</td>
+            <td class='unselectable' oncontextmenu='return false;' oncopy='return false;'>
+                $call_btn_desktop
+            </td>
+        </tr>";
+
+        // ── Mobile card ────────────────────────────────────────────────
+        $cards .= "
+        <div class='dc'>
+            <div class='dc-badge-wrap'>
+                <span class='dc-sn'>$sn</span>
+                <span class='dc-badge $bg_class'>".esc($row['blood_group'])."</span>
+            </div>
+            <div class='dc-info'>
+                <div class='dc-name'>".esc($row['name'])." <span style='font-size:0.85em;opacity:0.85;' title='".$donor_badge['level']." Donor'>".$donor_badge['icon']."</span></div>
+                <span class='$st_class dc-status-badge'>$st_icon $st_text</span>
+                <div class='dc-loc'>📍 ".esc($row['location'])."</div>
+                <div class='dc-last'>🗓 $display_last</div>
+            </div>
+            $call_btn_mobile
+        </div>";
+    }
+    
+    if(!$found) { 
+        $output = "<tr><td colspan='7' class='no-data'>✖ কোনো রক্তদাতা পাওয়া যায়নি।</td></tr>";
+        $cards  = "<div class='no-data' style='text-align:center;padding:30px;'>✖ কোনো রক্তদাতা পাওয়া যায়নি।</div>";
+    }
+    
+    $total_pages = ceil($total_records / $limit);
+    $pag_html = '<div class="pagination">';
+    if($page > 1) $pag_html .= '<a href="#" onclick="fetchFilteredData('.($page-1).',true); return false;">Previous</a>';
+    for($i = 1; $i <= $total_pages; $i++){
+        $active = ($i == $page) ? ' class="active-page"' : '';
+        $pag_html .= '<a href="#" onclick="fetchFilteredData('.$i.',true); return false;"'.$active.'>'.$i.'</a>';
+    }
+    if($page < $total_pages) $pag_html .= '<a href="#" onclick="fetchFilteredData('.($page+1).',true); return false;">Next</a>';
+    $pag_html .= '</div>';
+    
+    // Fresh available counts — always global (not filtered) for stat cards
+    // FIX: $avail_counts stays 0 on AJAX calls. Run fresh query here instead.
+    $fresh_counts = ["A+"=>0,"A-"=>0,"B+"=>0,"B-"=>0,"AB+"=>0,"AB-"=>0,"O+"=>0,"O-"=>0];
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $fc_q = $conn->query("SELECT blood_group, COUNT(*) as cnt FROM donors
+        WHERE (willing_to_donate IS NULL OR willing_to_donate='yes' OR willing_to_donate='')
+          AND (last_donation='no' OR last_donation='' OR last_donation='0000-00-00'
+               OR DATEDIFF(CURDATE(), last_donation) >= 120)
+        GROUP BY blood_group");
+    if ($fc_q) while ($fcr = $fc_q->fetch_assoc())
+        if (isset($fresh_counts[$fcr['blood_group']]))
+            $fresh_counts[$fcr['blood_group']] = (int)$fcr['cnt'];
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    $fresh_total_avail = array_sum($fresh_counts);
+    echo json_encode(["table" => $output, "cards" => $cards, "counts" => $fresh_counts, "total_available" => $fresh_total_avail, "pagination" => $pag_html, "total" => $total_records]);
+    $stmt->close();
+    exit();
+}
+
+// === AJAX: Analytics Data ===
+if(isset($_POST['get_analytics'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start(); // flush any buffered warnings before JSON output
+    checkRateLimit('analytics', 10, 60);
+
+    // Temporarily disable strict error reporting so missing columns don't crash analytics
+    mysqli_report(MYSQLI_REPORT_OFF);
+
+    $total       = (int)($conn->query("SELECT COUNT(*) as c FROM donors")->fetch_assoc()['c'] ?? 0);
+
+    $r_avail = $conn->query("SELECT COUNT(*) as c FROM donors WHERE willing_to_donate='yes' AND (last_donation='no' OR last_donation='' OR last_donation='0000-00-00' OR DATEDIFF(CURDATE(),last_donation)>=120)");
+    $available   = $r_avail ? (int)$r_avail->fetch_assoc()['c'] : 0;
+
+    $r_unav = $conn->query("SELECT COUNT(*) as c FROM donors WHERE willing_to_donate='no'");
+    $unavailable = $r_unav ? (int)$r_unav->fetch_assoc()['c'] : 0;
+
+    $r_calls = $conn->query("SELECT counter_value as c FROM analytics_counters WHERE counter_name='total_calls_ever'");
+    $r_calls_row = $r_calls ? $r_calls->fetch_assoc() : null;
+    if($r_calls_row !== null){
+        $total_calls = (int)$r_calls_row['c'];
+    } else {
+        // Fallback: counter table missing/not seeded yet
+        $r_calls_fb = $conn->query("SELECT COUNT(*) as c FROM call_logs");
+        $total_calls = $r_calls_fb ? (int)($r_calls_fb->fetch_assoc()['c'] ?? 0) : 0;
+    }
+
+    // Blood requests stats
+    $r_active_req = $conn->query("SELECT COUNT(*) as c FROM blood_requests WHERE status='Active'");
+    $active_requests = $r_active_req ? (int)$r_active_req->fetch_assoc()['c'] : 0;
+
+    // "Successfully Donated" — persistent counter, never decreases even if donor deletes account
+    $r_donated = $conn->query("SELECT counter_value as c FROM analytics_counters WHERE counter_name='total_donations_ever'");
+    $r_donated_row = $r_donated ? $r_donated->fetch_assoc() : null;
+    if($r_donated_row !== null){
+        $fulfilled_requests = (int)$r_donated_row['c'];
+    } else {
+        // Fallback: counter table missing/not seeded yet
+        $r_donated_fb = $conn->query("SELECT COALESCE(SUM(total_donations),0) as c FROM donors");
+        $fulfilled_requests = $r_donated_fb ? (int)($r_donated_fb->fetch_assoc()['c'] ?? 0) : 0;
+    }
+
+    // Blood group breakdown
+    $by_group = [];
+    $bg_res = $conn->query("SELECT blood_group, COUNT(*) as cnt FROM donors GROUP BY blood_group ORDER BY cnt DESC");
+    if($bg_res) while($r = $bg_res->fetch_assoc()) $by_group[$r['blood_group']] = (int)$r['cnt'];
+
+    // Badge breakdown
+    $by_badge = ['New'=>0,'Active'=>0,'Hero'=>0,'Legend'=>0];
+    $badge_res = $conn->query("SELECT badge_level, COUNT(*) as cnt FROM donors GROUP BY badge_level");
+    if($badge_res) {
+        while($r = $badge_res->fetch_assoc()) {
+            if(isset($by_badge[$r['badge_level']])) $by_badge[$r['badge_level']] = (int)$r['cnt'];
+        }
+    }
+    // Fallback: if badge_level column missing, bucket by total_donations
+    if(array_sum($by_badge) === 0) {
+        $td_res = $conn->query("SELECT total_donations FROM donors");
+        if($td_res) {
+            while($r = $td_res->fetch_assoc()){
+                $t = (int)($r['total_donations'] ?? 0);
+                if($t >= 10)    $by_badge['Legend']++;
+                elseif($t >= 5) $by_badge['Hero']++;
+                elseif($t >= 2) $by_badge['Active']++;
+                else            $by_badge['New']++;
+            }
+        } else {
+            $by_badge['New'] = $total;
+        }
+    }
+
+    // Monthly registrations — created_at may not exist on some installs
+    $monthly = [];
+    $monthly_res = $conn->query("SELECT DATE_FORMAT(created_at,'%b %Y') as month, COUNT(*) as cnt FROM donors WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH) GROUP BY DATE_FORMAT(created_at,'%Y-%m') ORDER BY DATE_FORMAT(created_at,'%Y-%m') ASC");
+    if($monthly_res) while($r = $monthly_res->fetch_assoc()) $monthly[] = $r;
+
+    // Top locations
+    $by_loc = [];
+    $loc_res = $conn->query("SELECT SUBSTRING_INDEX(location,' - ',1) as area, COUNT(*) as cnt FROM donors GROUP BY area ORDER BY cnt DESC LIMIT 6");
+    if($loc_res) while($r = $loc_res->fetch_assoc()) $by_loc[] = $r;
+
+    // Available count by blood group (for stat cards live update)
+    $by_group_avail = ["A+"=>0,"A-"=>0,"B+"=>0,"B-"=>0,"AB+"=>0,"AB-"=>0,"O+"=>0,"O-"=>0];
+    $bga_res = $conn->query("SELECT blood_group, COUNT(*) as cnt FROM donors 
+        WHERE (willing_to_donate IS NULL OR willing_to_donate='yes')
+          AND (last_donation='no' OR last_donation='' OR last_donation='0000-00-00' OR DATEDIFF(CURDATE(),last_donation)>=120)
+        GROUP BY blood_group");
+    if($bga_res) while($r=$bga_res->fetch_assoc()) { if(isset($by_group_avail[$r['blood_group']])) $by_group_avail[$r['blood_group']]=(int)$r['cnt']; }
+
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+    echo json_encode(compact('total','available','unavailable','total_calls','active_requests','fulfilled_requests','by_group','by_group_avail','by_badge','monthly','by_loc'));
+    exit();
+}
+
+// === AJAX: Map Data (donor locations with geo coords from reg_geo) ===
+if(isset($_POST['get_map_data'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('map_data', 10, 60);
+    $stmt = $conn->prepare("SELECT name, blood_group, location, reg_geo, last_donation, willing_to_donate, total_donations FROM donors WHERE reg_geo != 'Not captured' AND reg_geo != 'Not provided' AND reg_geo LIKE 'Lat:%' LIMIT 200");
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $markers = [];
+    while($row = $res->fetch_assoc()){
+        preg_match('/Lat:\s*([\-0-9.]+),\s*Lon:\s*([\-0-9.]+)/', $row['reg_geo'], $m);
+        if(count($m) === 3){
+            $status = getLiveStatus($row['last_donation'], $row['willing_to_donate'] ?? 'yes');
+            $badge  = getBadgeInfo((int)($row['total_donations'] ?? 0));
+            $markers[] = [
+                'lat'   => (float)$m[1],
+                'lng'   => (float)$m[2],
+                'name'  => esc($row['name']),
+                'group' => esc($row['blood_group']),
+                'loc'   => esc($row['location']),
+                'status'=> $status,
+                'badge' => $badge['icon'].' '.$badge['level']
+            ];
+        }
+    }
+    $stmt->close();
+    echo json_encode($markers);
+    exit();
+}
+
+// ============================================================
+// FEATURE: EMERGENCY BLOOD REQUESTS
+// ============================================================
+
+// Submit blood request
+if(isset($_POST['submit_blood_request'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    requireAuth(); // blood request পাঠাতে সাইন ইন আবশ্যক (Google / ফোন)
+    checkRateLimit('blood_request', 3, 300);
+
+    $patient   = trim($_POST['patient_name']   ?? '');
+    $blood_grp = trim($_POST['req_blood_group'] ?? '');
+    $hospital  = trim($_POST['hospital']        ?? '');
+    $contact   = trim($_POST['req_contact']     ?? '');
+    $urgency   = trim($_POST['urgency']         ?? 'High');
+    $bags      = max(1, min(10, (int)($_POST['bags_needed'] ?? 1)));
+    $note      = trim($_POST['req_note']        ?? '');
+
+    // Build response array — output NOTHING until the very end
+    $resp = [];
+
+    $valid_groups = ["A+","A-","B+","B-","AB+","AB-","O+","O-"];
+    if(!in_array($blood_grp, $valid_groups, true)){
+        $resp = ["status"=>"error","msg"=>"Invalid blood group."];
+    } elseif(!preg_match('/^\+8801\d{9}$/', $contact)){
+        $resp = ["status"=>"error","msg"=>"সঠিক যোগাযোগ নম্বর দিন।"];
+    } elseif(empty($patient)||empty($hospital)){
+        $resp = ["status"=>"error","msg"=>"রোগীর নাম ও হাসপাতাল দিন।"];
+    } else {
+        $valid_urgency=['Critical','High','Medium'];
+        if(!in_array($urgency,$valid_urgency,true)) $urgency='High';
+
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $conn->query("CREATE TABLE IF NOT EXISTS `blood_requests` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `patient_name` VARCHAR(100) NOT NULL,
+            `blood_group` VARCHAR(5) NOT NULL,
+            `hospital` VARCHAR(200) NOT NULL,
+            `contact` VARCHAR(20) NOT NULL,
+            `urgency` VARCHAR(10) DEFAULT 'High',
+            `bags_needed` INT DEFAULT 1,
+            `note` VARCHAR(500) DEFAULT '',
+            `status` VARCHAR(20) DEFAULT 'Active',
+            `delete_token` VARCHAR(10) DEFAULT NULL,
+            `req_ip` VARCHAR(50) DEFAULT NULL,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+
+        $delete_token = str_pad((string)mt_rand(100000, 999999), 6, '0', STR_PAD_LEFT);
+        $ip = $_SERVER['REMOTE_ADDR'];
+        $req_device_id = trim($_POST['device_id'] ?? '');
+        $req_auth_uid  = currentAuthUid(); // signed-in account → tie request for tokenless management
+
+        try {
+            $stmt = $conn->prepare("INSERT INTO blood_requests (patient_name,blood_group,hospital,contact,urgency,bags_needed,note,req_ip,delete_token,auth_uid) VALUES (?,?,?,?,?,?,?,?,?,?)");
+            $stmt->bind_param("sssssissss",$patient,$blood_grp,$hospital,$contact,$urgency,$bags,$note,$ip,$delete_token,$req_auth_uid);
+            if($stmt->execute()){
+                $new_id = $conn->insert_id;
+                $resp = [
+                    "status"       => "success",
+                    "msg"          => "✅ রক্তের অনুরোধ পাঠানো হয়েছে!",
+                    "request_id"   => (int)$new_id,
+                    "delete_token" => (string)$delete_token
+                ];
+                // ── Service notification → requester device এ token পাঠাও ──
+                if (!empty($req_device_id)) {
+                    $sn_msg = "🆘 আপনার Emergency Blood Request সফলভাবে পাঠানো হয়েছে!\n\n"
+                            . "🩸 Blood Group: {$blood_grp}\n"
+                            . "🏥 Hospital: {$hospital}\n"
+                            . "🆔 Request ID: #{$new_id}\n"
+                            . "🔑 Delete Token: {$delete_token}\n\n"
+                            . "⚠️ এই Token দিয়ে Request মুছতে পারবেন। স্ক্রিনশট নিন বা সেভ করুন!\n"
+                            . "⏳ ৩ দিন পর Request স্বয়ংক্রিয়ভাবে Expire হয়ে যাবে।";
+                    $sn_type = 'blood_request';
+                    mysqli_report(MYSQLI_REPORT_OFF);
+                    $sn = $conn->prepare("INSERT INTO service_notifications (device_id, type, message) VALUES (?,?,?)");
+                    $sn->bind_param("sss", $req_device_id, $sn_type, $sn_msg);
+                    $sn->execute(); $sn->close();
+                    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+                }
+                // ── Save vars for background FCM push ──
+                $_fcm_new_id    = $new_id;
+                $_fcm_blood_grp = $blood_grp;
+                $_fcm_patient   = $patient;
+                $_fcm_hospital  = $hospital;
+                $_fcm_contact   = $contact;
+                $_fcm_urgency   = $urgency;
+            } else {
+                $resp = ["status"=>"error","msg"=>"ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"];
+            }
+            $stmt->close();
+        } catch(Exception $ex) {
+            $resp = ["status"=>"error","msg"=>"DB error। আবার চেষ্টা করুন।"];
+        }
+    }
+
+    // ── Send JSON response to browser IMMEDIATELY ──────────────
+    // FCM curl calls happen AFTER this — browser never waits for them
+    while(ob_get_level()) ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Connection: close');
+    ignore_user_abort(true);
+    $resp_json = json_encode($resp);
+    header('Content-Length: ' . strlen($resp_json));
+    echo $resp_json;
+    @ob_flush(); @flush();
+    if (function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
+
+    // ── FCM Push AFTER response sent (background) ──────────────
+    if (!empty($_fcm_new_id)) {
+        $urgency_bn = ['Critical'=>'🔴 অতিজরুরি','High'=>'🟠 জরুরি','Medium'=>'🔵 প্রয়োজন'];
+        $urg_label  = $urgency_bn[$_fcm_urgency] ?? '🟠 জরুরি';
+        $push_title = '🩸 ' . $_fcm_blood_grp . ' রক্ত দরকার! — ' . $urg_label;
+        $push_body  = "👤 " . $_fcm_patient . "\n🏥 " . $_fcm_hospital . "\n📞 " . $_fcm_contact . "\n🤲 আল্লাহর ওয়াস্তে এগিয়ে আসুন!";
+        $push_url   = SITE_URL . "/?tab=emergency";
+
+        function _fcm_base64url($data) {
+            return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+        }
+        function _fcm_get_oauth_token() {
+            $cache_file = dirname(__DIR__) . '/.fcm_token_cache';
+            if (file_exists($cache_file)) {
+                $cached = @json_decode(@file_get_contents($cache_file), true);
+                if ($cached && isset($cached['token'], $cached['exp']) && time() < $cached['exp']) {
+                    return $cached['token'];
+                }
+            }
+            $client_email = "firebase-adminsdk-fbsvc@shsmc-blood-portal.iam.gserviceaccount.com";
+            $private_key  = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCaYTTALQ5tu9/j\n2IviUJI5F6nMwLYIGdAJKIMVdml4gxrgptWEJYXTb7e5p5yFlu9sGpDdcRD+BUlB\nXy8TnRtieQ1B1Kjqko+EyXVsIC+Kf+CN/yq/mVCySFEBgzOe+2efxWSvZiLQdv/6\nV7PfVJS9Mv0/hFtnUC+6EKKRBPDsLo8d4qD8hftdNBL5lWS4XtBP7MjEKLm6S3QO\nMlbgxTeLFspcb7eNZK755c4C3AHyhdnrBNNmHZTlVuVGVtfK5UXq3MVKyW10/Ek2\naurh+kfzow3OgEk6SW46dL31KkGYa2GFxOS/6rlaGMiFK0QkJL1GNa2BCFAQYT7J\nAPAzvJPjAgMBAAECggEAC2xTQZUT6D1qnQASTwtfMSegbNd69gZ9mkU2eIlr1yWn\nANCCJBESt0kg8x/ajm1TXKW/6mLKEGxxCzab09EK4bJ2BKpTsBJq2Yx+n82R4acC\nBVUdjf0uN22acN41x6HFUnvXWL3Z/aA7OK7x+aiB3li+McuoEnD11x1mqgxk4f+X\n2/Iie+fYBnL/OQoHMi7w/XHnHqoqGiWQLP/mTfzX43albR2b/JR0cVHii//hqeMz\nmlF3rv6fTIfh+mBxBH2GtjN93LaNsBWpitMER2hpX7gG/INEy7sUXI6jz2Rh7/Lf\nNWWzKU//xu37j7GtsV+LLak04TZ4ByfaFA4r7VdIYQKBgQDMCbhenujXz6JM0AHR\nde4wAp4xJrxB/wa4EXUJXzEFfPe5rlWjii7dXUWo2oYp6j1sHcBH3GbfhGlrp9oB\nvi+Kb3DwWBhGB6MCE4YJdaIEpIdWEoxEXirzQSf0yE1OKYjEkavENEuoOQssL2lA\nqv0fLsIWWKL6ouQXh1ozuZDBDQKBgQDBsgKAsRyLUvz05d4se3teZhJPgguk52tT\nL3wpFiRSIsB8zuIP0IH+ovp1puerdDZCtvf/lTS431EU/Hfe3orEgZHEd2vWD3xi\nxeHmtw9e0t7UkIu0q7LsUTJM+XhL9p7NydFNXTW1nH2bVNkHCu7JGvNZyvST2KAS\nJSGQTKwMrwKBgDJIhvZSpUFiOzZA4OHU9WFBk+i7ChQdnHNKYhRwMC2REZ/h9dr6\n1/fX363wRLYZsw9s+ZD8ISIeiLhuQkzBqQet1SB2JW1EvohpdVPpeIc6YNv2cDj9\nGAqg2Q77Ogn0NG91EuakmKyZekZmXMMCIKVJqa1GJMwtzpZ51eH/bkwVAoGBAIow\nGaD+usKbfmSp6owJvMZoQ//9Y5lOkT9TzVzysw72RCXG43ks5NFqLQ3q+bVUv7Fx\nIBVzuZ17lTlHta2HT7FKT1i/amvZuIAvdS9Iwup/vwIf7cwEAy6d7ykDglOPq1Rd\n+7kaGstqziIXso5Xumw3kg4pwbwI/Ip1ezCbwtN5AoGALxmWPYZ4bLwd5CkUop+S\nAjk1S4U2XNxVO+WXeEGc1ZyqyV6sjzf/cU0FkXZ8F1UA2WcEj54/9O0bp7d1Asss\nZN4YF8seZuzPSce2KMXdCJK8U6B7yg60CINZ2YxyCbxAJxbyPOt03+/WxTtuNoaR\n7WPRHDoF1VMk/DzBD4d6yP0=\n-----END PRIVATE KEY-----\n";
+            $now = time();
+            $header  = _fcm_base64url(json_encode(["alg"=>"RS256","typ"=>"JWT"]));
+            $payload = _fcm_base64url(json_encode(["iss"=>$client_email,"scope"=>"https://www.googleapis.com/auth/firebase.messaging","aud"=>"https://oauth2.googleapis.com/token","iat"=>$now,"exp"=>$now+3600]));
+            $signing_input = $header . '.' . $payload;
+            $signature = '';
+            $pkey = openssl_pkey_get_private($private_key);
+            if (!$pkey) return null;
+            openssl_sign($signing_input, $signature, $pkey, 'SHA256');
+            $jwt = $signing_input . '.' . _fcm_base64url($signature);
+            $ch = curl_init('https://oauth2.googleapis.com/token');
+            curl_setopt_array($ch, [CURLOPT_POST=>true, CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>8,
+                CURLOPT_POSTFIELDS=>http_build_query(['grant_type'=>'urn:ietf:params:oauth:grant-type:jwt-bearer','assertion'=>$jwt])]);
+            $res = curl_exec($ch); curl_close($ch);
+            if (!$res) return null;
+            $data = json_decode($res, true);
+            if (empty($data['access_token'])) return null;
+            @file_put_contents($cache_file, json_encode(['token'=>$data['access_token'],'exp'=>$now+3300]));
+            return $data['access_token'];
+        }
+
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $tok_q = $conn->query("SELECT fcm_token FROM fcm_tokens");
+        $fcm_tokens_arr = [];
+        if ($tok_q) { while ($tr = $tok_q->fetch_assoc()) $fcm_tokens_arr[] = $tr['fcm_token']; }
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+
+        if (!empty($fcm_tokens_arr)) {
+            $oauth_token = @_fcm_get_oauth_token();
+            if ($oauth_token) {
+                $fcm_endpoint = "https://fcm.googleapis.com/v1/projects/shsmc-blood-portal/messages:send";
+                $stale_tokens = [];
+                // ── Use curl_multi to send ALL pushes in parallel ──
+                $mh = curl_multi_init();
+                $handles = [];
+                foreach ($fcm_tokens_arr as $fcm_tok) {
+                    // Data-only — notification field সরানো হয়েছে।
+                    // FCM notification field থাকলে onBackgroundMessage bypass হয়।
+                    $msg_payload = json_encode(["message"=>["token"=>$fcm_tok,
+                        "webpush"=>["fcm_options"=>["link"=>$push_url]],
+                        "data"=>[
+                            "type"         => "blood_request",
+                            "request_id"   => (string)$_fcm_new_id,
+                            "blood_group"  => $_fcm_blood_grp,
+                            "hospital"     => $_fcm_hospital,
+                            "contact"      => $_fcm_contact,
+                            "patient_name" => $_fcm_patient,
+                            "urgency"      => $_fcm_urgency,
+                            "url"          => $push_url,
+                            "title"        => $push_title,
+                            "body"         => $push_body
+                        ]]]);
+                    $ch = curl_init($fcm_endpoint);
+                    curl_setopt_array($ch, [CURLOPT_POST=>true, CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>6,
+                        CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$oauth_token],
+                        CURLOPT_POSTFIELDS=>$msg_payload]);
+                    curl_multi_add_handle($mh, $ch);
+                    $handles[$fcm_tok] = $ch;
+                }
+                // Execute all in parallel
+                $running = null;
+                do { curl_multi_exec($mh, $running); curl_multi_select($mh); } while ($running > 0);
+                // Check results, remove stale tokens
+                foreach ($handles as $tok => $ch) {
+                    $res = curl_multi_getcontent($ch);
+                    if ($res) {
+                        $r = json_decode($res, true);
+                        if (!empty($r['error']['status']) && in_array($r['error']['status'],['UNREGISTERED','INVALID_ARGUMENT']))
+                            $stale_tokens[] = $tok;
+                    }
+                    curl_multi_remove_handle($mh, $ch);
+                    curl_close($ch);
+                }
+                curl_multi_close($mh);
+                if (!empty($stale_tokens)) {
+                    mysqli_report(MYSQLI_REPORT_OFF);
+                    foreach ($stale_tokens as $st) {
+                        $del = $conn->prepare("DELETE FROM fcm_tokens WHERE fcm_token=?");
+                        $del->bind_param("s", $st); $del->execute(); $del->close();
+                    }
+                    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+                }
+            }
+        }
+    }
+    exit();
+}
+
+// === DELETE BLOOD REQUEST (token only — no req_id or contact needed) ===
+if(isset($_POST['delete_blood_request'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('delete_request', 10, 60);
+
+    $del_token = trim($_POST['delete_token'] ?? '');
+
+    if(!preg_match('/^\d{6}$/', $del_token)){
+        echo json_encode(["status"=>"error","msg"=>"❌ Token ভুল। ৬টি সংখ্যা দিন।"]);
+        exit();
+    }
+
+    mysqli_report(MYSQLI_REPORT_OFF);
+    try {
+        $stmt = $conn->prepare("SELECT id FROM blood_requests WHERE delete_token=? AND status='Active'");
+        $stmt->bind_param("s", $del_token);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if(!$row){
+            echo json_encode(["status"=>"error","msg"=>"❌ Token দিয়ে কোনো Active Request পাওয়া যায়নি।"]);
+            exit();
+        }
+
+        $upd = $conn->prepare("UPDATE blood_requests SET status='Deleted' WHERE id=?");
+        $upd->bind_param("i", $row['id']);
+        if($upd->execute()){
+            echo json_encode(["status"=>"success","msg"=>"✅ আপনার Request সফলভাবে মুছে ফেলা হয়েছে।"]);
+        } else {
+            echo json_encode(["status"=>"error","msg"=>"❌ মুছতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"]);
+        }
+        $upd->close();
+    } catch(Exception $ex) {
+        echo json_encode(["status"=>"error","msg"=>"DB error। আবার চেষ্টা করুন।"]);
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    exit();
+}
+
+// === FIND REQUEST BY DELETE TOKEN (token দিয়ে req_id বের করা) ===
+if(isset($_POST['find_my_request'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('find_my_request', 10, 60);
+    $del_token = trim($_POST['delete_token'] ?? '');
+    if(!preg_match('/^\d{6}$/', $del_token)){
+        echo json_encode(["status"=>"error","msg"=>"❌ ৬ সংখ্যার Token দিন।"]);
+        exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $stmt = $conn->prepare("SELECT id FROM blood_requests WHERE delete_token=? AND status='Active'");
+    $stmt->bind_param("s", $del_token);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    if($row){
+        echo json_encode(["status"=>"success","request_id"=>(int)$row['id']]);
+    } else {
+        echo json_encode(["status"=>"error","msg"=>"❌ Token দিয়ে কোনো Active Request পাওয়া যায়নি।"]);
+    }
+    exit();
+}
+
+// === GET MY BLOOD REQUESTS (signed-in account — token লাগে না) ===
+if(isset($_POST['get_my_requests'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('get_my_requests', 30, 60);
+    if(empty($_SESSION['auth_uid'])){
+        echo json_encode(["status"=>"error","msg"=>"logged out"]); exit();
+    }
+    $uid = $_SESSION['auth_uid'];
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
+    $rows = [];
+    $stmt = $conn->prepare("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE auth_uid=? AND status='Active' ORDER BY created_at DESC LIMIT 20");
+    if($stmt){
+        $stmt->bind_param("s", $uid);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while($r = $res->fetch_assoc()) $rows[] = $r;
+        $stmt->close();
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    echo json_encode(["status"=>"success","requests"=>$rows], JSON_UNESCAPED_UNICODE);
+    exit();
+}
+
+// === DELETE MY BLOOD REQUEST (account-owned — token লাগে না) ===
+if(isset($_POST['delete_my_request'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('delete_my_request', 15, 60);
+    $uid = requireAuth();
+    $req_id = (int)($_POST['request_id'] ?? 0);
+    if($req_id <= 0){
+        echo json_encode(["status"=>"error","msg"=>"❌ Request পাওয়া যায়নি।"]); exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    // Ownership যাচাই — শুধু নিজের request মুছতে পারবে
+    $stmt = $conn->prepare("SELECT id FROM blood_requests WHERE id=? AND auth_uid=? LIMIT 1");
+    $stmt->bind_param("is", $req_id, $uid);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if(!$row){
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"error","msg"=>"❌ এই Request আপনার নয় অথবা পাওয়া যায়নি।"]); exit();
+    }
+    $upd = $conn->prepare("UPDATE blood_requests SET status='Deleted' WHERE id=? AND auth_uid=?");
+    $upd->bind_param("is", $req_id, $uid);
+    $ok = $upd->execute();
+    $upd->close();
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    if($ok){
+        echo json_encode(["status"=>"success","msg"=>"✅ আপনার Request মুছে ফেলা হয়েছে।"]);
+    } else {
+        echo json_encode(["status"=>"error","msg"=>"❌ মুছতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"]);
+    }
+    exit();
+}
+
+// Get active blood requests
+if(isset($_POST['get_blood_requests'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('get_requests',30,60);
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `blood_requests` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `patient_name` VARCHAR(100) NOT NULL,
+        `blood_group` VARCHAR(5) NOT NULL,
+        `hospital` VARCHAR(200) NOT NULL,
+        `contact` VARCHAR(20) NOT NULL,
+        `urgency` VARCHAR(10) DEFAULT 'High',
+        `bags_needed` INT DEFAULT 1,
+        `note` VARCHAR(500) DEFAULT '',
+        `status` VARCHAR(20) DEFAULT 'Active',
+        `delete_token` VARCHAR(10) DEFAULT NULL,
+        `req_ip` VARCHAR(50) DEFAULT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Auto-expire: any Active request older than 72 hours → Expired
+    $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
+    // UNIX_TIMESTAMP = seconds since epoch, completely timezone-independent
+    // DATE_FORMAT with 'Z' suffix failed on InfinityFree (MySQL timezone != UTC)
+    $res = $conn->query("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE status='Active' ORDER BY FIELD(urgency,'Critical','High','Medium'), created_at DESC LIMIT 20");
+    $requests=[];
+    if($res) while($r=$res->fetch_assoc()) $requests[]=$r;
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    echo json_encode($requests);
+    exit();
+}
+
+// ============================================================
+// FEATURE: NEARBY DONORS (Haversine distance filter)
+// ============================================================
+if(isset($_POST['get_nearby_donors'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('nearby',20,60);
+    $user_lat = (float)($_POST['lat'] ?? 0);
+    $user_lng = (float)($_POST['lng'] ?? 0);
+    $radius_km = min(50, max(1, (float)($_POST['radius'] ?? 5)));
+    $f_group  = trim($_POST['filter_group'] ?? 'All');
+    $f_status = trim($_POST['filter_status'] ?? 'All');
+    $valid_groups=["A+","A-","B+","B-","AB+","AB-","O+","O-","All"];
+    $valid_statuses=["All","Available","Not Available","Unavailable"];
+    if(!in_array($f_group,$valid_groups,true)) $f_group='All';
+    if(!in_array($f_status,$valid_statuses,true)) $f_status='All';
+
+    if($user_lat==0&&$user_lng==0){echo json_encode(["status"=>"error","msg"=>"Location পাওয়া যায়নি।"]);exit();}
+
+    $stmt = $conn->prepare("SELECT id,name,blood_group,location,last_donation,willing_to_donate,total_donations,reg_geo FROM donors WHERE reg_geo LIKE 'Lat:%'");
+    $stmt->execute();
+    $res=$stmt->get_result();
+    $nearby=[];
+    while($row=$res->fetch_assoc()){
+        preg_match('/Lat:\s*([\-0-9.]+),\s*Lon:\s*([\-0-9.]+)/',$row['reg_geo'],$m);
+        if(count($m)!==3) continue;
+        $dlat=deg2rad((float)$m[1]-$user_lat);
+        $dlng=deg2rad((float)$m[2]-$user_lng);
+        $a=sin($dlat/2)*sin($dlat/2)+cos(deg2rad($user_lat))*cos(deg2rad((float)$m[1]))*sin($dlng/2)*sin($dlng/2);
+        $dist=6371*2*atan2(sqrt($a),sqrt(1-$a));
+        if($dist>$radius_km) continue;
+        if($f_group!=='All'&&$row['blood_group']!==$f_group) continue;
+        $status=getLiveStatus($row['last_donation'],$row['willing_to_donate']??'yes');
+        // Filter by live status
+        if($f_status!=='All'&&$status!==$f_status) continue;
+        $badge=getBadgeInfo((int)($row['total_donations']??0));
+        $nearby[]=[
+            'id'        =>$row['id'],
+            'name'      =>esc($row['name']),
+            'group'     =>esc($row['blood_group']),
+            'loc'       =>esc($row['location']),
+            'status'    =>$status,
+            'badge'     =>$badge['icon'].' '.$badge['level'],
+            'badge_icon'=>$badge['icon'],
+            'dist'      =>round($dist,2)
+        ];
+    }
+    $stmt->close();
+    usort($nearby,fn($a,$b)=>$a['dist']<=>$b['dist']);
+    echo json_encode(["status"=>"success","donors"=>array_slice($nearby,0,30)]);
+    exit();
+}
+
+// ============================================================
+// FEATURE: PUSH NOTIFICATION SUBSCRIPTION STORE
+// ============================================================
+if(isset($_POST['save_push_sub'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('push_sub', 5, 60);
+    $endpoint  = trim($_POST['endpoint']  ?? '');
+    $p256dh    = trim($_POST['p256dh']    ?? '');
+    $auth      = trim($_POST['auth']      ?? '');
+    $device_id = trim($_POST['device_id'] ?? '');
+    if(empty($endpoint)||empty($p256dh)||empty($auth)){echo "error";exit();}
+    validateLength($device_id, 100, 'Device ID');
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `push_subscriptions` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `endpoint` TEXT NOT NULL,
+        `p256dh` TEXT NOT NULL,
+        `auth` TEXT NOT NULL,
+        `device_id` VARCHAR(100) DEFAULT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Add device_id column if missing on older installs
+    @$conn->query("ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS device_id VARCHAR(100) DEFAULT NULL");
+    $chk=$conn->prepare("SELECT id FROM push_subscriptions WHERE endpoint=?");
+    $chk->bind_param("s",$endpoint);$chk->execute();
+    $existing=$chk->get_result()->fetch_assoc();$chk->close();
+    if(!$existing){
+        $ins=$conn->prepare("INSERT INTO push_subscriptions (endpoint,p256dh,auth,device_id) VALUES (?,?,?,?)");
+        $ins->bind_param("ssss",$endpoint,$p256dh,$auth,$device_id);
+        $ins->execute();$ins->close();
+    } elseif(!empty($device_id)){
+        // Update device_id if already exists but device_id was missing
+        $upd=$conn->prepare("UPDATE push_subscriptions SET device_id=? WHERE endpoint=? AND (device_id IS NULL OR device_id='')");
+        $upd->bind_param("ss",$device_id,$endpoint);$upd->execute();$upd->close();
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    echo "ok";exit();
+}
+
+// === SAVE FIREBASE FCM TOKEN ===
+if(isset($_POST['save_fcm_token'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('save_fcm', 10, 60);
+    $fcm_token = trim($_POST['fcm_token'] ?? '');
+    $device_id = trim($_POST['device_id'] ?? '');
+    if(empty($fcm_token)){ echo json_encode(["status"=>"error","msg"=>"Token missing"]); exit(); }
+    validateLength($fcm_token, 512, 'FCM Token');
+    validateLength($device_id, 100, 'Device ID');
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `fcm_tokens` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `fcm_token` VARCHAR(512) NOT NULL,
+        `device_id` VARCHAR(100) DEFAULT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY `uniq_token` (`fcm_token`(191))
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Widen legacy VARCHAR(300) column so long FCM tokens are never rejected/truncated
+    @$conn->query("ALTER TABLE fcm_tokens MODIFY COLUMN `fcm_token` VARCHAR(512) NOT NULL");
+    $chk = $conn->prepare("SELECT id FROM fcm_tokens WHERE fcm_token=?");
+    $chk->bind_param("s", $fcm_token); $chk->execute();
+    $exists = $chk->get_result()->fetch_assoc(); $chk->close();
+    if(!$exists){
+        $ins = $conn->prepare("INSERT INTO fcm_tokens (fcm_token, device_id) VALUES (?,?)");
+        $ins->bind_param("ss", $fcm_token, $device_id); $ins->execute(); $ins->close();
+    } else {
+        $upd = $conn->prepare("UPDATE fcm_tokens SET device_id=?, updated_at=NOW() WHERE fcm_token=?");
+        $upd->bind_param("ss", $device_id, $fcm_token); $upd->execute(); $upd->close();
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    echo json_encode(["status"=>"ok"]); exit();
+}
+
+// === FIREBASE AUTH — verify Google / Phone-OTP ID token, create session ===
+// Shared host এ Admin SDK / Composer নেই — তাই Google-এর Identity Toolkit
+// REST endpoint (accounts:lookup) দিয়ে ID token verify করা হয়। এটি Google
+// নিজে token-এর signature ও expiry যাচাই করে; invalid হলে error দেয়।
+if(isset($_POST['firebase_auth'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('firebase_auth', 20, 300);
+
+    $id_token  = trim($_POST['id_token'] ?? '');
+    $device_id = trim($_POST['device_id'] ?? '');
+    validateLength($id_token, 4096, 'ID Token');
+    validateLength($device_id, 100, 'Device ID');
+    if($id_token === ''){
+        echo json_encode(["status"=>"error","msg"=>"Token missing."]); exit();
+    }
+
+    // Firebase Web API key (public — same as client config apiKey)
+    $FB_API_KEY = FIREBASE['apiKey'];
+    $lookup_url = "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" . $FB_API_KEY;
+
+    $ch = curl_init($lookup_url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 8,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS     => json_encode(["idToken" => $id_token])
+    ]);
+    $resp     = curl_exec($ch);
+    $http     = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if($http !== 200 || !$resp){
+        echo json_encode(["status"=>"error","msg"=>"যাচাই ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"]); exit();
+    }
+    $data = json_decode($resp, true);
+    if(empty($data['users'][0])){
+        echo json_encode(["status"=>"error","msg"=>"Invalid বা মেয়াদোত্তীর্ণ token।"]); exit();
+    }
+
+    $u            = $data['users'][0];
+    $firebase_uid = $u['localId'] ?? '';
+    $email        = $u['email'] ?? null;
+    $phone        = $u['phoneNumber'] ?? null;
+    $disp_name    = $u['displayName'] ?? null;
+    $photo_url    = $u['photoUrl'] ?? null;
+    if($firebase_uid === ''){
+        echo json_encode(["status"=>"error","msg"=>"Invalid token।"]); exit();
+    }
+
+    // Provider নির্ণয়
+    $provider = $phone ? 'phone' : 'google';
+
+    // Phone হলে অবশ্যই Bangladeshi (+880) হতে হবে
+    if($phone && !preg_match('/^\+8801\d{9}$/', $phone)){
+        echo json_encode(["status"=>"error","msg"=>"শুধুমাত্র বাংলাদেশি (+8801...) নম্বর সমর্থিত।"]); exit();
+    }
+
+    // Upsert auth_users
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `auth_users` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `firebase_uid` VARCHAR(128) NOT NULL,
+        `provider` VARCHAR(20) NOT NULL,
+        `email` VARCHAR(190) DEFAULT NULL,
+        `phone` VARCHAR(20) DEFAULT NULL,
+        `name` VARCHAR(120) DEFAULT NULL,
+        `device_id` VARCHAR(100) DEFAULT NULL,
+        `last_login` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY `uniq_uid` (`firebase_uid`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $sel = $conn->prepare("SELECT id FROM auth_users WHERE firebase_uid=? LIMIT 1");
+    $sel->bind_param("s", $firebase_uid); $sel->execute();
+    $exists = $sel->get_result()->fetch_assoc(); $sel->close();
+    if($exists){
+        $up = $conn->prepare("UPDATE auth_users SET provider=?, email=?, phone=?, name=?, device_id=?, last_login=NOW() WHERE firebase_uid=?");
+        $up->bind_param("ssssss", $provider, $email, $phone, $disp_name, $device_id, $firebase_uid);
+        $up->execute(); $up->close();
+    } else {
+        $in = $conn->prepare("INSERT INTO auth_users (firebase_uid, provider, email, phone, name, device_id) VALUES (?,?,?,?,?,?)");
+        $in->bind_param("ssssss", $firebase_uid, $provider, $email, $phone, $disp_name, $device_id);
+        $in->execute(); $in->close();
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+
+    // Login session set
+    $_SESSION['auth_uid']      = $firebase_uid;
+    $_SESSION['auth_provider'] = $provider;
+    $_SESSION['auth_email']    = $email;
+    $_SESSION['auth_phone']    = $phone;
+    $_SESSION['auth_name']     = $disp_name;
+    $_SESSION['auth_photo']    = $photo_url;
+
+    // verified state DB থেকে নাও (Telegram/WhatsApp bind করা থাকলে true);
+    // Phone-OTP sign-in হলে config অনুযায়ী নিজেই verified ধরা হয়।
+    _refresh_auth_verified($conn);
+
+    // যদি এই phone দিয়ে কোনো donor আগে register করা থাকে — link দেখাও
+    $linked_donor = null;
+    if($phone){
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $dq = $conn->prepare("SELECT name FROM donors WHERE phone=? LIMIT 1");
+        $dq->bind_param("s", $phone); $dq->execute();
+        $dr = $dq->get_result()->fetch_assoc(); $dq->close();
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        if($dr) $linked_donor = $dr['name'];
+    }
+
+    echo json_encode([
+        "status"         => "success",
+        "provider"       => $provider,
+        "email"          => $email,
+        "phone"          => $phone,
+        "name"           => $disp_name,
+        "photo"          => $photo_url,
+        "linked_donor"   => $linked_donor,
+        "verified"       => _auth_is_verified(),
+        "verify_channel" => $_SESSION['auth_verify_channel'] ?? null
+    ]);
+    exit();
+}
+
+// === FIREBASE LOGOUT — clear auth session ===
+if(isset($_POST['firebase_logout'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    unset($_SESSION['auth_uid'], $_SESSION['auth_provider'], $_SESSION['auth_email'],
+          $_SESSION['auth_phone'], $_SESSION['auth_name'], $_SESSION['auth_photo'],
+          $_SESSION['auth_verified'], $_SESSION['auth_verify_channel'],
+          $_SESSION['auth_verify_phone']);
+    echo json_encode(["status"=>"ok"]);
+    exit();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  ACCOUNT VERIFICATION — Telegram / WhatsApp bot OTP
+//  Google/Phone দিয়ে login করার পর এই handler গুলো দিয়ে Telegram বা WhatsApp
+//  bind করে account verified করা হয়। verified না হলে call করা যায় না।
+// ════════════════════════════════════════════════════════════════════
+
+// ── একটি verified bind DB-তে লিখে session আপডেট করে (WA ও TG দুটোই ব্যবহার করে) ──
+function _mark_account_verified($conn, $uid, $channel, $phone, $tg_chat_id = null) {
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $up = $conn->prepare("UPDATE auth_users SET verified=1, verify_channel=?, verify_phone=?,
+        telegram_chat_id=?, verified_at=NOW() WHERE firebase_uid=?");
+    $up->bind_param("ssss", $channel, $phone, $tg_chat_id, $uid);
+    $up->execute(); $up->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    $_SESSION['auth_verified'] = true;
+    $_SESSION['auth_verify_channel'] = $channel;
+    $_SESSION['auth_verify_phone'] = $phone;
+}
+
+// ── এই নম্বরটি কি অন্য কোনো verified account-এ ইতিমধ্যে ব্যবহৃত? ──
+//  একটি নম্বর দিয়ে একটাই account verify করা যাবে (duplicate বন্ধ)।
+function _phone_taken_by_other($conn, $phone, $uid) {
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $q = $conn->prepare("SELECT firebase_uid FROM auth_users
+        WHERE verify_phone=? AND verified=1 AND firebase_uid<>? LIMIT 1");
+    $q->bind_param("ss", $phone, $uid); $q->execute();
+    $taken = (bool)$q->get_result()->fetch_assoc(); $q->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    return $taken;
+}
+
+// === WHATSAPP — Step 1: কোড পাঠাও (whatsapp-web.js bot-এ) ===
+if(isset($_POST['wa_send_otp'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('wa_otp_' . ($_SESSION['auth_uid'] ?? session_id()), 5, 600);
+    requireAuth();
+    if(WA_BOT_URL === '' || WA_BOT_SECRET === ''){
+        echo json_encode(["status"=>"error","msg"=>"WhatsApp যাচাই এখনো চালু হয়নি।"]); exit();
+    }
+    $phone = trim($_POST['phone'] ?? '');
+    if(preg_match('/^01\d{9}$/', $phone)) $phone = '+88' . $phone;
+    if(!preg_match('/^\+8801\d{9}$/', $phone)){
+        echo json_encode(["status"=>"error","msg"=>"সঠিক বাংলাদেশি WhatsApp নম্বর দিন (+8801XXXXXXXXX)।"]); exit();
+    }
+    $uid  = $_SESSION['auth_uid'];
+    $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $hash = password_hash($code, PASSWORD_DEFAULT);
+
+    mysqli_report(MYSQLI_REPORT_OFF);
+    // আগের pending whatsapp চেষ্টা মুছে ফেলো — একসাথে একটাই সক্রিয় কোড
+    $del = $conn->prepare("DELETE FROM otp_verifications WHERE auth_uid=? AND channel='whatsapp' AND status!='verified'");
+    $del->bind_param("s", $uid); $del->execute(); $del->close();
+    $ins = $conn->prepare("INSERT INTO otp_verifications (auth_uid, channel, phone, code_hash, status, expires_at)
+        VALUES (?, 'whatsapp', ?, ?, 'code_sent', DATE_ADD(NOW(), INTERVAL ? SECOND))");
+    $ttl = (int)VERIFY_OTP_TTL;
+    $ins->bind_param("sssi", $uid, $phone, $hash, $ttl);
+    $ins->execute(); $ins->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+    // bot-কে message পাঠাতে বলো
+    $message = "🩸 Blood Arena যাচাই কোড: {$code}\n\nএই কোডটি সাইটে বসান। ৫ মিনিটের জন্য বৈধ। কাউকে শেয়ার করবেন না।";
+    $r = _bot_send(WA_BOT_URL, ["secret"=>WA_BOT_SECRET, "phone"=>$phone, "message"=>$message],
+                   defined('WA_BOT_INSECURE_TLS') && WA_BOT_INSECURE_TLS);
+    if($r['http'] !== 200){
+        echo json_encode(["status"=>"error","msg"=>"কোড পাঠানো যায়নি। নম্বরটি WhatsApp-এ আছে কিনা দেখে আবার চেষ্টা করুন।"]); exit();
+    }
+    echo json_encode(["status"=>"success","msg"=>"📲 WhatsApp-এ কোড পাঠানো হয়েছে {$phone} নম্বরে।"]);
+    exit();
+}
+
+// === WHATSAPP — Step 2: কোড যাচাই করে account verified করো ===
+if(isset($_POST['wa_verify_otp'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('wa_verify_otp', 10, 600);
+    requireAuth();
+    $code = trim($_POST['code'] ?? '');
+    if(!preg_match('/^\d{6}$/', $code)){
+        echo json_encode(["status"=>"error","msg"=>"৬-সংখ্যার কোড দিন।"]); exit();
+    }
+    $uid = $_SESSION['auth_uid'];
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $q = $conn->prepare("SELECT id, phone, code_hash, attempts FROM otp_verifications
+        WHERE auth_uid=? AND channel='whatsapp' AND status='code_sent' AND expires_at > NOW()
+        ORDER BY id DESC LIMIT 1");
+    $q->bind_param("s", $uid); $q->execute();
+    $row = $q->get_result()->fetch_assoc(); $q->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    if(!$row){
+        echo json_encode(["status"=>"error","msg"=>"কোডের মেয়াদ শেষ বা পাওয়া যায়নি। আবার পাঠান।"]); exit();
+    }
+    if((int)$row['attempts'] >= 5){
+        echo json_encode(["status"=>"error","msg"=>"অনেকবার ভুল হয়েছে। নতুন কোড পাঠান।"]); exit();
+    }
+    if(password_verify($code, $row['code_hash'])){
+        // এই নম্বর অন্য account-এ ব্যবহৃত হলে block করো
+        if(_phone_taken_by_other($conn, $row['phone'], $uid)){
+            echo json_encode(["status"=>"error","msg"=>"এই নম্বরটি দিয়ে আগে অন্য একটি অ্যাকাউন্ট verify করা হয়েছে। একটি নম্বর দিয়ে শুধু একটি অ্যাকাউন্ট verify করা যায়।"]); exit();
+        }
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $u = $conn->prepare("UPDATE otp_verifications SET status='verified' WHERE id=?");
+        $u->bind_param("i", $row['id']); $u->execute(); $u->close();
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+        _mark_account_verified($conn, $uid, 'whatsapp', $row['phone']);
+        echo json_encode(["status"=>"success","msg"=>"✅ WhatsApp যাচাই সম্পন্ন!","channel"=>"whatsapp","phone"=>$row['phone']]);
+        exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $u = $conn->prepare("UPDATE otp_verifications SET attempts=attempts+1 WHERE id=?");
+    $u->bind_param("i", $row['id']); $u->execute(); $u->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    echo json_encode(["status"=>"error","msg"=>"ভুল কোড। আবার দেখুন।"]);
+    exit();
+}
+
+// === TELEGRAM — Step 1: কোড পাঠাও (Node bot-এর /send-এ) ===
+//  user আগে Telegram bot-এ গিয়ে নিজের নম্বর লিংক করে রাখে (bot phone→chatId map রাখে)।
+//  তারপর এখানে নম্বর দিলে PHP কোড generate করে bot-কে পাঠাতে বলে।
+if(isset($_POST['tg_send_otp'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('tg_otp_' . ($_SESSION['auth_uid'] ?? session_id()), 5, 600);
+    requireAuth();
+    if(TELEGRAM_BOT_URL === '' || TELEGRAM_BOT_SECRET === ''){
+        echo json_encode(["status"=>"error","msg"=>"Telegram যাচাই এখনো চালু হয়নি।"]); exit();
+    }
+    $phone = trim($_POST['phone'] ?? '');
+    if(preg_match('/^01\d{9}$/', $phone)) $phone = '+88' . $phone;
+    if(!preg_match('/^\+8801\d{9}$/', $phone)){
+        echo json_encode(["status"=>"error","msg"=>"সঠিক বাংলাদেশি নম্বর দিন (+8801XXXXXXXXX)।"]); exit();
+    }
+    $uid  = $_SESSION['auth_uid'];
+    $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $hash = password_hash($code, PASSWORD_DEFAULT);
+
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $del = $conn->prepare("DELETE FROM otp_verifications WHERE auth_uid=? AND channel='telegram' AND status!='verified'");
+    $del->bind_param("s", $uid); $del->execute(); $del->close();
+    $ins = $conn->prepare("INSERT INTO otp_verifications (auth_uid, channel, phone, code_hash, status, expires_at)
+        VALUES (?, 'telegram', ?, ?, 'code_sent', DATE_ADD(NOW(), INTERVAL ? SECOND))");
+    $ttl = (int)VERIFY_OTP_TTL;
+    $ins->bind_param("sssi", $uid, $phone, $hash, $ttl);
+    $ins->execute(); $ins->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+    // bot-এ OTP জমা রাখো (prepare), user deep link দিয়ে bot খুললে bot পাঠাবে
+    $r = _bot_send(TELEGRAM_BOT_URL, ["secret"=>TELEGRAM_BOT_SECRET, "phone"=>$phone, "otp"=>$code],
+                   defined('TELEGRAM_BOT_INSECURE_TLS') && TELEGRAM_BOT_INSECURE_TLS, '/prepare');
+    if($r['http'] !== 200){
+        echo json_encode(["status"=>"error","msg"=>"Bot সংযোগ সমস্যা। একটু পর আবার চেষ্টা করুন।"]); exit();
+    }
+    // phone থেকে + বাদ দিয়ে Telegram start param বানাও (+8801... → 8801...)
+    $start_param = ltrim($phone, '+');
+    $link = TELEGRAM_BOT_USERNAME !== '' ? ('https://t.me/' . TELEGRAM_BOT_USERNAME . '?start=' . $start_param) : null;
+    echo json_encode(["status"=>"open_bot","link"=>$link,"msg"=>"Telegram খুলুন — OTP আসবে।"]);
+    exit();
+}
+
+// === TELEGRAM — Step 2: কোড যাচাই করে account verified করো ===
+if(isset($_POST['tg_verify_otp'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('tg_verify_otp', 10, 600);
+    requireAuth();
+    $code = trim($_POST['code'] ?? '');
+    if(!preg_match('/^\d{6}$/', $code)){
+        echo json_encode(["status"=>"error","msg"=>"৬-সংখ্যার কোড দিন।"]); exit();
+    }
+    $uid = $_SESSION['auth_uid'];
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $q = $conn->prepare("SELECT id, phone, code_hash, attempts FROM otp_verifications
+        WHERE auth_uid=? AND channel='telegram' AND status='code_sent' AND expires_at > NOW()
+        ORDER BY id DESC LIMIT 1");
+    $q->bind_param("s", $uid); $q->execute();
+    $row = $q->get_result()->fetch_assoc(); $q->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    if(!$row){
+        echo json_encode(["status"=>"error","msg"=>"কোডের মেয়াদ শেষ বা পাওয়া যায়নি। আবার পাঠান।"]); exit();
+    }
+    if((int)$row['attempts'] >= 5){
+        echo json_encode(["status"=>"error","msg"=>"অনেকবার ভুল হয়েছে। নতুন কোড পাঠান।"]); exit();
+    }
+    if(password_verify($code, $row['code_hash'])){
+        // এই নম্বর অন্য account-এ ব্যবহৃত হলে block করো
+        if(_phone_taken_by_other($conn, $row['phone'], $uid)){
+            echo json_encode(["status"=>"error","msg"=>"এই নম্বরটি দিয়ে আগে অন্য একটি অ্যাকাউন্ট verify করা হয়েছে। একটি নম্বর দিয়ে শুধু একটি অ্যাকাউন্ট verify করা যায়।"]); exit();
+        }
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $u = $conn->prepare("UPDATE otp_verifications SET status='verified' WHERE id=?");
+        $u->bind_param("i", $row['id']); $u->execute(); $u->close();
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+        _mark_account_verified($conn, $uid, 'telegram', $row['phone']);
+        echo json_encode(["status"=>"success","msg"=>"✅ Telegram যাচাই সম্পন্ন!","channel"=>"telegram","phone"=>$row['phone']]);
+        exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $u = $conn->prepare("UPDATE otp_verifications SET attempts=attempts+1 WHERE id=?");
+    $u->bind_param("i", $row['id']); $u->execute(); $u->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    echo json_encode(["status"=>"error","msg"=>"ভুল কোড। আবার দেখুন।"]);
+    exit();
+}
+
+// === ACCOUNT DASHBOARD — profile + linked donor record ===
+if(isset($_POST['account_info'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('account_info', 30, 60);
+
+    if(empty($_SESSION['auth_uid'])){
+        echo json_encode(["status"=>"error","msg"=>"logged out"]); exit();
+    }
+    $uid = $_SESSION['auth_uid'];
+
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $stmt = $conn->prepare("SELECT provider, email, phone, name, created_at, last_login,
+        verified, verify_channel, verify_phone FROM auth_users WHERE firebase_uid=? LIMIT 1");
+    $stmt->bind_param("s", $uid); $stmt->execute();
+    $au = $stmt->get_result()->fetch_assoc(); $stmt->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+    if(!$au){
+        echo json_encode(["status"=>"error","msg"=>"Account not found।"]); exit();
+    }
+
+    // session verified flag DB-র সাথে sync রাখো
+    $_SESSION['auth_verified'] = !empty($au['verified']) ? true : false;
+    $_SESSION['auth_verify_channel'] = $au['verify_channel'] ?? null;
+
+    $auth = [
+        "provider"       => $au['provider'] ?? '',
+        "email"          => $au['email'] ?? null,
+        "phone"          => $au['phone'] ?? null,
+        "name"           => $au['name'] ?? null,
+        "photo"          => $_SESSION['auth_photo'] ?? null,
+        "member_since"   => (!empty($au['created_at']) ? date('d M Y', strtotime($au['created_at'])) : null),
+        "verified"       => _auth_is_verified(),
+        "verify_channel" => $au['verify_channel'] ?? null,
+        "verify_phone"   => $au['verify_phone'] ?? null,
+    ];
+
+    // Linked donor record — match by account (auth_uid), legacy fallback by phone
+    $donor = null;
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $dq = $conn->prepare("SELECT id, name, blood_group, location, total_donations,
+        willing_to_donate, last_donation, created_at FROM donors WHERE auth_uid=? LIMIT 1");
+    $dq->bind_param("s", $uid); $dq->execute();
+    $dr = $dq->get_result()->fetch_assoc(); $dq->close();
+    if(!$dr && !empty($au['phone'])){
+        $dq2 = $conn->prepare("SELECT id, name, blood_group, location, total_donations,
+            willing_to_donate, last_donation, created_at FROM donors WHERE phone=? LIMIT 1");
+        $dq2->bind_param("s", $au['phone']); $dq2->execute();
+        $dr = $dq2->get_result()->fetch_assoc(); $dq2->close();
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    {
+        if($dr){
+            $last = ($dr['last_donation']=='no' || empty($dr['last_donation']) || $dr['last_donation']=='0000-00-00')
+                  ? 'no' : date('d/m/Y', strtotime($dr['last_donation']));
+            $badge = getBadgeInfo((int)$dr['total_donations']);
+            $donor = [
+                "id"              => (int)$dr['id'],
+                "name"            => $dr['name'],
+                "blood_group"     => $dr['blood_group'],
+                "location"        => $dr['location'],
+                "total_donations" => (int)$dr['total_donations'],
+                "willing"         => $dr['willing_to_donate'],
+                "last_donation"   => $last,
+                "badge_level"     => $badge['level'],
+                "badge_icon"      => $badge['icon'],
+                "badge_color"     => $badge['color'],
+                "badge_bg"        => $badge['bg'],
+                "badge_border"    => $badge['border'],
+                "member_since"    => (!empty($dr['created_at']) ? date('d M Y', strtotime($dr['created_at'])) : null),
+            ];
+        }
+    }
+
+    echo json_encode([
+        "status" => "success",
+        "auth"   => $auth,
+        "donor"  => $donor
+    ], JSON_UNESCAPED_UNICODE);
+    exit();
+}
+
+
+// === GET SERVICE NOTIFICATIONS FOR DEVICE ===
+if(isset($_POST['get_service_notifs'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('svc_notifs', 30, 60);
+    $device_id = trim($_POST['device_id'] ?? '');
+    validateLength($device_id, 100, 'Device ID');
+    if(empty($device_id)){ echo json_encode([]); exit(); }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `service_notifications` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `device_id` VARCHAR(100) NOT NULL,
+        `type` VARCHAR(30) NOT NULL,
+        `message` TEXT NOT NULL,
+        `is_read` TINYINT DEFAULT 0,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $stmt = $conn->prepare("SELECT id, type, message, is_read, UNIX_TIMESTAMP(created_at) as ts FROM service_notifications WHERE device_id=? AND is_read=0 ORDER BY ts DESC LIMIT 30");
+    $stmt->bind_param("s", $device_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $notifs = [];
+    while($r = $res->fetch_assoc()) $notifs[] = $r;
+    $stmt->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    echo json_encode($notifs);
+    exit();
+}
+
+// === MARK SERVICE NOTIFICATION READ ===
+if(isset($_POST['mark_service_notif_read'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    $notif_id  = (int)($_POST['notif_id'] ?? 0);
+    $device_id = trim($_POST['device_id'] ?? '');
+    if($notif_id <= 0 || empty($device_id)){
+        echo json_encode(["status"=>"error"]);
+        exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $stmt = $conn->prepare("UPDATE service_notifications SET is_read=1 WHERE id=? AND device_id=?");
+    $stmt->bind_param("is", $notif_id, $device_id);
+    $stmt->execute();
+    $stmt->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    echo json_encode(["status"=>"success"]);
+    exit();
+}
+
+// === DELETE SERVICE NOTIFICATION (permanently — bell dismiss) ===
+// Bell থেকে মুছলে DB থেকেও delete হবে — পরের poll এ আর আসবে না
+if(isset($_POST['delete_service_notif'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('del_svc_notif', 60, 60);
+    $notif_id  = (int)($_POST['notif_id'] ?? 0);
+    $device_id = trim($_POST['device_id'] ?? '');
+    $del_all   = !empty($_POST['del_all']); // true = delete all for this device
+    if(empty($device_id)){ echo json_encode(["status"=>"error"]); exit(); }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    if($del_all){
+        $stmt = $conn->prepare("DELETE FROM service_notifications WHERE device_id=?");
+        $stmt->bind_param("s", $device_id);
+    } else {
+        if($notif_id <= 0){ echo json_encode(["status"=>"error"]); exit(); }
+        $stmt = $conn->prepare("DELETE FROM service_notifications WHERE id=? AND device_id=?");
+        $stmt->bind_param("is", $notif_id, $device_id);
+    }
+    $stmt->execute();
+    $stmt->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    echo json_encode(["status"=>"success"]);
+    exit();
+}
+
+// === ADMIN: SEND CUSTOM SERVICE NOTIFICATION ===
+if(isset($_POST['admin_send_service_notif'])){
+    if(empty($_SESSION['admin_logged_in'])){
+        header('Content-Type: application/json; charset=utf-8');
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        echo json_encode(["status"=>"error","msg"=>"Unauthorized"]);
+        exit();
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    $device_id = trim($_POST['device_id'] ?? '');
+    $type      = trim($_POST['notif_type'] ?? 'info');
+    $message   = trim($_POST['message'] ?? '');
+    $valid_types = ['location_on','notif_on','info','warning'];
+    if(!in_array($type, $valid_types, true)) $type = 'info';
+    validateLength($message, 500, 'Message');
+    if(empty($device_id) || empty($message)){
+        echo json_encode(["status"=>"error","msg"=>"device_id ও message দিন।"]);
+        exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $stmt = $conn->prepare("INSERT INTO service_notifications (device_id, type, message) VALUES (?,?,?)");
+    $stmt->bind_param("sss", $device_id, $type, $message);
+    if($stmt->execute()){
+        echo json_encode(["status"=>"success","msg"=>"✅ Notification পাঠানো হয়েছে।"]);
+    } else {
+        echo json_encode(["status"=>"error","msg"=>"❌ Failed."]);
+    }
+    $stmt->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    exit();
+}
+
+// === SUBMIT MESSAGE TO ADMIN ===
+if(isset($_POST['submit_admin_message'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('admin_msg', 3, 300); // max 3 per 5 min
+    $sender_name  = trim($_POST['sender_name']  ?? '');
+    $sender_phone = trim($_POST['sender_phone'] ?? '');
+    $message      = trim($_POST['message']      ?? '');
+    $device_id    = trim($_POST['device_id']    ?? '');
+    if(empty($sender_name) || empty($sender_phone) || empty($message) || empty($device_id)){
+        echo json_encode(["status"=>"error","msg"=>"সব তথ্য দিন।"]); exit();
+    }
+    if(!preg_match('/^\+8801\d{9}$/', $sender_phone)){
+        echo json_encode(["status"=>"error","msg"=>"সঠিক ফোন নম্বর দিন (+8801XXXXXXXXX)।"]); exit();
+    }
+    validateLength($sender_name, 100, 'নাম');
+    validateLength($message, 1000, 'Message');
+    validateLength($device_id, 100, 'Device ID');
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `admin_messages` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `sender_name` VARCHAR(100) NOT NULL,
+        `sender_phone` VARCHAR(20) NOT NULL,
+        `message` TEXT NOT NULL,
+        `device_id` VARCHAR(100) NOT NULL,
+        `is_read` TINYINT DEFAULT 0,
+        `admin_reply` TEXT DEFAULT NULL,
+        `replied_at` TIMESTAMP NULL DEFAULT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $stmt = $conn->prepare("INSERT INTO admin_messages (sender_name, sender_phone, message, device_id) VALUES (?,?,?,?)");
+    $stmt->bind_param("ssss", $sender_name, $sender_phone, $message, $device_id);
+    if($stmt->execute()){
+        echo json_encode(["status"=>"success","msg"=>"✅ ধন্যবাদ! আপনার বার্তা পাঠানো হয়েছে। Admin এর reply আপনার Services notification এ আসবে।"]);
+    } else {
+        echo json_encode(["status"=>"error","msg"=>"❌ পাঠানো যায়নি। আবার চেষ্টা করুন।"]);
+    }
+    $stmt->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    exit();
+}
+
+// === GET ADMIN REPLIES FOR DEVICE ===
+if(isset($_POST['get_admin_messages'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('get_admin_msgs', 20, 60);
+    $device_id = trim($_POST['device_id'] ?? '');
+    if(empty($device_id)){ echo json_encode([]); exit(); }
+    validateLength($device_id, 100, 'Device ID');
+    mysqli_report(MYSQLI_REPORT_OFF);
+    // Only return messages FROM this device that have admin_reply
+    $stmt = $conn->prepare("SELECT id, message, admin_reply, is_read, UNIX_TIMESTAMP(replied_at) as replied_ts
+        FROM admin_messages WHERE device_id=? AND admin_reply IS NOT NULL ORDER BY replied_at DESC LIMIT 20");
+    $stmt->bind_param("s", $device_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $rows = [];
+    while($r = $res->fetch_assoc()) $rows[] = $r;
+    $stmt->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    echo json_encode($rows);
+    exit();
+}
+
+// === SAVE DEVICE ID (silent — permission allow OR deny উভয়ে call হয়) ===
+if(isset($_POST['save_device_id'])){
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    $device_id = trim($_POST['device_id'] ?? '');
+    $context   = trim($_POST['context']   ?? 'unknown');
+    $valid_ctx = ['notif_allow','notif_deny','loc_allow','loc_deny','notif_prompt','loc_prompt','first_visit'];
+    if(!in_array($context, $valid_ctx, true)) $context = 'unknown';
+    validateLength($device_id, 100, 'Device ID');
+    if(!empty($device_id)){
+        $ip = $_SERVER['REMOTE_ADDR'];
+        $ua = mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 300, 'UTF-8');
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $conn->query("CREATE TABLE IF NOT EXISTS `device_tokens` (
+            `device_id` VARCHAR(100) PRIMARY KEY,
+            `context` VARCHAR(30) DEFAULT 'unknown',
+            `ip` VARCHAR(50) DEFAULT NULL,
+            `ua` VARCHAR(300) DEFAULT NULL,
+            `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $stmt = $conn->prepare("INSERT INTO device_tokens (device_id, context, ip, ua) VALUES (?,?,?,?)
+            ON DUPLICATE KEY UPDATE context=VALUES(context), ip=VALUES(ip), updated_at=CURRENT_TIMESTAMP");
+        if($stmt){
+            $stmt->bind_param("ssss", $device_id, $context, $ip, $ua);
+            $stmt->execute();
+            $stmt->close();
+        }
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    }
+    echo json_encode(["status"=>"ok"]);
+    exit();
+}
+
+// === MARK ADMIN MSG REPLY AS READ ===
+if(isset($_POST['mark_admin_msg_read'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    $msg_id    = (int)($_POST['msg_id']    ?? 0);
+    $device_id = trim($_POST['device_id'] ?? '');
+    if($msg_id <= 0 || empty($device_id)){
+        echo json_encode(["status"=>"error"]); exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $stmt = $conn->prepare("UPDATE admin_messages SET is_read=1 WHERE id=? AND device_id=?");
+    $stmt->bind_param("is", $msg_id, $device_id);
+    $stmt->execute();
+    $stmt->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    echo json_encode(["status"=>"success"]);
+    exit();
+}
+
+// === MY MESSAGES — full conversation thread for this device (account dashboard) ===
+if(isset($_POST['get_my_messages'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('my_msgs', 20, 60);
+    $device_id = trim($_POST['device_id'] ?? '');
+    validateLength($device_id, 100, 'Device ID');
+    if(empty($device_id)){ echo json_encode([]); exit(); }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $stmt = $conn->prepare("SELECT id, message, admin_reply, is_read,
+        UNIX_TIMESTAMP(created_at) as ts, UNIX_TIMESTAMP(replied_at) as replied_ts
+        FROM admin_messages WHERE device_id=? ORDER BY created_at DESC LIMIT 30");
+    $rows = [];
+    if($stmt){
+        $stmt->bind_param("s", $device_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while($r = $res->fetch_assoc()) $rows[] = $r;
+        $stmt->close();
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    echo json_encode($rows, JSON_UNESCAPED_UNICODE);
+    exit();
+}
+?>  

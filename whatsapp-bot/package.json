@@ -1,0 +1,19 @@
+{
+  "name": "bloodarena-wa-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Blood Arena WhatsApp OTP bot (unofficial whatsapp-web.js) — sends account-verification codes on request from the PHP backend.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.23.0"
+  }
+}

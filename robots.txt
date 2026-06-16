@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin.php
+Disallow: /admin_config.php
+Disallow: /db.php
+Sitemap: https://bloodarenabd.tech/sitemap.xml

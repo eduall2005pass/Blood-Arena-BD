@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php -l index.php)",
+      "Bash(cd \"C:/Users/siam2/Documents/BloodArena\")",
+      "Bash(ls -la)",
+      "Read(//c/c/Users/siam2/Documents/BloodArena/**)",
+      "Read(//c/Users/siam2/.claude/projects/C--Users-siam2-Documents-BloodArena/memory//**)",
+      "Read(//c/Users/siam2/.claude/projects/C--Users-siam2-Documents-BloodArena//**)",
+      "Bash(python -c 'import sys,json *)",
+      "Bash(cat)",
+      "Bash(python /tmp/parse.py \"/c/Users/siam2/.claude/projects/C--Users-siam2-Documents-BloodArena/ad00e249-ed9e-4304-abcd-a88c16fc65fe.jsonl\" 24)",
+      "Bash(grep -noE '\\\\$_\\(GET|POST|REQUEST\\)\\\\['\\\\''[a-zA-Z_]+'\\\\''\\\\]' includes/backend.php)",
+      "Bash(grep -noE \"\\(FROM|INTO|UPDATE|JOIN\\)\\\\s+\\\\`?[a-zA-Z_]+\" includes/backend.php)",
+      "Bash(grep -oE \"[a-zA-Z_]+$\")",
+      "Bash(python -c ' *)",
+      "Bash(python -c *)",
+      "Bash(convert icon.png -resize 512x512 -background none icon-512.png)",
+      "Bash(convert icon.png -resize 192x192 -background none icon-192.png)",
+      "Bash(node -e \"for\\(const m of ['sharp','jimp','pngjs','canvas']\\){try{require.resolve\\(m\\);console.log\\(m+': yes'\\)}catch\\(e\\){console.log\\(m+': no'\\)}}\")",
+      "Bash(npm ls *)",
+      "Bash(pip install *)",
+      "Bash(grep *)",
+      "Bash(php -l includes/backend.php)",
+      "Read(//c/tmp/**)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/djaiss/mapsicon/master/all/bd/vector.svg\" -o bd.svg)",
+      "Bash(node -e \"require\\('fs'\\).readFileSync\\('includes/backend.php','utf8'\\); console.log\\('read ok'\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(php -l partials/body.php)",
+      "Bash(php -l assets/app.js.php)",
+      "Bash(php -l assets/head-init.js.php)"
+    ]
+  }
+}
