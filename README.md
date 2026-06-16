@@ -14,9 +14,9 @@ This project is a PHP + MySQL blood donation portal with optional OTP verificati
 1. Upload all repository files to your web root (`public_html` or equivalent).
 2. Create a MySQL database and user in your hosting panel.
 3. Update database credentials in:
-   - `/home/runner/work/Blood-Arena-BD/Blood-Arena-BD/db.php`
+   - `db.php`
 4. Update branding, domain, and integration settings in:
-   - `/home/runner/work/Blood-Arena-BD/Blood-Arena-BD/config.php`
+   - `config.php`
 5. Open your site in a browser once.  
    The app auto-creates/updates runtime tables during first run.
 
@@ -32,15 +32,15 @@ This project is a PHP + MySQL blood donation portal with optional OTP verificati
 If you want account verification by bot OTP:
 
 - WhatsApp bot setup:  
-  `/home/runner/work/Blood-Arena-BD/Blood-Arena-BD/whatsapp-bot/README.md`
+  `whatsapp-bot/README.md`
 - Azure-specific WhatsApp deployment:  
-  `/home/runner/work/Blood-Arena-BD/Blood-Arena-BD/whatsapp-bot/DEPLOY-azure.md`
+  `whatsapp-bot/DEPLOY-azure.md`
 - Telegram bot setup:
-  1. Copy `/home/runner/work/Blood-Arena-BD/Blood-Arena-BD/telegram-bot/.env.example` to `.env`
+  1. Copy `telegram-bot/.env.example` to `.env`
   2. Set `TG_BOT_TOKEN`, `TG_BOT_SECRET`, `TG_PORT`, `HOST`
   3. Run:
      ```bash
-     cd /home/runner/work/Blood-Arena-BD/Blood-Arena-BD/telegram-bot
+     cd telegram-bot
      npm install
      npm start
      ```
