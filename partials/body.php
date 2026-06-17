@@ -250,6 +250,10 @@ if (!function_exists('render_social_bar')) {
         <span class="sd-ic">🤝</span>
         <span>আমাদের স্পন্সর</span>
       </button>
+      <button class="sd-item" onclick="openInfoPage('donate')">
+        <span class="sd-ic">❤️</span>
+        <span>Donate Us (সহযোগিতা করুন)</span>
+      </button>
 
       <!-- Logout — sidebar-এর সবার শেষে, শুধু সাইন-ইন থাকলে দেখায় -->
       <div id="sdLogoutWrap" style="display:none;">
@@ -313,6 +317,32 @@ if (!function_exists('render_social_bar')) {
         <div class="scroll-content">
           <h2 style="color:var(--primary-red); margin-bottom: 10px; font-family:var(--font-heading);">আমাদের স্পন্সর</h2>
           <p>আমাদের এই মহৎ উদ্যোগে স্পন্সর হিসেবে যুক্ত হতে আগ্রহী হলে, দয়া করে এই নাম্বারে যোগাযোগ করুন: <span class="highlight-number"><a href="tel:01518981827">০১৫১৮৯৮১৮২৭</a></span></p>
+        </div>
+      </section>
+
+      <!-- Donate Us -->
+      <section class="info-panel" data-info="donate" style="display:none;">
+        <div class="scroll-content">
+          <div class="donate-hero">
+            <div class="donate-hero-ic">❤️</div>
+            <h2 class="donate-hero-title">আমাদের সহযোগিতা করুন</h2>
+            <p class="donate-hero-sub">Support our non-profit mission</p>
+          </div>
+
+          <p>আমরা একদল <strong>মেডিকেল শিক্ষার্থী</strong>, যারা সম্পূর্ণ অলাভজনকভাবে (non-profit) এই রক্তদান প্ল্যাটফর্মটি পরিচালনা করছি। আমাদের একমাত্র লক্ষ্য — জরুরি মুহূর্তে একজন রোগীর সাথে একজন রক্তদাতাকে দ্রুত সংযুক্ত করা এবং জীবন বাঁচানো।</p>
+
+          <p>এই মহৎ কাজটিকে আরও উন্নত ও টেকসই করতে সার্ভার, ডোমেইন ও রক্ষণাবেক্ষণ বাবদ নিয়মিত খরচ বহন করতে হয়। আপনার <strong>ক্ষুদ্র সহযোগিতাও</strong> এই উদ্যোগকে বহুদূর এগিয়ে নিয়ে যেতে পারে। আসুন, একসাথে এই মানবিক কাজে অংশীদার হই।</p>
+
+          <div class="donate-method">
+            <span class="donate-method-label">bKash (পার্সোনাল)</span>
+            <div class="donate-number-row">
+              <span class="donate-number" id="donateBkashNum">01518981827</span>
+              <button type="button" class="donate-copy-btn" onclick="copyDonateNumber()" aria-label="Copy number">📋 কপি</button>
+            </div>
+            <p class="donate-method-hint">Send Money অথবা Payment — উভয়ভাবেই অনুদান পাঠাতে পারেন।</p>
+          </div>
+
+          <p class="donate-thanks">আপনার পাশে থাকার জন্য আন্তরিক কৃতজ্ঞতা। 🩸<br><em>— Blood Arena Team (মেডিকেল শিক্ষার্থীবৃন্দ)</em></p>
         </div>
       </section>
 
@@ -431,13 +461,21 @@ if (!function_exists('render_social_bar')) {
 <!-- ===== DEVELOPER CARD (Home only — single horizontal card, divided) ===== -->
 <div class="dev-section">
     <p class="dev-section-label">Developed By</p>
+
+    <!-- Donate Us — interactive CTA opens the Donate Us page in the side drawer -->
+    <button type="button" class="dev-donate-btn" onclick="openInfoPage('donate')" aria-label="Donate Us">
+        <span class="dev-donate-ic">❤️</span>
+        <span class="dev-donate-txt">Donate Us</span>
+        <span class="dev-donate-arrow" aria-hidden="true">→</span>
+    </button>
+
     <div class="dev-card dev-card-horizontal dev-card-min">
 
         <!-- Siam half -->
         <div class="dev-half">
             <img src="siam.jpg" alt="Siam" class="dev-avatar">
             <div class="dev-half-info">
-                <p class="dev-name">Siam (Sh-20)</p>
+                <p class="dev-name">Siam<span class="dev-batch">(Sh-20)</span></p>
                 <span class="dev-role">Dev &amp; Planner</span>
             </div>
         </div>
@@ -448,7 +486,7 @@ if (!function_exists('render_social_bar')) {
         <div class="dev-half">
             <img src="rafi.jpg" alt="Rafi" class="dev-avatar">
             <div class="dev-half-info">
-                <p class="dev-name">Rafi (Sh-20)</p>
+                <p class="dev-name">Rafi<span class="dev-batch">(Sh-20)</span></p>
                 <span class="dev-role">Planner</span>
             </div>
         </div>

@@ -13,6 +13,9 @@ window.BA_I18N = {
     "পেজ": "Pages",
     "গোপনীয়তা ও নীতিমালা": "Privacy & Policy",
     "আমাদের স্পন্সর": "Our Sponsor",
+    "Donate Us (সহযোগিতা করুন)": "Donate Us",
+    "আমাদের সহযোগিতা করুন": "Support Our Mission",
+    "Support our non-profit mission": "Support our non-profit mission",
     "প্রশ্ন ও উত্তর": "Q&A",
     "রক্তের জন্য আর নয় অস্থিরতা": "No more anxiety over blood",
 

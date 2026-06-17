@@ -4218,8 +4218,23 @@ var _infoTitles = {
     about:   'আমাদের কথা',
     privacy: 'গোপনীয়তা ও নীতিমালা',
     faq:     'প্রশ্ন ও উত্তর',
-    sponsor: 'আমাদের স্পন্সর'
+    sponsor: 'আমাদের স্পন্সর',
+    donate:  'Donate Us'
 };
+function copyDonateNumber() {
+    var el = document.getElementById('donateBkashNum');
+    var num = el ? el.textContent.trim() : '01518981827';
+    function done() { showToast('bKash number কপি হয়েছে: ' + num, 'info'); vibrateIfOn([15]); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(num).then(done).catch(function(){ done(); });
+    } else {
+        var ta = document.createElement('textarea');
+        ta.value = num; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(ta); done();
+    }
+}
 // Relocate existing modal content into the panel on first open (single source of truth).
 function _infoEnsureContent(key) {
     var dst, src;

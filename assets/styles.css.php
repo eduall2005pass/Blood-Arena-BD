@@ -517,6 +517,22 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
 .sponsor-banner .highlight-number a { color: var(--accent-orange); font-weight: 700; font-size: 1.1em; padding: 4px 12px; background: rgba(245, 158, 11, 0.1); border-radius: 20px; border: 1px dashed rgba(245, 158, 11, 0.3); text-decoration: none; transition: background 0.2s ease;}
 .sponsor-banner .highlight-number a:hover { background: rgba(245, 158, 11, 0.2); transform: scale(1.05); display: inline-block;}
 
+/* ===== Donate Us info page ===== */
+.donate-hero { text-align: center; margin-bottom: 18px; }
+.donate-hero-ic { font-size: 2.6rem; line-height: 1; display: block; margin-bottom: 6px; filter: drop-shadow(0 4px 10px rgba(220,38,38,0.35)); }
+.donate-hero-title { color: var(--primary-red); font-family: var(--font-heading); font-weight: 800; margin: 0 0 2px; font-size: 1.35em; }
+.donate-hero-sub { color: var(--text-muted); font-size: 0.82em; margin: 0; letter-spacing: 0.3px; }
+.donate-method { background: var(--input-bg); border: 1px dashed var(--primary-red); border-radius: var(--radius-md); padding: 16px 14px; margin: 18px 0; text-align: center; }
+.donate-method-label { display: inline-block; font-size: 0.74em; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--primary-red); margin-bottom: 10px; }
+.donate-number-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.donate-number { font-family: monospace; font-size: 1.5em; font-weight: 700; letter-spacing: 2px; color: var(--text-main); }
+.donate-copy-btn { background: rgba(220,38,38,0.10); color: var(--primary-red); border: 1px solid rgba(220,38,38,0.35); border-radius: 20px; padding: 7px 16px; font-weight: 700; font-size: 0.82em; cursor: pointer; transition: background 0.18s ease, transform 0.18s ease; }
+.donate-copy-btn:hover { background: var(--primary-red); color: #fff; transform: scale(1.05); }
+.donate-copy-btn:active { transform: scale(0.97); }
+.donate-method-hint { color: var(--text-muted); font-size: 0.8em; margin: 12px 0 0; }
+.donate-thanks { text-align: center; color: var(--text-muted); font-size: 0.9em; margin-top: 18px; line-height: 1.7; }
+.donate-thanks em { color: var(--text-main); font-style: normal; font-weight: 600; }
+
 #callConfirmBox h3 { color: var(--text-main); margin-bottom: 20px; font-family: var(--font-heading); font-weight: 600; font-size: 1.5rem;}
 .caller-info-item { background: var(--input-bg); padding: 15px; border-radius: var(--radius-md); margin-bottom: 15px; text-align: left; border-left: 3px solid var(--info); }
 .caller-info-item small { color: var(--text-muted); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;}
@@ -1429,7 +1445,27 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
 }
 .dev-half .dev-avatar { width: 64px; height: 64px; margin: 0; flex-shrink: 0; }
 .dev-half .dev-half-info { text-align: left; min-width: 0; }
-.dev-half .dev-name { white-space: normal; margin: 0 0 5px; }
+.dev-half .dev-name { white-space: nowrap; margin: 0 0 5px; line-height: 1.25; }
+/* Batch tag (Sh-20) always sits on its own line under the name, identical on every device */
+.dev-name .dev-batch { display: block; font-size: 0.78em; font-weight: 600; color: var(--text-muted); white-space: nowrap; margin-top: 1px; }
+
+/* Donate Us — interactive CTA above the developer card */
+.dev-donate-btn {
+    display: flex; align-items: center; justify-content: center; gap: 9px;
+    width: 100%; margin: 0 0 12px; padding: 12px 16px;
+    border: none; border-radius: 12px; cursor: pointer;
+    font-family: var(--font-heading); font-weight: 800; font-size: 0.95em;
+    color: #fff; letter-spacing: 0.3px;
+    background: linear-gradient(135deg, var(--primary-red), #b91c1c);
+    box-shadow: 0 6px 16px rgba(220,38,38,0.30);
+    transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.18s ease;
+}
+.dev-donate-btn:hover { transform: translateY(-2px) scale(1.015); box-shadow: 0 10px 22px rgba(220,38,38,0.42); }
+.dev-donate-btn:active { transform: translateY(0) scale(0.99); }
+.dev-donate-ic { font-size: 1.12em; line-height: 1; animation: devDonatePulse 1.8s ease-in-out infinite; }
+.dev-donate-arrow { font-size: 1.05em; line-height: 1; transition: transform 0.18s ease; }
+.dev-donate-btn:hover .dev-donate-arrow { transform: translateX(4px); }
+@keyframes devDonatePulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.18); } }
 .dev-divider {
     width: 1px;
     align-self: stretch;
