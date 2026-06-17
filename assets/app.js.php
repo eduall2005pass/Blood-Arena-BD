@@ -4355,19 +4355,16 @@ function openDonorDetail(card) {
     });
     card.classList.add('donor-selected-outline');
 
-    // ── Pin the page so the clicked card stays exactly where it is ──
-    //  Without locking, the background scrolls behind the centered popup and the
-    //  card appears to "move" after closing. lockBodyScroll() restores scrollY on close.
+    // ── Open the popup WITHOUT touching window scroll ──
+    //  The overlay is position:fixed/centered, so it needs no scroll lock. Locking
+    //  the body (position:fixed) was yanking the list to the top on open — leave the
+    //  page exactly where it is so the clicked card stays in place.
     document.getElementById('donorDetailPopup').classList.add('active');
-    lockBodyScroll();
 }
 
 function closeDonorDetail() {
     var p = document.getElementById('donorDetailPopup');
-    if (p && p.classList.contains('active')) {
-        p.classList.remove('active');
-        unlockBodyScroll();
-    }
+    if (p) p.classList.remove('active');
 }
 
 // ============================================================
