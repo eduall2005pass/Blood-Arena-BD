@@ -905,8 +905,14 @@ if(isset($_POST['delete_donor'])){
 // === AJAX Registration (signed-in account) ===
 if(isset($_POST['ajax_submit'])){
     checkCSRF();
-    while(ob_get_level()) ob_end_clean();
+    while(ob_get_level()) ob_end_clean(); ob_start(); // re-buffer: stray PHP warnings/notes must not corrupt the JSON body
     header('Content-Type: application/json; charset=utf-8');
+    // This handler checks query results by return value (if($stmt->execute()){...}else{...}),
+    // so turn OFF mysqli exception mode (globally ERROR|STRICT at top of file). Otherwise a
+    // failing query throws an uncaught mysqli_sql_exception whose "Fatal error … #0 {main}"
+    // page reaches the client — and the "{main}" defeats safeJSON(), producing the
+    // "Response parse করা যায়নি / Registration failed" error instead of a clean JSON message.
+    mysqli_report(MYSQLI_REPORT_OFF);
     checkRateLimit('register', 5, 300);
     $uid        = requireAuth();
     $auth_email = $_SESSION['auth_email'] ?? null;
