@@ -106,7 +106,11 @@ function closeOverlay(id) {
 // Watches for any .popup-overlay or .settings-panel-overlay gaining/losing 'active'
 (function() {
     function syncScrollLock() {
-        const anyOpen = document.querySelector('.popup-overlay.active, .settings-panel-overlay.active');
+        // NOTE: #donorDetailPopup is intentionally excluded — locking the body
+        // (position:fixed + scrollTo-on-close) made the donor list auto-scroll/jump
+        // when opening a card. It's a fixed/centered overlay, so it needs no lock;
+        // leaving the page unlocked keeps the clicked card exactly in place.
+        const anyOpen = document.querySelector('.popup-overlay.active:not(#donorDetailPopup), .settings-panel-overlay.active');
         if (anyOpen) {
             if (document.body.dataset.scrollLocked !== '1') {
                 document.body.dataset.scrollLocked = '1';
