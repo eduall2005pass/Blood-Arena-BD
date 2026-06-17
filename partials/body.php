@@ -889,7 +889,29 @@ if (!function_exists('render_social_bar')) {
 <!-- Mobile cards (hidden on desktop) -->
 <div id="donorCardsBody" class="donor-cards-container"></div>  
 
-<div id="paginationSection" class="pagination"></div>  
+<div id="paginationSection" class="pagination"></div>
+
+<!-- Sponsor card (horizontal) — opens Contact us popup -->
+<div class="sponsor-card" onclick="document.getElementById('sponsorContactPopup').classList.add('active')" role="button" tabindex="0">
+    <div class="sponsor-card-icon">🤝</div>
+    <div class="sponsor-card-text">
+        <span class="sponsor-card-title">Our Sponsor</span>
+        <span class="sponsor-card-sub">Contact us</span>
+    </div>
+    <span class="sponsor-card-cta">›</span>
+</div>
+
+<!-- POPUP: Sponsor / Contact us -->
+<div class="popup-overlay" id="sponsorContactPopup" onclick="if(event.target===this)this.classList.remove('active')">
+    <div class="popup" style="max-width:360px;text-align:center;">
+        <button class="dd-close" onclick="document.getElementById('sponsorContactPopup').classList.remove('active')" aria-label="Close">✕</button>
+        <div style="font-size:2.4rem;margin-bottom:6px;">🤝</div>
+        <h2 style="color:var(--primary-red);margin-bottom:6px;font-family:var(--font-heading);">Our Sponsor</h2>
+        <p style="font-size:0.9em;color:var(--text-muted);margin-bottom:18px;">Contact us</p>
+        <a href="tel:01518981827" class="sponsor-contact-number">📞 01518981827</a>
+        <button onclick="document.getElementById('sponsorContactPopup').classList.remove('active')" style="background:transparent;border:1px solid var(--border-color);color:var(--text-main);margin-top:18px;box-shadow:none;width:100%;">Close</button>
+    </div>
+</div>
 
 <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:30px auto 0;max-width:500px;padding:0 12px;">
 <button class="report-btn-footer" onclick="openGeneralReportModal()" style="flex:1;min-width:180px;">

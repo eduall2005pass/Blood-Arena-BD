@@ -1692,6 +1692,44 @@ tr.donor-called-outline > td {
     box-shadow: inset 0 0 0 2px var(--primary-red);
 }
 
+/* ── Sponsor card (horizontal) ─────────────────────────────────── */
+.sponsor-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    max-width: 500px;
+    margin: 18px auto 0;
+    padding: 14px 18px;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-glass);
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.sponsor-card:hover { border-color: var(--primary-red); }
+.sponsor-card:active { transform: scale(0.99); }
+.sponsor-card-icon { font-size: 1.7rem; line-height: 1; flex-shrink: 0; }
+.sponsor-card-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.sponsor-card-title { font-weight: 700; color: var(--text-main); font-size: 1rem; }
+.sponsor-card-sub { font-size: 0.82em; color: var(--text-muted); }
+.sponsor-card-cta {
+    font-size: 1.5rem; color: var(--primary-red); font-weight: 700; flex-shrink: 0;
+}
+.sponsor-contact-number {
+    display: inline-block;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--primary-red);
+    text-decoration: none;
+    padding: 12px 20px;
+    border: 1px solid var(--primary-red);
+    border-radius: var(--radius-md);
+    background: rgba(220, 38, 38, 0.06);
+}
+.sponsor-contact-number:active { filter: brightness(0.9); }
+
 /* Scrollbar polish */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
