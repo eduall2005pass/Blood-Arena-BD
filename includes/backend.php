@@ -251,6 +251,24 @@ if(!file_exists($_schema_v11) && isset($conn)){
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     @file_put_contents($_schema_v11, date('Y-m-d H:i:s'));
 }
+// ── Schema v12: per-donation history (My Donations → Donation History) ──
+//  donors.total_donations হলো শুধু গণনা; প্রতিটি রক্তদানের তারিখ আলাদা করে
+//  রাখার জন্য এই টেবিল। "আমি এইমাত্র রক্ত দিয়েছি" চাপলে একটি row যোগ হয়।
+$_schema_v12 = dirname(__DIR__) . '/.schema_v12_done';
+if(!file_exists($_schema_v12) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `donation_history` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `auth_uid` VARCHAR(128) DEFAULT NULL,
+        `donor_id` INT DEFAULT NULL,
+        `donation_date` DATE NOT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY `idx_auth_uid` (`auth_uid`),
+        KEY `idx_donor` (`donor_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v12, date('Y-m-d H:i:s'));
+}
 // === ENHANCED SECURITY HEADERS (XSS + Clickjacking + HSTS + Permissions) ===
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
@@ -519,6 +537,17 @@ if(isset($_POST['log_call'])){
     if ($donor_row && !empty($donor_row['device_id'])) {
         $d_name = $donor_row['name'];
         $d_loc  = $donor_row['location'];
+        // ── Store a service notification → দাতার Notification bell + Messages এ দেখাবে ──
+        //  caller-এর verified নম্বরসহ (যে account দিয়ে call করা হয়েছে তার verify_phone)।
+        $call_notif_msg = "📞 কেউ আপনাকে রক্তের জন্য কল করেছেন।\n"
+                        . "👤 " . esc($c_name) . "\n"
+                        . "📱 " . esc($c_phone);
+        $sn_call = $conn->prepare("INSERT INTO service_notifications (device_id, type, message) VALUES (?,?,?)");
+        if ($sn_call) {
+            $sn_call_type = 'donor_called';
+            $sn_call->bind_param("sss", $donor_row['device_id'], $sn_call_type, $call_notif_msg);
+            $sn_call->execute(); $sn_call->close();
+        }
         // Look up FCM token for this donor's device_id
         $ftq = $conn->prepare("SELECT fcm_token FROM fcm_tokens WHERE device_id=? LIMIT 1");
         $ftq->bind_param("s", $donor_row['device_id']);
@@ -803,6 +832,14 @@ if(isset($_POST['ajax_update'])){
             if($just_donated === 1){
                 $conn->query("INSERT INTO analytics_counters (counter_name, counter_value) VALUES ('total_donations_ever', 1)
                     ON DUPLICATE KEY UPDATE counter_value = counter_value + 1");
+                // Record this donation in history (My Donations → Donation History)
+                mysqli_report(MYSQLI_REPORT_OFF);
+                $dh = $conn->prepare("INSERT INTO donation_history (auth_uid, donor_id, donation_date) VALUES (?,?,?)");
+                if($dh){
+                    $dh->bind_param("sis", $uid, $donor_id, $last_to_save);
+                    $dh->execute(); $dh->close();
+                }
+                mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
             }
             echo json_encode([
                 "status"          => "success",
@@ -2206,6 +2243,58 @@ if(isset($_POST['account_info'])){
     exit();
 }
 
+
+// === GET MY DONATIONS (signed-in account → donation history with dates) ===
+if(isset($_POST['get_my_donations'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('get_my_donations', 30, 60);
+    if(empty($_SESSION['auth_uid'])){
+        echo json_encode(["status"=>"error","msg"=>"logged out"]); exit();
+    }
+    $uid   = $_SESSION['auth_uid'];
+    $phone = $_SESSION['auth_phone'] ?? null;
+
+    mysqli_report(MYSQLI_REPORT_OFF);
+    // Resolve this account's donor row (auth_uid; legacy phone fallback)
+    $donor_id = 0; $total_donations = 0; $last_donation = 'no';
+    $dq = $conn->prepare("SELECT id, total_donations, last_donation FROM donors WHERE auth_uid=? LIMIT 1");
+    $dq->bind_param("s", $uid); $dq->execute();
+    $dr = $dq->get_result()->fetch_assoc(); $dq->close();
+    if(!$dr && $phone){
+        $dq2 = $conn->prepare("SELECT id, total_donations, last_donation FROM donors WHERE phone=? LIMIT 1");
+        $dq2->bind_param("s", $phone); $dq2->execute();
+        $dr = $dq2->get_result()->fetch_assoc(); $dq2->close();
+    }
+    if($dr){
+        $donor_id        = (int)$dr['id'];
+        $total_donations = (int)$dr['total_donations'];
+        $last_donation   = ($dr['last_donation']=='no' || empty($dr['last_donation']) || $dr['last_donation']=='0000-00-00')
+                         ? 'no' : date('d/m/Y', strtotime($dr['last_donation']));
+    }
+
+    // Recorded donation history rows (by account, or by resolved donor_id for legacy)
+    $history = [];
+    $hq = $conn->prepare("SELECT UNIX_TIMESTAMP(donation_date) as ts FROM donation_history
+        WHERE auth_uid=? OR (donor_id=? AND ?>0) ORDER BY donation_date DESC, id DESC LIMIT 50");
+    if($hq){
+        $hq->bind_param("sii", $uid, $donor_id, $donor_id);
+        $hq->execute();
+        $hres = $hq->get_result();
+        while($r = $hres->fetch_assoc()) $history[] = ["ts"=>(int)$r['ts']];
+        $hq->close();
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+    echo json_encode([
+        "status"          => "success",
+        "history"         => $history,
+        "total_donations" => $total_donations,
+        "last_donation"   => $last_donation,
+    ], JSON_UNESCAPED_UNICODE);
+    exit();
+}
 
 // === GET SERVICE NOTIFICATIONS FOR DEVICE ===
 if(isset($_POST['get_service_notifs'])){

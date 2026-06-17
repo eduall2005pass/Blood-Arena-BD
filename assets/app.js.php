@@ -3012,7 +3012,7 @@ function _renderSvcNotifs(notifs) {
     var iconMap = {
         'secret_reset':'🔑', 'location_on':'📍', 'notif_on':'🔔',
         'secret_code_ready':'✅', 'info':'ℹ️', 'warning':'⚠️', 'admin_reply':'💬',
-        'welcome':'🎉'
+        'welcome':'🎉', 'donor_called':'📞', 'blood_request':'🆘'
     };
 
     list.innerHTML = notifs.map(function(n) {
@@ -3797,6 +3797,8 @@ function openAccountDashboard() {
         .catch(function(){ _renderMyMessages([]); });
     // My account-owned blood requests (tokenless management)
     loadMyAccountRequests();
+    // My donation history (dates)
+    loadMyDonations();
     // reset delete-info section
     var db = document.getElementById('accDeleteInfoBody');
     if (db) db.style.display = 'none';
@@ -3847,6 +3849,7 @@ function _renderMyAccountRequests(rows) {
                 '👤 <strong style="color:var(--text-main);">' + _esc(r.patient_name) + '</strong><br>' +
                 '🏥 ' + _esc(r.hospital) + '<br>' +
                 '📞 ' + _esc(r.contact) +
+                (r.created_at ? '<br>🗓️ ' + _esc(new Date(r.created_at * 1000).toLocaleString('bn-BD', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'})) : '') +
               '</div>' +
               '<button onclick="deleteMyAccountRequest(' + (r.id|0) + ', this)" style="width:100%;margin-top:10px;padding:9px;background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.35);color:var(--danger);border-radius:10px;font-size:0.82em;cursor:pointer;font-weight:700;min-height:unset;box-shadow:none;">🗑️ এই Request মুছুন</button>' +
             '</div>';
@@ -3936,6 +3939,63 @@ function _accDashLoading() {
     if (ml) ml.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.82em;padding:10px;">⏳ লোড হচ্ছে...</div>';
     var rl = document.getElementById('accReqList');
     if (rl) rl.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.82em;padding:10px;">⏳ লোড হচ্ছে...</div>';
+    var dl = document.getElementById('accDonationList');
+    if (dl) dl.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.82em;padding:10px;">⏳ লোড হচ্ছে...</div>';
+}
+
+// ── My Donations: load + render donation history (with dates) ──
+function loadMyDonations() {
+    var fd = new FormData();
+    fd.append('get_my_donations', '1');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+        .then(safeJSON)
+        .then(function(res){
+            if (res && res.status === 'success') _renderMyDonations(res);
+            else _renderMyDonations({history:[], total_donations:0, last_donation:'no'});
+        })
+        .catch(function(){ _renderMyDonations({history:[], total_donations:0, last_donation:'no'}); });
+}
+
+function _renderMyDonations(res) {
+    var list = document.getElementById('accDonationList');
+    var cnt  = document.getElementById('accDonationCount');
+    if (!list) return;
+    var total   = res.total_donations || 0;
+    var history = Array.isArray(res.history) ? res.history : [];
+    if (cnt) cnt.textContent = total ? ('মোট ' + total + ' বার') : '';
+
+    // Build the dated rows. Prefer recorded history; fall back to last_donation.
+    var rows = '';
+    if (history.length) {
+        history.forEach(function(h){
+            var dt = h.ts ? new Date(h.ts * 1000) : null;
+            var ds = dt ? dt.toLocaleDateString('bn-BD', {year:'numeric', month:'long', day:'numeric'}) : '—';
+            rows +=
+                '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:10px;margin-bottom:8px;">' +
+                  '<span style="font-size:1.1em;">🩸</span>' +
+                  '<div style="font-size:0.83em;line-height:1.5;">' +
+                    '<strong style="color:var(--text-main);">' + _esc(ds) + '</strong><br>' +
+                    '<span style="color:var(--text-muted);font-size:0.92em;">রক্তদান করেছেন</span>' +
+                  '</div>' +
+                '</div>';
+        });
+    } else if (res.last_donation && res.last_donation !== 'no') {
+        rows =
+            '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:10px;margin-bottom:8px;">' +
+              '<span style="font-size:1.1em;">🩸</span>' +
+              '<div style="font-size:0.83em;line-height:1.5;">' +
+                '<strong style="color:var(--text-main);">' + _esc(res.last_donation) + '</strong><br>' +
+                '<span style="color:var(--text-muted);font-size:0.92em;">সর্বশেষ রক্তদান</span>' +
+              '</div>' +
+            '</div>';
+    }
+
+    if (!rows) {
+        list.innerHTML = '<div style="background:var(--input-bg);border:1px solid var(--border-color);border-radius:12px;padding:14px;text-align:center;color:var(--text-muted);font-size:0.82em;">এখনো কোনো রক্তদানের রেকর্ড নেই।<br>রক্ত দেওয়ার পর "আমি এইমাত্র রক্ত দিয়েছি 🩸" চেপে Save করুন।</div>';
+        return;
+    }
+    list.innerHTML = rows;
 }
 
 function _renderAccountDashboard(res) {
@@ -3969,7 +4029,9 @@ function _renderAccountDashboard(res) {
         }
     }
     setTxt('accEmail', a.email || '—');
-    setTxt('accPhone', a.phone || '—');
+    // Show the number used to VERIFY the account (Telegram/WhatsApp/phone-OTP),
+    // falling back to the Firebase sign-in phone if not yet verified.
+    setTxt('accPhone', a.verify_phone || a.phone || '—');
     setTxt('accMemberSince', a.member_since || '—');
 
     // ── Verified / unverified badge + bind banner ──

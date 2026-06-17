@@ -1877,7 +1877,7 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
 }
 .svc-notif-icon { font-size:1.25em; flex-shrink:0; line-height:1.4; margin-top:1px; }
 .svc-notif-body { flex:1; min-width:0; }
-.svc-notif-msg { font-size:0.82em; color:var(--text-main); line-height:1.55; word-break:break-word; }
+.svc-notif-msg { font-size:0.82em; color:var(--text-main); line-height:1.55; word-break:break-word; white-space:pre-line; }
 .svc-notif-time { font-size:0.7em; color:var(--text-muted); margin-top:4px; }
 .svc-notif-actions { display:flex; flex-direction:column; gap:4px; flex-shrink:0; align-self:center; }
 .svc-notif-read-btn {

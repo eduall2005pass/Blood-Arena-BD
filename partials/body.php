@@ -1535,6 +1535,13 @@ if (!function_exists('render_social_bar')) {
             <p style="font-size:0.72em;text-transform:uppercase;letter-spacing:1.5px;color:var(--primary-red);font-weight:700;margin:0 0 8px;">🩸 রক্তদাতা প্রোফাইল</p>
             <div id="accDonorCard" style="margin-bottom:18px;"></div>
 
+            <!-- My Donations / Donation History -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 8px;">
+                <p style="font-size:0.72em;text-transform:uppercase;letter-spacing:1.5px;color:var(--success);font-weight:700;margin:0;">🩸 আমার রক্তদান</p>
+                <span id="accDonationCount" style="color:var(--text-muted);font-size:0.72em;"></span>
+            </div>
+            <div id="accDonationList" style="margin-bottom:18px;"></div>
+
             <!-- My Blood Requests (account-owned, tokenless delete) -->
             <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 8px;">
                 <p style="font-size:0.72em;text-transform:uppercase;letter-spacing:1.5px;color:var(--danger);font-weight:700;margin:0;">🆘 আমার Requests</p>

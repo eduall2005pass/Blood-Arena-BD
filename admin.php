@@ -60,6 +60,8 @@ try {
 // ── 5. HELPERS ───────────────────────────────────────────
 function esc($v){ return htmlspecialchars($v??'',ENT_QUOTES|ENT_HTML5,'UTF-8'); }
 function dbq($c,$s){ if(!$c) return null; $r=$c->query($s); return $r?:null; }
+// PHP 7.x-safe COUNT(*) helper (replaces the PHP 8.0+ nullsafe-operator fetch pattern)
+function _cnt($res){ if($res instanceof mysqli_result){ $row=$res->fetch_assoc(); return isset($row['c'])?$row['c']:0; } return 0; }
 
 function ensureConn(&$conn, &$db_error){
     if($conn instanceof mysqli){ if(@$conn->ping()) return true; $conn=null; }
@@ -160,10 +162,11 @@ function checkIpWhitelist($conn){
     if(!$check||$check->num_rows===0){
         ob_end_clean();
         http_response_code(403);
-        die('<!DOCTYPE html><html><head><title>403 Access Denied</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0f1115;color:#ef4444;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:14px;text-align:center;padding:20px;}.box{background:#1a1d24;border:1px solid rgba(239,68,68,.25);border-radius:16px;padding:36px;max-width:400px;}.icon{font-size:3rem;margin-bottom:12px;}.ip{font-family:monospace;font-size:.85em;color:#6b7280;margin-top:8px;background:#111;padding:4px 12px;border-radius:8px;display:inline-block;}</style></head><body><div class="box"><div class="icon">🚫</div><h2>Access Denied</h2><p style="color:#9ca3af;font-size:.9em;margin-top:8px;">আপনার IP address এই panel access করার অনুমতি নেই।</p><div class="ip">IP: '.htmlspecialchars($current_ip).'</div></div><!-- 🌐 i18n: dictionary + standalone engine (admin language toggle) -->
-<script><?php include __DIR__ . '/assets/i18n-dict.js.php'; ?></script>
-<script><?php include __DIR__ . '/assets/i18n-engine.js.php'; ?></script>
-</body></html>');
+        echo '<!DOCTYPE html><html><head><title>403 Access Denied</title><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0f1115;color:#ef4444;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:14px;text-align:center;padding:20px;}.box{background:#1a1d24;border:1px solid rgba(239,68,68,.25);border-radius:16px;padding:36px;max-width:400px;}.icon{font-size:3rem;margin-bottom:12px;}.ip{font-family:monospace;font-size:.85em;color:#6b7280;margin-top:8px;background:#111;padding:4px 12px;border-radius:8px;display:inline-block;}</style></head><body><div class="box"><div class="icon">🚫</div><h2>Access Denied</h2><p style="color:#9ca3af;font-size:.9em;margin-top:8px;">আপনার IP address এই panel access করার অনুমতি নেই।</p><div class="ip">IP: '.htmlspecialchars($current_ip).'</div></div><!-- 🌐 i18n: dictionary + standalone engine (admin language toggle) -->';
+        echo '<script>'; include __DIR__ . '/assets/i18n-dict.js.php'; echo '</script>';
+        echo '<script>'; include __DIR__ . '/assets/i18n-engine.js.php'; echo '</script>';
+        echo '</body></html>';
+        exit();
     }
 }
 
@@ -818,7 +821,7 @@ if($logged_in && isset($_POST['act'])){
         $res=$conn->query("SELECT id,sender_name,sender_phone,message,device_id,is_read,admin_reply,replied_at,created_at FROM admin_messages WHERE $where ORDER BY created_at DESC LIMIT 100");
         $rows=[];
         if($res) while($r=$res->fetch_assoc()) $rows[]=$r;
-        $unread=(int)($conn->query("SELECT COUNT(*) c FROM admin_messages WHERE is_read=0 AND admin_reply IS NULL")?->fetch_assoc()['c']??0);
+        $unread=(int)_cnt($conn->query("SELECT COUNT(*) c FROM admin_messages WHERE is_read=0 AND admin_reply IS NULL"));
         echo json_encode(['ok'=>true,'rows'=>$rows,'unread'=>$unread]); exit();
     }
 
@@ -923,7 +926,7 @@ if($logged_in && isset($_POST['act'])){
         $new_inbox = [];
         if($inbox_q) while($r=$inbox_q->fetch_assoc()) $new_inbox[] = $r;
         // Totals for badge update
-        $total_inbox = (int)($conn->query("SELECT COUNT(*) c FROM admin_messages WHERE is_read=0 AND admin_reply IS NULL")?->fetch_assoc()['c']??0);
+        $total_inbox = (int)_cnt($conn->query("SELECT COUNT(*) c FROM admin_messages WHERE is_read=0 AND admin_reply IS NULL"));
         // Auto-reminder check — once per hour (non-blocking, silent)
         $auto_reminder_due = false;
         $conn->query("INSERT IGNORE INTO admin_settings (setting_key,setting_value) VALUES ('last_auto_reminder_run','0')");
@@ -1039,7 +1042,7 @@ if($conn){
 if($logged_in && $conn){
     ensureAdminTables($conn);
 
-    $stats['donors']    =(int)(dbq($conn,"SELECT COUNT(*) c FROM donors")?->fetch_assoc()['c']??0);
+    $stats['donors']    =(int)_cnt(dbq($conn,"SELECT COUNT(*) c FROM donors"));
     $r=dbq($conn,"SELECT COUNT(*) c FROM donors WHERE willing_to_donate='yes' AND (last_donation='no' OR last_donation='' OR last_donation='0000-00-00' OR DATEDIFF(CURDATE(),last_donation)>=120)");
     $stats['available'] =$r?(int)$r->fetch_assoc()['c']:0;
     $r2=dbq($conn,"SELECT COUNT(*) c FROM call_logs");
@@ -1059,7 +1062,7 @@ if($logged_in && $conn){
     $stats['active_req']=count(array_filter($requests,function($r){return $r['status']==='Active';}));
 
     $pending_secret_reqs=0;
-    $inbox_unread=(int)(dbq($conn,"SELECT COUNT(*) c FROM admin_messages WHERE is_read=0 AND admin_reply IS NULL")?->fetch_assoc()['c']??0);
+    $inbox_unread=(int)_cnt(dbq($conn,"SELECT COUNT(*) c FROM admin_messages WHERE is_read=0 AND admin_reply IS NULL"));
 
     $res3=dbq($conn,"SELECT * FROM reports ORDER BY id DESC LIMIT 100");
     if($res3) while($row=$res3->fetch_assoc()) $reports[]=$row;
@@ -1489,7 +1492,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
           <tbody>
           <?php if($conn): foreach(["A+","A-","B+","B-","AB+","AB-","O+","O-"] as $g):
             $eg=mysqli_real_escape_string($conn,$g);
-            $tot=(int)(dbq($conn,"SELECT COUNT(*) c FROM donors WHERE blood_group='$eg'")?->fetch_assoc()['c']??0);
+            $tot=(int)_cnt(dbq($conn,"SELECT COUNT(*) c FROM donors WHERE blood_group='$eg'"));
             $avr=dbq($conn,"SELECT COUNT(*) c FROM donors WHERE blood_group='$eg' AND willing_to_donate='yes' AND (last_donation='no' OR last_donation='' OR last_donation='0000-00-00' OR DATEDIFF(CURDATE(),last_donation)>=120)");
             $av=$avr?(int)$avr->fetch_assoc()['c']:0;
             $pct=$tot>0?round($av/$tot*100):0;
@@ -2089,7 +2092,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
           <tbody>
           <?php foreach($audit_log as $i=>$a):
             $ev=strtolower($a['event']??'');
-            $cls=str_contains($ev,'fail')||str_contains($ev,'bot')?'fail':(str_contains($ev,'success')||str_contains($ev,'login_s')?'success':'');
+            $cls=(strpos($ev,'fail')!==false||strpos($ev,'bot')!==false)?'fail':((strpos($ev,'success')!==false||strpos($ev,'login_s')!==false)?'success':'');
             $tm=!empty($a['created_at'])?date('d M, h:i A',strtotime($a['created_at'])):'—';
           ?><tr>
             <td style="color:var(--muted);"><?=$i+1?></td>
