@@ -1251,46 +1251,6 @@ if (!function_exists('render_social_bar')) {
         </div>
         <div class="settings-item-right" id="locStatusBadge">›</div>
       </div>
-      <div class="settings-item si-about" onclick="closeSettingsPanel(); openAboutUsModal();">
-        <div class="settings-item-left">
-          <div class="settings-item-icon">ℹ️</div>
-          <div class="settings-item-text">
-            <span class="settings-item-label">আমাদের কথা</span>
-            <span class="settings-item-sub">Blood Arena সম্পর্কে জানুন</span>
-          </div>
-        </div>
-        <div class="settings-item-right">›</div>
-      </div>
-      <div class="settings-item si-terms" onclick="closeSettingsPanel(); openTermsModal();">
-        <div class="settings-item-left">
-          <div class="settings-item-icon">📄</div>
-          <div class="settings-item-text">
-            <span class="settings-item-label">শর্তাবলী ও নীতিমালা</span>
-            <span class="settings-item-sub">Terms & Conditions পড়ুন</span>
-          </div>
-        </div>
-        <div class="settings-item-right">›</div>
-      </div>
-      <div class="settings-item si-install" id="settingsInstallItem" onclick="settingsInstallApp()">
-        <div class="settings-item-left">
-          <div class="settings-item-icon">📲</div>
-          <div class="settings-item-text">
-            <span class="settings-item-label">App হিসেবে Install করুন</span>
-            <span class="settings-item-sub" id="installStatusText">Home Screen-এ Add করুন</span>
-          </div>
-        </div>
-        <div class="settings-item-right" id="installStatusBadge">›</div>
-      </div>
-      <div class="settings-item si-faq" onclick="closeSettingsPanel(); openFAQModal();">
-        <div class="settings-item-left">
-          <div class="settings-item-icon">❓</div>
-          <div class="settings-item-text">
-            <span class="settings-item-label">প্রশ্ন ও উত্তর (FAQ)</span>
-            <span class="settings-item-sub">সাধারণ প্রশ্নের উত্তর দেখুন</span>
-          </div>
-        </div>
-        <div class="settings-item-right">›</div>
-      </div>
       <div class="settings-item si-clear" onclick="clearAppData()">
         <div class="settings-item-left">
           <div class="settings-item-icon">🧹</div>
