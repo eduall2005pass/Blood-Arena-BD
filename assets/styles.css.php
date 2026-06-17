@@ -1693,12 +1693,15 @@ tr.donor-called-outline > td {
 }
 
 /* ── Sponsor card (horizontal) ─────────────────────────────────── */
+/* Compact the donor-list footer area (pagination → sponsor → report) */
+#paginationSection.pagination { margin-bottom: 14px; }
+
 .sponsor-card {
     display: flex;
     align-items: center;
     gap: 14px;
     max-width: 500px;
-    margin: 18px auto 0;
+    margin: 0 auto;
     padding: 14px 18px;
     background: var(--bg-main);
     border: 1px solid var(--border-color);

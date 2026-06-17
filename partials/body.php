@@ -938,7 +938,7 @@ if (!function_exists('render_social_bar')) {
     <span class="sponsor-card-cta">›</span>
 </div>
 
-<div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:30px auto 0;max-width:500px;padding:0 12px;">
+<div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:14px auto 0;max-width:500px;padding:0 12px;">
 <button class="report-btn-footer" onclick="openGeneralReportModal()" style="flex:1;min-width:180px;">
     ⚠️ Report Harassment
 </button>
