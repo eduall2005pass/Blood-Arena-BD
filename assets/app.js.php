@@ -286,6 +286,9 @@ function markDonorCalled(donorId) {
     document.querySelectorAll(`button[onclick="prepCall('${donorId}')"]`).forEach(function(b) {
         b.classList.remove('btn-next-blink');
         b.classList.add('btn-called');
+        // Red outline on the called/clicked donor card (or desktop row)
+        var container = b.closest('.dc') || b.closest('.nearby-card') || b.closest('tr');
+        if (container) container.classList.add('donor-called-outline');
         // Tick on left + call icon stays — user sees "called" but can still re-call
         if (b.closest('.dc')) {
             // Mobile card button: ✅ + 📞 stacked / side-by-side
@@ -1148,7 +1151,7 @@ function showConfirmPopup(callerName, callerPhone) {
             // ── Resolve next donor element BEFORE closing popup ──
             // (popup close triggers syncScrollLock → window.scrollTo, which would
             //  overwrite any scrollIntoView done after it)
-            var _autoScroll = localStorage.getItem('auto_scroll_call') === '1';
+            var _autoScroll = false; // permanently disabled — annoying autoscroll removed
             var _nextDonorEl = null;
             var _snapSourceEl = tempCallSourceEl; // save before cleanup
             if (_autoScroll && _snapSourceEl) {

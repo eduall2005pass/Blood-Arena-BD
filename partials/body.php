@@ -473,6 +473,7 @@ if (!function_exists('render_social_bar')) {
 
 <!-- ACTIVE BLOOD REQUESTS SECTION -->
 <!-- ==================== COMPACT LIVE STATS CARDS ==================== -->
+<h3 class="quick-filter-title" style="text-align:center;font-family:var(--font-heading);font-weight:800;font-size:1.6rem;color:var(--text-main);margin:18px 0 12px;">Quick Filter</h3>
 <div class="stats-container" id="statsSection">
     <?php 
     $__id_map = ['A+'=>'Aplus','A-'=>'Aminus','B+'=>'Bplus','B-'=>'Bminus','AB+'=>'ABplus','AB-'=>'ABminus','O+'=>'Oplus','O-'=>'Ominus'];
@@ -1174,17 +1175,6 @@ if (!function_exists('render_social_bar')) {
         </div>
         <div class="settings-toggle" id="settingsThemeToggle"></div>
       </div>
-      <!-- ✨ 3D & Animation Toggle -->
-      <div class="settings-item si-fx" onclick="toggleFx(); updateSettingsToggles();">
-        <div class="settings-item-left">
-          <div class="settings-item-icon">✨</div>
-          <div class="settings-item-text">
-            <span class="settings-item-label">3D ও Animation</span>
-            <span class="settings-item-sub">3D হিরো ও স্ক্রল অ্যানিমেশন চালু/বন্ধ</span>
-          </div>
-        </div>
-        <div class="settings-toggle on" id="settingsFxToggle"></div>
-      </div>
       <!-- Language Toggle -->
       <div class="settings-item si-lang" onclick="toggleAppLanguage()">
         <div class="settings-item-left">
@@ -1217,16 +1207,6 @@ if (!function_exists('render_social_bar')) {
           </div>
         </div>
         <div class="settings-toggle on" id="settingsVibToggle"></div>
-      </div>
-      <div class="settings-item si-autoscroll" onclick="toggleAutoScrollSetting()">
-        <div class="settings-item-left">
-          <div class="settings-item-icon">⬇️</div>
-          <div class="settings-item-text">
-            <span class="settings-item-label">Auto Scroll After Call</span>
-            <span class="settings-item-sub">Call করলে next donor-এ চলে যাবে</span>
-          </div>
-        </div>
-        <div class="settings-toggle" id="settingsAutoScrollToggle"></div>
       </div>
       <!-- Donor Card Zoom -->
       <div class="settings-item si-zoom" style="cursor:default;">
@@ -1830,25 +1810,10 @@ if (!function_exists('render_social_bar')) {
                     <p>Settings panel-এ নিচের option গুলো পাবেন:</p>
                     <p>• <strong>🌙 Dark / Light Mode:</strong> রাতে পড়তে সুবিধার জন্য Dark mode চালু করুন।</p>
                     <p>• <strong>🔊 Notification Sound:</strong> Registration success ও নতুন blood request-এর sound চালু/বন্ধ করুন।</p>
-                    <p>• <strong>⬇️ Auto Scroll After Call:</strong> কোনো donor-কে call করার পর automatically পরের donor-এ scroll করবে। একসাথে অনেকজনকে call করার সময় কাজে আসে।</p>
                     <p>• <strong>🔍 Donor Card Text Size:</strong> Donor list-এর লেখা বড় বা ছোট করুন (+/− বাটন দিয়ে)।</p>
                     <p>• <strong>🔔 Browser Notifications:</strong> নতুন Emergency Blood Request এলে phone-এ notification পাঠাবে।</p>
                     <p>• <strong>📍 Location Permission:</strong> Nearby Donors feature-এর জন্য GPS চালু করুন।</p>
                     <p>• <strong>🧹 Clear App Data:</strong> Cache, token ও সব settings মুছে app fresh করে reload নেবে — কোনো সমস্যা হলে এটি ব্যবহার করুন।</p>
-                </div>
-            </div>
-
-            <div class="faq-item">
-                <div class="faq-q" onclick="toggleFaq(this)">
-                    <span>⬇️ Auto Scroll After Call কীভাবে কাজ করে?</span>
-                    <span class="faq-arrow">›</span>
-                </div>
-                <div class="faq-a">
-                    <p>Settings → <strong>"Auto Scroll After Call"</strong> চালু থাকলে, কোনো donor-কে call করার পর list স্বয়ংক্রিয়ভাবে <strong>পরের donor-এ</strong> চলে যাবে।</p>
-                    <p><strong>Off থাকলে</strong> scroll হয় না — পেজ যেখানে ছিল সেখানেই থাকবে।</p>
-                    <p>Call করা donor-এর button-এ <strong>✅ চিহ্ন</strong> যোগ হয় এবং Call icon থাকে — যাতে বোঝা যায় আগে call হয়েছে, আবার call করতে চাইলেও করা যাবে।</p>
-                    <p>পরের available donor-এর Call button কয়েকবার <strong>দ্রুত blink</strong> করে — এটি দেখিয়ে দেয় এরপর কাকে call করতে হবে।</p>
-                    <p><em>💡 Tip: Blood group filter করে রাখুন, তারপর Auto Scroll চালু করলে সবচেয়ে বেশি সুবিধা পাবেন।</em></p>
                 </div>
             </div>
 

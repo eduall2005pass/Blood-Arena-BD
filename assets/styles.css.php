@@ -1679,6 +1679,17 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
     transform: scale(0.985) !important;
 }
 
+/* Red outline on a donor card/row after it is clicked / called */
+.dc.donor-called-outline,
+.nearby-card.donor-called-outline {
+    border-color: var(--primary-red) !important;
+    outline: 2px solid var(--primary-red);
+    outline-offset: -2px;
+}
+tr.donor-called-outline > td {
+    box-shadow: inset 0 0 0 2px var(--primary-red);
+}
+
 /* Scrollbar polish */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
