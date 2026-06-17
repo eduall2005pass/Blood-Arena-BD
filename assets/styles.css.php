@@ -2506,6 +2506,43 @@ html { scroll-padding-top: 92px; }
 
 /* Skeleton card */
 .dc-skeleton { min-height: 52px; }
+.dc-info, .dc-badge-wrap { cursor: pointer; }
+
+/* ============================================================
+   DONOR DETAIL POPUP
+   ============================================================ */
+.donor-detail-box { text-align: left !important; position: relative; padding-top: 26px !important; }
+.dd-close {
+    position: absolute; top: 12px; right: 12px;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--input-bg); border: 1px solid var(--border-color);
+    color: var(--text-muted); font-size: 1em; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0; box-shadow: none; padding: 0; line-height: 1;
+}
+.dd-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.dd-badge {
+    flex-shrink: 0; width: 58px; height: 58px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 1.15em; letter-spacing: 0.3px;
+}
+.dd-head-info { min-width: 0; }
+.dd-head-info h3 { margin: 0 0 5px; font-family: var(--font-heading); color: var(--text-main); font-size: 1.15em; word-break: break-word; }
+.dd-status {
+    font-size: 0.78em; font-weight: 600; padding: 2px 10px; border-radius: 20px; display: inline-block;
+}
+.dd-rows { display: flex; flex-direction: column; gap: 2px; margin-bottom: 20px; }
+.dd-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 11px 4px; border-bottom: 1px solid var(--border-color);
+}
+.dd-row:last-child { border-bottom: none; }
+.dd-label { color: var(--text-muted); font-size: 0.86em; font-weight: 500; flex-shrink: 0; }
+.dd-val { color: var(--text-main); font-size: 0.92em; font-weight: 600; text-align: right; word-break: break-word; }
+.dd-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
+.dd-actions button { margin: 0; font-size: 0.92em; padding: 13px 6px; }
+.dd-btn-cancel { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); box-shadow: none; }
+.dd-btn-call { background: var(--success); color: #000; }
 
 /* ============================================================
    MOBILE APP-LIKE BOTTOM NAVIGATION BAR

@@ -1246,6 +1246,16 @@ if(isset($_POST['ajax_filter'])){
             $display_last = date("d M Y", strtotime($last_val));
             if(strpos($display_last, '1970') !== false || strpos($display_last, '-0001') !== false) { $display_last = 'Never donated'; }
         }
+
+        // Member-since (registration date) for the detail popup
+        $since_val = $row['created_at'] ?? '';
+        if(empty($since_val) || $since_val == '0000-00-00 00:00:00'){
+            $display_since = '—';
+        } else {
+            $display_since = date("d M Y", strtotime($since_val));
+            if(strpos($display_since, '1970') !== false || strpos($display_since, '-0001') !== false) { $display_since = '—'; }
+        }
+        $total_don = (int)($row['total_donations'] ?? 0);
         
         if($current_status == 'Available')      { $st_class='available';   $st_icon='✔'; $st_text='Available'; }
         elseif($current_status == 'Unavailable') { $st_class='unavailable';  $st_icon='⛔'; $st_text='Unavailable'; }
@@ -1276,13 +1286,28 @@ if(isset($_POST['ajax_filter'])){
         </tr>";
 
         // ── Mobile card ────────────────────────────────────────────────
+        //  Whole info area opens a read-only detail popup (no phone/email shown).
+        $dc_data = "data-id='".esc($row['id'])."'"
+            ." data-name='".esc($row['name'])."'"
+            ." data-group='".esc($row['blood_group'])."'"
+            ." data-bgclass='".esc($bg_class)."'"
+            ." data-status='".esc($st_text)."'"
+            ." data-stclass='".esc($st_class)."'"
+            ." data-sticon='".esc($st_icon)."'"
+            ." data-loc='".esc($row['location'])."'"
+            ." data-last='".esc($display_last)."'"
+            ." data-since='".esc($display_since)."'"
+            ." data-total='".$total_don."'"
+            ." data-badge='".esc($donor_badge['level'])."'"
+            ." data-badgeicon='".esc($donor_badge['icon'])."'"
+            ." data-available='".($is_available ? '1' : '0')."'";
         $cards .= "
-        <div class='dc'>
-            <div class='dc-badge-wrap'>
+        <div class='dc' $dc_data>
+            <div class='dc-badge-wrap' onclick='openDonorDetail(this.parentNode)'>
                 <span class='dc-sn'>$sn</span>
                 <span class='dc-badge $bg_class'>".esc($row['blood_group'])."</span>
             </div>
-            <div class='dc-info'>
+            <div class='dc-info' onclick='openDonorDetail(this.parentNode)'>
                 <div class='dc-name'>".esc($row['name'])." <span style='font-size:0.85em;opacity:0.85;' title='".$donor_badge['level']." Donor'>".$donor_badge['icon']."</span></div>
                 <span class='$st_class dc-status-badge'>$st_icon $st_text</span>
                 <div class='dc-loc'>📍 ".esc($row['location'])."</div>

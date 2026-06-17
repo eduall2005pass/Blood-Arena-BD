@@ -4296,6 +4296,55 @@ function closeInfoPage() {
 }
 
 // ============================================================
+// DONOR DETAIL POPUP
+// ============================================================
+// Opens a read-only profile popup for a donor card. Phone number
+// and email are intentionally NOT shown — calling goes through the
+// existing verified prepCall() flow.
+function openDonorDetail(card) {
+    if (!card) return;
+    vibrateIfOn([12]);
+    var d = card.dataset;
+
+    var nameEl = document.getElementById('ddName');
+    nameEl.innerHTML = (d.name || 'Donor') +
+        (d.badgeicon ? ' <span style="font-size:0.85em;opacity:0.85;">' + d.badgeicon + '</span>' : '');
+
+    var blood = document.getElementById('ddBlood');
+    blood.textContent = d.group || '';
+    blood.className = 'dd-badge ' + (d.bgclass || '');
+
+    var st = document.getElementById('ddStatus');
+    st.textContent = (d.sticon || '') + ' ' + (d.status || '');
+    st.className = 'dd-status ' + (d.stclass || '');
+
+    document.getElementById('ddLoc').textContent   = d.loc || '—';
+    document.getElementById('ddBadge').textContent = (d.badge || 'New') + ' Donor';
+    document.getElementById('ddTotal').textContent = (d.total || '0') + ' বার';
+    document.getElementById('ddLast').textContent  = d.last || '—';
+    document.getElementById('ddSince').textContent = d.since || '—';
+
+    var callBtn = document.getElementById('ddCallBtn');
+    if (d.available === '1') {
+        callBtn.style.display = '';
+        callBtn.disabled = false;
+        callBtn.onclick = function() {
+            closeDonorDetail();
+            prepCall(d.id);
+        };
+    } else {
+        callBtn.style.display = 'none';
+    }
+
+    document.getElementById('donorDetailPopup').classList.add('active');
+}
+
+function closeDonorDetail() {
+    var p = document.getElementById('donorDetailPopup');
+    if (p) p.classList.remove('active');
+}
+
+// ============================================================
 // DONOR CARD ZOOM
 // ============================================================
 (function initDcZoom() {

@@ -89,6 +89,30 @@ if (!function_exists('render_social_bar')) {
     </div>
 </div>
 
+<div class="popup-overlay" id="donorDetailPopup" onclick="if(event.target===this)closeDonorDetail()">
+    <div class="popup donor-detail-box">
+        <button class="dd-close" onclick="closeDonorDetail()" aria-label="Close">✕</button>
+        <div class="dd-head">
+            <span class="dd-badge" id="ddBlood"></span>
+            <div class="dd-head-info">
+                <h3 id="ddName"></h3>
+                <span id="ddStatus" class="dd-status"></span>
+            </div>
+        </div>
+        <div class="dd-rows">
+            <div class="dd-row"><span class="dd-label">📍 Location</span><span class="dd-val" id="ddLoc"></span></div>
+            <div class="dd-row"><span class="dd-label">🏅 Donor Level</span><span class="dd-val" id="ddBadge"></span></div>
+            <div class="dd-row"><span class="dd-label">🩸 Total Donations</span><span class="dd-val" id="ddTotal"></span></div>
+            <div class="dd-row"><span class="dd-label">🗓 Last Donation</span><span class="dd-val" id="ddLast"></span></div>
+            <div class="dd-row"><span class="dd-label">📅 Member Since</span><span class="dd-val" id="ddSince"></span></div>
+        </div>
+        <div class="dd-actions">
+            <button onclick="closeDonorDetail()" class="dd-btn-cancel">✕ Close</button>
+            <button id="ddCallBtn" class="dd-btn-call">📞 Call Donor</button>
+        </div>
+    </div>
+</div>
+
 <div class="popup-overlay" id="reportPopup">
     <div class="popup">
         <h2 style="color:var(--danger); margin-bottom:10px; font-family:var(--font-heading);">Report Harassment</h2>
