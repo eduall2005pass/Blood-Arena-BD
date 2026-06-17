@@ -221,6 +221,13 @@ if (!function_exists('render_social_bar')) {
     </div>
 
     <nav class="side-drawer-nav">
+
+      <!-- Install as App — সবার ১ম, ইতিমধ্যে install থাকলে JS hide করে দেয় -->
+      <button class="sd-item sd-install" id="sdInstallItem" onclick="closeSideDrawer(); sidebarInstallApp();">
+        <span class="sd-ic">📲</span>
+        <span>Install as App</span>
+      </button>
+
       <p class="side-drawer-group">নেভিগেশন</p>
 
       <button class="sd-item" onclick="closeSideDrawer(); appSwitchPage('home')">

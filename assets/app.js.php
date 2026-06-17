@@ -4499,6 +4499,50 @@ function settingsInstallApp() {
         if (overlay) overlay.classList.add('show');
     }, 320);
 }
+// Sidebar "Install as App" — Settings item-এর মতোই overlay দেখায়
+function sidebarInstallApp() {
+    setTimeout(function() {
+        var andEl = document.getElementById('pwaAndroidContent');
+        if (andEl) {
+            andEl.innerHTML =
+                '<div class="pwa-top-row">'
+              + '  <img src="icon.png" alt="Blood Arena" class="pwa-app-icon">'
+              + '  <div class="pwa-install-titles"><strong>Blood Arena</strong><span>Home Screen-এ Add করুন</span></div>'
+              + '  <div class="pwa-top-btns">'
+              + '    <button class="pwa-install-btn" onclick="pwaDoInstall()">📲 Install</button>'
+              + '    <button class="pwa-dismiss-btn" onclick="pwaDismiss()">✕</button>'
+              + '  </div>'
+              + '</div>'
+              + '<div class="pwa-features">'
+              + '  <span class="pwa-feat-pill">⚡ দ্রুত লোড</span>'
+              + '  <span class="pwa-feat-pill">📵 Offline</span>'
+              + '  <span class="pwa-feat-pill">🔔 Notification</span>'
+              + '  <span class="pwa-feat-pill">📱 App Feel</span>'
+              + '</div>';
+        }
+        var overlay = document.getElementById('pwaInstallOverlay');
+        if (overlay) overlay.classList.add('show');
+    }, 320);
+}
+
+// ইতিমধ্যে standalone হিসেবে চললে sidebar-এর Install item লুকাও
+(function() {
+    function _hideInstallIfStandalone() {
+        var isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+                        || window.navigator.standalone === true;
+        if (isStandalone) {
+            var it = document.getElementById('sdInstallItem');
+            if (it) it.style.display = 'none';
+        }
+    }
+    if (document.readyState !== 'loading') _hideInstallIfStandalone();
+    else document.addEventListener('DOMContentLoaded', _hideInstallIfStandalone);
+    window.addEventListener('appinstalled', function() {
+        var it = document.getElementById('sdInstallItem');
+        if (it) it.style.display = 'none';
+    });
+})();
+
 function requestBrowserNotif() {
     if (!('Notification' in window)) { showToast('এই browser notification সাপোর্ট করে না।', 'error'); return; }
     _saveDeviceId('notif_prompt');

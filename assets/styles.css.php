@@ -3915,6 +3915,12 @@ body.fx-on .settings-item:hover .settings-item-icon {
 .sd-item:active { background: rgba(220,38,38,0.12); }
 .sd-logout { color: var(--danger); }
 .sd-logout .sd-ic { background: rgba(220,38,38,0.10); }
+.sd-install {
+    background: linear-gradient(135deg, rgba(220,38,38,0.12), rgba(245,158,11,0.08));
+    border: 1px solid rgba(220,38,38,0.22);
+    color: var(--primary-red); font-weight: 700; margin-bottom: 6px;
+}
+.sd-install .sd-ic { background: rgba(220,38,38,0.14); }
 .sd-ic {
     width: 34px; height: 34px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;

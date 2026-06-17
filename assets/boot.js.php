@@ -66,6 +66,53 @@
         var el = document.getElementById('pwaInstallOverlay');
         if (el) el.classList.remove('show');
     };
+
+    // ── helpers ──────────────────────────────────────────────
+    function _isStandalone() {
+        return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+            || window.navigator.standalone === true;
+    }
+
+    // "Not now" — overlay বন্ধ + একই session-এ আর auto-show হবে না
+    window.pwaNotNow = function() {
+        try { sessionStorage.setItem('pwa_autoprompt_dismissed', '1'); } catch (e) {}
+        window.pwaDismiss();
+    };
+
+    // Auto-prompt content (Install + Not now)
+    function _renderAutoPrompt() {
+        var andEl = document.getElementById('pwaAndroidContent');
+        if (!andEl) return;
+        andEl.innerHTML =
+            '<div class="pwa-top-row">'
+          + '  <img src="icon.png" alt="Blood Arena" class="pwa-app-icon">'
+          + '  <div class="pwa-install-titles"><strong>Blood Arena</strong><span>Home Screen-এ Add করুন</span></div>'
+          + '  <div class="pwa-top-btns">'
+          + '    <button class="pwa-install-btn" onclick="pwaDoInstall()">📲 Install</button>'
+          + '    <button class="pwa-dismiss-btn" onclick="pwaNotNow()">Not now</button>'
+          + '  </div>'
+          + '</div>'
+          + '<div class="pwa-features">'
+          + '  <span class="pwa-feat-pill">⚡ দ্রুত লোড</span>'
+          + '  <span class="pwa-feat-pill">📵 Offline</span>'
+          + '  <span class="pwa-feat-pill">🔔 Notification</span>'
+          + '  <span class="pwa-feat-pill">📱 App Feel</span>'
+          + '</div>';
+    }
+
+    // Site load-এর ৩ সেকেন্ড পর auto install prompt (Chrome/Android)
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            if (_isStandalone()) return;                 // ইতিমধ্যে app হিসেবে চলছে
+            try { if (sessionStorage.getItem('pwa_autoprompt_dismissed')) return; } catch (e) {}
+            // beforeinstallprompt না এলে install করার মতো কিছু নেই → skip
+            if (!(_deferredPrompt || window._pwaPromptEvent)) return;
+            var el = document.getElementById('pwaInstallOverlay');
+            if (!el || el.classList.contains('show')) return;
+            _renderAutoPrompt();
+            el.classList.add('show');
+        }, 3000);
+    });
 })();
 
 
