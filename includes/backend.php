@@ -975,6 +975,14 @@ if(isset($_POST['ajax_submit'])){
     $uid        = requireAuth();
     $auth_email = $_SESSION['auth_email'] ?? null;
 
+    // ── Verification gate — ফোন verify না থাকলে register করা যাবে না ──
+    //  client-side gate bypass করলেও server মানবে না। DB থেকে fresh state নাও।
+    _refresh_auth_verified($conn);
+    if(!_auth_is_verified()){
+        echo json_encode(["status"=>"error","msg"=>"রেজিস্ট্রেশন করতে হলে প্রথমে আপনার ফোন নম্বর verify করুন।"]);
+        exit();
+    }
+
     $name       = trim($_POST['name']             ?? '');
     $phone      = trim($_POST['phone']            ?? '');
     $location   = trim($_POST['location']         ?? '');
@@ -1002,8 +1010,9 @@ if(isset($_POST['ajax_submit'])){
         exit();
     }
 
-    // verify করা নম্বর থাকলে সেটিই বাধ্যতামূলক — client-side lock bypass করলেও server মানবে না
-    $verified_phone = trim($_SESSION['auth_verify_phone'] ?? '');
+    // verify করা নম্বর থাকলে সেটিই বাধ্যতামূলক — client-side lock bypass করলেও server মানবে না।
+    //  Telegram/WhatsApp bind নম্বর অগ্রাধিকার; নইলে phone-OTP sign-in নম্বর (BA_AUTH-এর fallback-এর মতো)।
+    $verified_phone = trim($_SESSION['auth_verify_phone'] ?? '') ?: trim($_SESSION['auth_phone'] ?? '');
     if($verified_phone !== '' && $phone !== $verified_phone){
         echo json_encode(["status"=>"error","msg"=>"আপনার verify করা নম্বরটিই ব্যবহার করতে হবে।"]);
         exit();

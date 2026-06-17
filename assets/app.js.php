@@ -3701,11 +3701,23 @@ function _renderAuthState() {
     var sdLogout = document.getElementById('sdLogoutWrap');
     if (sdLogout) sdLogout.style.display = loggedIn ? '' : 'none';
 
-    // ── রেজিস্ট্রেশন ট্যাব — Google সাইন ইন না করলে register আটকাও ──
+    // ── রেজিস্ট্রেশন ট্যাব — সাইন ইন + ফোন verify দুটোই বাধ্যতামূলক ──
+    //  signed-out → sign-in prompt; signed-in কিন্তু unverified → verify prompt;
+    //  verified হলেই register toggle দেখা যাবে।
+    var verifiedNow = loggedIn && _isVerified();
     var regPrompt = document.getElementById('regAuthPrompt');
-    if (regPrompt) regPrompt.style.display = loggedIn ? 'none' : '';
+    if (regPrompt) regPrompt.style.display = verifiedNow ? 'none' : '';
+    var regSigninBlk = document.getElementById('regSigninBlock');
+    if (regSigninBlk) regSigninBlk.style.display = loggedIn ? 'none' : '';
+    var regVerifyBlk = document.getElementById('regVerifyBlock');
+    if (regVerifyBlk) regVerifyBlk.style.display = (loggedIn && !verifiedNow) ? '' : 'none';
     var regToggle = document.getElementById('regToggleContainer');
-    if (regToggle) regToggle.style.display = loggedIn ? '' : 'none';
+    if (regToggle) regToggle.style.display = verifiedNow ? '' : 'none';
+    // verify না করে আগের থেকে form খোলা থাকলে বন্ধ করো
+    if (!verifiedNow) {
+        var rfx = document.getElementById('regForm');
+        if (rfx && rfx.style.display !== 'none') { try { closeRegForm(); } catch(e){ rfx.style.display = 'none'; } }
+    }
 
     // ── Update My Info ট্যাব — sign-in gate ──
     var upPanel  = document.getElementById('updateSignedInPanel');
@@ -4170,8 +4182,9 @@ function _prefillRegFromAuth(auth) {
         if (nameEl && !nameEl.value && auth.name) nameEl.value = auth.name;
         var phoneEl = form.querySelector('input[name="phone"]');
         if (!phoneEl) return;
-        // verify করতে যে নম্বরটি ব্যবহার হয়েছে (Telegram/WhatsApp-bound) সেটিই বসাও ও lock করো
-        var verifiedPhone = auth.verify_phone || '';
+        // verify করতে যে নম্বরটি ব্যবহার হয়েছে (Telegram/WhatsApp bind, নইলে phone-OTP)
+        //  সেটিই বসাও ও lock করো — register করতে verify বাধ্যতামূলক, তাই নম্বর সবসময় locked।
+        var verifiedPhone = auth.verify_phone || auth.phone || '';
         if (verifiedPhone && /^\+8801\d{9}$/.test(verifiedPhone)) {
             phoneEl.value = verifiedPhone;
             phoneEl.readOnly = true;
@@ -4179,15 +4192,11 @@ function _prefillRegFromAuth(auth) {
             phoneEl.classList.add('locked-field');
             phoneEl.title = 'এই নম্বরটি আপনার verify করা নম্বর — পরিবর্তন করা যাবে না';
         } else {
-            // verified নম্বর নেই → আগের মতো editable রাখো
+            // verified নম্বর না থাকলে editable (register gate তবু আটকাবে)
             phoneEl.readOnly = false;
             phoneEl.removeAttribute('readonly');
             phoneEl.classList.remove('locked-field');
             phoneEl.removeAttribute('title');
-            if (auth.phone && /^\+8801\d{9}$/.test(auth.phone)
-                && (!phoneEl.value || phoneEl.value === '+880')) {
-                phoneEl.value = auth.phone;
-            }
         }
     } catch(e){}
 }

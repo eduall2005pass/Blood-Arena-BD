@@ -590,15 +590,27 @@ if (!function_exists('render_social_bar')) {
         <p class="donor-hero-text">🩸 একজন রক্তদাতা হোন — জীবন বাঁচান</p>
     </div>
 
-    <!-- SIGN IN WITH GOOGLE — registration-এর আগে verify -->
+    <!-- SIGN IN + VERIFY GATE — registration-এর আগে দুটোই বাধ্যতামূলক -->
     <div id="regAuthPrompt" style="margin-top:20px;padding:18px 16px;background:rgba(66,133,244,0.06);border:1px solid rgba(66,133,244,0.22);border-radius:0;text-align:center;">
-        <p style="color:var(--text-main);font-weight:600;font-size:1.0em;margin:0 0 4px;">🔐 শুরু করার আগে সাইন ইন করুন</p>
-        <p style="color:var(--text-muted);font-size:0.8em;margin:0 0 14px;">রেজিস্ট্রেশন করতে প্রথমে আপনার Google অ্যাকাউন্ট দিয়ে সাইন ইন করুন</p>
-        <button id="regGoogleBtn" onclick="authGoogleSignIn()" type="button"
-            style="width:100%;max-width:340px;display:inline-flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f2937;border:1.5px solid var(--border-color);border-radius:0;padding:13px;font-weight:600;font-size:0.95em;box-shadow:none;margin:0 auto;">
-            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 5.1 29.5 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 5.1 29.5 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/><path fill="#4CAF50" d="M24 45c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.2 36 26.7 37 24 37c-5.3 0-9.7-2.6-11.3-7l-6.5 5C9.1 40.3 16 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.5l6.3 5.3C39.9 36.6 45 31 45 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
-            Google দিয়ে সাইন ইন করুন
-        </button>
+        <!-- State A: signed out → Google sign-in -->
+        <div id="regSigninBlock">
+            <p style="color:var(--text-main);font-weight:600;font-size:1.0em;margin:0 0 4px;">🔐 শুরু করার আগে সাইন ইন করুন</p>
+            <p style="color:var(--text-muted);font-size:0.8em;margin:0 0 14px;">রেজিস্ট্রেশন করতে প্রথমে আপনার Google অ্যাকাউন্ট দিয়ে সাইন ইন করুন</p>
+            <button id="regGoogleBtn" onclick="authGoogleSignIn()" type="button"
+                style="width:100%;max-width:340px;display:inline-flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f2937;border:1.5px solid var(--border-color);border-radius:0;padding:13px;font-weight:600;font-size:0.95em;box-shadow:none;margin:0 auto;">
+                <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35 24 35c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 5.1 29.5 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 5.1 29.5 3 24 3 16.1 3 9.2 7.6 6.3 14.7z"/><path fill="#4CAF50" d="M24 45c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.2 36 26.7 37 24 37c-5.3 0-9.7-2.6-11.3-7l-6.5 5C9.1 40.3 16 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.5l6.3 5.3C39.9 36.6 45 31 45 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
+                Google দিয়ে সাইন ইন করুন
+            </button>
+        </div>
+        <!-- State B: signed in but phone NOT verified → verify gate -->
+        <div id="regVerifyBlock" style="display:none;">
+            <p style="color:var(--text-main);font-weight:600;font-size:1.0em;margin:0 0 4px;">📱 ফোন নম্বর verify করুন</p>
+            <p style="color:var(--text-muted);font-size:0.8em;margin:0 0 14px;">রেজিস্ট্রেশন করতে হলে প্রথমে আপনার ফোন নম্বর verify করতে হবে। যে নম্বরটি verify করবেন, সেটিই রেজিস্ট্রেশন ফর্মে বসবে।</p>
+            <button onclick="openVerifyModal()" type="button"
+                style="width:100%;max-width:340px;display:inline-flex;align-items:center;justify-content:center;gap:10px;background:var(--success);color:#000;border:none;border-radius:0;padding:13px;font-weight:700;font-size:0.95em;box-shadow:none;margin:0 auto;">
+                ✅ এখনই Verify করুন
+            </button>
+        </div>
     </div>
 
     <!-- REGISTRATION TOGGLE BUTTON -->
