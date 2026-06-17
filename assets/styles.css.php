@@ -1681,7 +1681,9 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
 
 /* Red outline on a donor card/row after it is clicked / called */
 .dc.donor-called-outline,
-.nearby-card.donor-called-outline {
+.nearby-card.donor-called-outline,
+.dc.donor-selected-outline,
+.nearby-card.donor-selected-outline {
     border-color: var(--primary-red) !important;
     outline: 2px solid var(--primary-red);
     outline-offset: -2px;

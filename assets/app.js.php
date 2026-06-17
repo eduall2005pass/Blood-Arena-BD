@@ -4348,12 +4348,26 @@ function openDonorDetail(card) {
         callBtn.style.display = 'none';
     }
 
+    // ── Red outline on the clicked card; clear any previous selection ──
+    //  Only the card currently opened in the detail popup stays highlighted.
+    document.querySelectorAll('.donor-selected-outline').forEach(function(el) {
+        el.classList.remove('donor-selected-outline');
+    });
+    card.classList.add('donor-selected-outline');
+
+    // ── Pin the page so the clicked card stays exactly where it is ──
+    //  Without locking, the background scrolls behind the centered popup and the
+    //  card appears to "move" after closing. lockBodyScroll() restores scrollY on close.
     document.getElementById('donorDetailPopup').classList.add('active');
+    lockBodyScroll();
 }
 
 function closeDonorDetail() {
     var p = document.getElementById('donorDetailPopup');
-    if (p) p.classList.remove('active');
+    if (p && p.classList.contains('active')) {
+        p.classList.remove('active');
+        unlockBodyScroll();
+    }
 }
 
 // ============================================================
