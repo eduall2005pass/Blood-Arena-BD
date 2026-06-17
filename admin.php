@@ -209,11 +209,6 @@ if(!$locked && isset($_POST['admin_login'])){
         }
     }
 
-    // ── Also allow super_admin via username field (admin_users table)
-    if($logged_as_role===null && $conn && !empty($uname_input)){
-        // already checked above — no-op
-    }
-
     if($logged_as_role !== null){
         clearFailedAttempts(); session_regenerate_id(true);
         $_SESSION['adm']=true; $_SESSION['adm_start']=time(); $_SESSION['last_active']=time();
@@ -955,23 +950,6 @@ if($logged_in && isset($_POST['act'])){
         $aff=(int)$conn->affected_rows;
         auditLog($conn,'CLEAR_SVC_NOTIFS',"mode:$mode deleted:$aff");
         echo json_encode(['ok'=>true,'msg'=>"✅ $aff টি service notification মুছে ফেলা হয়েছে।",'deleted'=>$aff]); exit();
-    }
-
-
-
-    // ── Clear Service Notifications (admin tool) ──────────
-    if($act==='clear_service_notifs' && $conn){
-        requireSuperAdmin();
-        $filter=trim($_POST['filter']??'all');
-        @$conn->query("CREATE TABLE IF NOT EXISTS `service_notifications`(`id` INT AUTO_INCREMENT PRIMARY KEY,`device_id` VARCHAR(100) NOT NULL,`type` VARCHAR(30) NOT NULL,`message` TEXT NOT NULL,`is_read` TINYINT DEFAULT 0,`created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP)ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        if($filter==='read'){
-            $conn->query("DELETE FROM service_notifications WHERE is_read=1");
-        } else {
-            $conn->query("DELETE FROM service_notifications");
-        }
-        $aff=(int)$conn->affected_rows;
-        auditLog($conn,'CLEAR_SVC_NOTIFS',"filter:$filter deleted:$aff");
-        echo json_encode(['ok'=>true,'deleted'=>$aff,'msg'=>"✅ $aff টি service notification মুছে ফেলা হয়েছে।"]); exit();
     }
 
     // ── Bulk Delete ──────────────────────────────────────
@@ -2668,32 +2646,6 @@ function clearSecretReqs(filter){
         if(d.ok){ showToast(d.msg,'#10b981'); loadSecretReqs(); }
         else { alert('❌ '+(d.msg||'Error')); }
     }).catch(function(){alert('Network error');});
-}
-
-function clearAllServiceNotifs(){
-    if(!confirm('🗑 সব service notification DB থেকে মুছে ফেলবেন? Donors এর bell থেকেও সরে যাবে।')) return;
-    var res=document.getElementById('svcNotifClearResult');
-    var fd=new FormData(); fd.append('act','clear_service_notifs'); fd.append('filter','all'); fd.append('csrf',CSRF);
-    fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}})
-    .then(function(r){return r.json();}).then(function(d){
-        res.style.display='block';
-        res.style.background=d.ok?'rgba(16,185,129,.12)':'rgba(239,68,68,.12)';
-        res.style.color=d.ok?'var(--green)':'var(--red)';
-        res.textContent=d.msg||'Done';
-    }).catch(function(){ res.style.display='block'; res.textContent='❌ Network error'; });
-}
-
-function clearReadServiceNotifs(){
-    if(!confirm('🗑 শুধু Read হওয়া service notifications মুছবেন?')) return;
-    var res=document.getElementById('svcNotifClearResult');
-    var fd=new FormData(); fd.append('act','clear_service_notifs'); fd.append('filter','read'); fd.append('csrf',CSRF);
-    fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}})
-    .then(function(r){return r.json();}).then(function(d){
-        res.style.display='block';
-        res.style.background=d.ok?'rgba(16,185,129,.12)':'rgba(239,68,68,.12)';
-        res.style.color=d.ok?'var(--green)':'var(--red)';
-        res.textContent=d.msg||'Done';
-    }).catch(function(){ res.style.display='block'; res.textContent='❌ Network error'; });
 }
 
 function resolveSecretReq(reqId, action){

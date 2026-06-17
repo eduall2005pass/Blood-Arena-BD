@@ -250,6 +250,15 @@ if (!function_exists('render_social_bar')) {
         <span class="sd-ic">🤝</span>
         <span>আমাদের স্পন্সর</span>
       </button>
+
+      <!-- Logout — sidebar-এর সবার শেষে, শুধু সাইন-ইন থাকলে দেখায় -->
+      <div id="sdLogoutWrap" style="display:none;">
+        <p class="side-drawer-group">অ্যাকাউন্ট</p>
+        <button class="sd-item sd-logout" onclick="closeSideDrawer(); authLogout();">
+          <span class="sd-ic">🚪</span>
+          <span>লগ-আউট</span>
+        </button>
+      </div>
     </nav>
 
     <div class="side-drawer-foot">&copy; <?php echo date("Y"); ?> <?= htmlspecialchars(BRAND_NAME) ?></div>

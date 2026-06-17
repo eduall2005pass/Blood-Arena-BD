@@ -3697,6 +3697,10 @@ function _renderAuthState() {
     // ── Header round account icon (Google-style avatar) ──
     _renderHeaderAccountBtn(loggedIn, auth);
 
+    // ── Sidebar logout — শুধু সাইন-ইন থাকলে দেখাও ──
+    var sdLogout = document.getElementById('sdLogoutWrap');
+    if (sdLogout) sdLogout.style.display = loggedIn ? '' : 'none';
+
     // ── রেজিস্ট্রেশন ট্যাব — Google সাইন ইন না করলে register আটকাও ──
     var regPrompt = document.getElementById('regAuthPrompt');
     if (regPrompt) regPrompt.style.display = loggedIn ? 'none' : '';
@@ -3727,7 +3731,8 @@ function _renderHeaderAccountBtn(loggedIn, auth) {
         btn.innerHTML = '<span class="header-account-fallback" id="headerAccountInit">👤</span>';
         return;
     }
-    btn.onclick = toggleAcctPop;
+    // signed-in: tapping the avatar jumps straight to the Account Dashboard
+    btn.onclick = openAccountDashboard;
     var nm    = (auth && (auth.name || auth.email || auth.phone)) || 'Account';
     btn.title = nm;
     var photo = auth && auth.photo;
@@ -4060,9 +4065,13 @@ function _renderAccountDashboard(res) {
     if (!dc) return;
     var d = res.donor;
     if (d) {
-        var avail = (d.willing === 'no') ? '<span style="color:var(--danger);font-weight:700;">⛔ এখন Unavailable</span>'
-                                         : '<span style="color:var(--success);font-weight:700;">✅ Available</span>';
+        var notWilling = (d.willing === 'no');
+        var avail = notWilling ? '<span style="color:var(--danger);font-weight:700;">⛔ এখন Unavailable</span>'
+                               : '<span style="color:var(--success);font-weight:700;">✅ Available</span>';
         var lastDon = (d.last_donation && d.last_donation !== 'no') ? d.last_donation : 'এখনো রেকর্ড নেই';
+        var willBtn = notWilling
+            ? '<button id="accWillBtn" onclick="setMyWilling(\'yes\')" style="width:100%;margin:10px 0 0;background:var(--success);color:#000;border:none;border-radius:10px;padding:11px;font-weight:700;font-size:0.85em;box-shadow:none;">✅ আবার রক্তদানে ইচ্ছুক</button>'
+            : '<button id="accWillBtn" onclick="setMyWilling(\'no\')" style="width:100%;margin:10px 0 0;background:rgba(220,38,38,0.1);color:var(--danger);border:1px solid rgba(220,38,38,0.3);border-radius:10px;padding:11px;font-weight:700;font-size:0.85em;box-shadow:none;">⛔ এখন রক্তদানে অনিচ্ছুক</button>';
         // server-এর মতো bg-class বানাও: "A+" → bgApos, "AB-" → bgABneg
         var bgClass = 'bg' + String(d.blood_group || '').replace(/[^a-zA-Z]/g,'') + ((String(d.blood_group||'').indexOf('+') !== -1) ? 'pos' : 'neg');
         dc.innerHTML =
@@ -4077,7 +4086,8 @@ function _renderAccountDashboard(res) {
                 '🗓️ শেষ রক্তদান: <strong style="color:var(--text-main);">' + _esc(lastDon) + '</strong><br>' +
                 avail +
               '</div>' +
-              '<button onclick="closeAccountModal(); appSwitchPage(\'register\'); setTimeout(function(){ try{switchTab(1); loadMyDonorInfo();}catch(e){} },220);" style="width:100%;margin:12px 0 0;background:var(--info);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:700;font-size:0.85em;box-shadow:none;">✏️ আমার তথ্য Update করুন</button>' +
+              willBtn +
+              '<button onclick="closeAccountModal(); appSwitchPage(\'register\'); setTimeout(function(){ try{switchTab(1); loadMyDonorInfo();}catch(e){} },220);" style="width:100%;margin:8px 0 0;background:var(--info);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:700;font-size:0.85em;box-shadow:none;">✏️ আমার তথ্য Update করুন</button>' +
             '</div>';
     } else {
         dc.innerHTML =
@@ -4087,6 +4097,32 @@ function _renderAccountDashboard(res) {
               '<button onclick="closeAccountModal(); appSwitchPage(\'register\'); setTimeout(function(){ try{switchTab(0);}catch(e){} },220);" style="width:100%;background:var(--success);color:#000;border:none;border-radius:10px;padding:11px;font-weight:700;font-size:0.85em;box-shadow:none;margin:0;">📝 রক্তদাতা হিসেবে যুক্ত হোন</button>' +
             '</div>';
     }
+}
+
+// ── Account Dashboard থেকে এক ট্যাপে willing/not-willing toggle ──
+function setMyWilling(val) {
+    var btn = document.getElementById('accWillBtn');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+    var fd = new FormData();
+    fd.append('set_willing', '1');
+    fd.append('willing', val);
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+        .then(safeJSON)
+        .then(function(res){
+            if (res && res.status === 'success') {
+                showToast(val === 'no' ? '⛔ আপনি এখন রক্তদানে অনিচ্ছুক হিসেবে চিহ্নিত।'
+                                       : '✅ আপনি আবার রক্তদানে ইচ্ছুক হিসেবে চিহ্নিত।', 'success');
+                openAccountDashboard(); // refresh card with new state
+            } else {
+                if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+                showToast((res && res.msg) ? res.msg : 'পরিবর্তন করা যায়নি।', 'error');
+            }
+        })
+        .catch(function(){
+            if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            showToast('Network error। আবার চেষ্টা করুন।', 'error');
+        });
 }
 
 function _renderMyMessages(rows) {

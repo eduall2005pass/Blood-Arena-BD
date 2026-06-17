@@ -141,6 +141,9 @@ header h1{
 .header-account-btn {
     background: rgba(255,255,255,0.07); border: 1.5px solid rgba(255,255,255,0.12);
     cursor: pointer; border-radius: 50%; width: 42px; height: 42px;
+    /* min-height:unset — keep the avatar a perfect circle; the global mobile
+       rule `button{min-height:44px}` would otherwise stretch it into an oval */
+    min-height: unset;
     display: flex; align-items: center; justify-content: center;
     transition: transform 0.3s, box-shadow 0.3s, border-color 0.3s;
     color: var(--text-main); padding: 0; margin: 0;
@@ -1745,6 +1748,7 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
 .notif-bell {
     background:rgba(255,255,255,0.07); border:1.5px solid rgba(255,255,255,0.12);
     font-size:1.2rem; cursor:pointer; border-radius:50%; width:42px; height:42px;
+    min-height:unset; /* stay a circle — see .header-account-btn note */
     display:flex; align-items:center; justify-content:center;
     transition:transform 0.3s,box-shadow 0.3s,border-color 0.3s;
     color:var(--text-main); padding:0; margin:0 2px;
@@ -3793,6 +3797,8 @@ body.fx-on .settings-item:hover .settings-item-icon {
     -webkit-tap-highlight-color: transparent;
 }
 .sd-item:active { background: rgba(220,38,38,0.12); }
+.sd-logout { color: var(--danger); }
+.sd-logout .sd-ic { background: rgba(220,38,38,0.10); }
 .sd-ic {
     width: 34px; height: 34px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;

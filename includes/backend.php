@@ -721,6 +721,63 @@ if(isset($_POST['load_my_donor'])){
     exit();
 }
 
+// === SET WILLINGNESS (signed-in account → instant Available/Unavailable toggle) ===
+//  Account Dashboard থেকে এক ট্যাপে নিজেকে "রক্তদানে অনিচ্ছুক" (willing_to_donate='no')
+//  বা আবার "ইচ্ছুক" ('yes') করা যায়। donor record account (auth_uid) দিয়ে মেলে;
+//  না পেলে legacy fallback: একই phone, auth_uid খালি → claim করে আপডেট করে।
+if(isset($_POST['set_willing'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    mysqli_report(MYSQLI_REPORT_OFF);
+    checkRateLimit('set_willing', 20, 60);
+    $uid     = requireAuth();
+    $willing = trim($_POST['willing'] ?? '');
+    if(!in_array($willing, ['yes','no'], true)){
+        echo json_encode(["status"=>"error","msg"=>"Invalid value."]);
+        exit();
+    }
+    $phone = $_SESSION['auth_phone'] ?? null;
+
+    // 1) account দিয়ে নিজের donor row খোঁজো
+    $stmt = $conn->prepare("SELECT id FROM donors WHERE auth_uid=? LIMIT 1");
+    $stmt->bind_param("s", $uid);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    // 2) না পেলে legacy fallback: একই phone, auth_uid খালি → claim করো
+    if(!$row && $phone){
+        $lc = $conn->prepare("SELECT id FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
+        $lc->bind_param("s", $phone);
+        $lc->execute();
+        $row = $lc->get_result()->fetch_assoc();
+        $lc->close();
+        if($row){
+            $email = $_SESSION['auth_email'] ?? null;
+            $cl = $conn->prepare("UPDATE donors SET auth_uid=?, auth_email=? WHERE id=?");
+            $cl->bind_param("ssi", $uid, $email, $row['id']);
+            $cl->execute(); $cl->close();
+        }
+    }
+
+    if(!$row){
+        echo json_encode(["status"=>"error","code"=>"no_donor","msg"=>"আপনার কোনো donor profile পাওয়া যায়নি। প্রথমে রেজিস্ট্রেশন করুন।"]);
+        exit();
+    }
+
+    $up = $conn->prepare("UPDATE donors SET willing_to_donate=? WHERE id=?");
+    $up->bind_param("si", $willing, $row['id']);
+    $ok = $up->execute();
+    $up->close();
+    if(!$ok){
+        echo json_encode(["status"=>"error","msg"=>"পরিবর্তন সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।"]);
+        exit();
+    }
+    echo json_encode(["status"=>"success","willing"=>$willing]);
+    exit();
+}
+
 // === UPDATE DONOR INFO (signed-in account) ===
 if(isset($_POST['ajax_update'])){
     checkCSRF();
