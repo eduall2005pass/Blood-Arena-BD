@@ -82,9 +82,9 @@ if(!file_exists($_schema_v2) && isset($conn)){
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     @file_put_contents($_schema_v2, date('Y-m-d H:i:s'));
 }
-// ── Schema v3: fix blood_requests table for delete_token ──────
-// Runs ONCE on first page load after deploy. Silently adds delete_token
-// column and converts ENUM columns to VARCHAR for InfinityFree MySQL 5.7 compat.
+// ── Schema v3: fix blood_requests table ──────────────────────
+// Runs ONCE on first page load after deploy. Converts ENUM columns
+// to VARCHAR for InfinityFree MySQL 5.7 compat.
 $_schema_v3 = dirname(__DIR__) . '/.schema_v3_done';
 if(!file_exists($_schema_v3) && isset($conn)){
     mysqli_report(MYSQLI_REPORT_OFF);
@@ -99,12 +99,9 @@ if(!file_exists($_schema_v3) && isset($conn)){
         `bags_needed` INT DEFAULT 1,
         `note` VARCHAR(500) DEFAULT '',
         `status` VARCHAR(20) DEFAULT 'Active',
-        `delete_token` VARCHAR(10) DEFAULT NULL,
         `req_ip` VARCHAR(50) DEFAULT NULL,
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    // Add delete_token if missing (error suppressed if already exists)
-    $conn->query("ALTER TABLE blood_requests ADD COLUMN delete_token VARCHAR(10) DEFAULT NULL");
     // Convert ENUM → VARCHAR (error suppressed if already VARCHAR)
     $conn->query("ALTER TABLE blood_requests MODIFY COLUMN urgency VARCHAR(10) DEFAULT 'High'");
     $conn->query("ALTER TABLE blood_requests MODIFY COLUMN status VARCHAR(20) DEFAULT 'Active'");
@@ -438,7 +435,7 @@ $_is_ajax = !empty($_POST['log_call']) || !empty($_POST['get_phone'])
          || !empty($_POST['get_blood_requests']) || !empty($_POST['ajax_update'])
          || !empty($_POST['load_my_donor']) || !empty($_POST['submit_report'])
          || !empty($_POST['submit_blood_request']) || !empty($_POST['save_push_sub'])
-         || !empty($_POST['delete_blood_request']) || !empty($_POST['delete_donor'])
+         || !empty($_POST['delete_donor'])
          || !empty($_POST['get_analytics']) || !empty($_POST['get_map_data'])
          || !empty($_POST['get_nearby_donors'])
          || !empty($_POST['get_service_notifs'])
@@ -453,7 +450,6 @@ $_is_ajax = !empty($_POST['log_call']) || !empty($_POST['get_phone'])
          || !empty($_POST['firebase_logout'])
          || !empty($_POST['account_info'])
          || !empty($_POST['get_my_messages'])
-         || !empty($_POST['find_my_request'])
          || !empty($_POST['get_my_requests'])
          || !empty($_POST['delete_my_request'])
          || !empty($_POST['wa_send_otp'])
@@ -1384,37 +1380,33 @@ if(isset($_POST['submit_blood_request'])){
             `bags_needed` INT DEFAULT 1,
             `note` VARCHAR(500) DEFAULT '',
             `status` VARCHAR(20) DEFAULT 'Active',
-            `delete_token` VARCHAR(10) DEFAULT NULL,
             `req_ip` VARCHAR(50) DEFAULT NULL,
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
         mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
 
-        $delete_token = str_pad((string)mt_rand(100000, 999999), 6, '0', STR_PAD_LEFT);
         $ip = $_SERVER['REMOTE_ADDR'];
         $req_device_id = trim($_POST['device_id'] ?? '');
-        $req_auth_uid  = currentAuthUid(); // signed-in account → tie request for tokenless management
+        $req_auth_uid  = currentAuthUid(); // signed-in account → tie request for account-owned management
 
         try {
-            $stmt = $conn->prepare("INSERT INTO blood_requests (patient_name,blood_group,hospital,contact,urgency,bags_needed,note,req_ip,delete_token,auth_uid) VALUES (?,?,?,?,?,?,?,?,?,?)");
-            $stmt->bind_param("sssssissss",$patient,$blood_grp,$hospital,$contact,$urgency,$bags,$note,$ip,$delete_token,$req_auth_uid);
+            $stmt = $conn->prepare("INSERT INTO blood_requests (patient_name,blood_group,hospital,contact,urgency,bags_needed,note,req_ip,auth_uid) VALUES (?,?,?,?,?,?,?,?,?)");
+            $stmt->bind_param("sssssisss",$patient,$blood_grp,$hospital,$contact,$urgency,$bags,$note,$ip,$req_auth_uid);
             if($stmt->execute()){
                 $new_id = $conn->insert_id;
                 $resp = [
                     "status"       => "success",
                     "msg"          => "✅ রক্তের অনুরোধ পাঠানো হয়েছে!",
-                    "request_id"   => (int)$new_id,
-                    "delete_token" => (string)$delete_token
+                    "request_id"   => (int)$new_id
                 ];
-                // ── Service notification → requester device এ token পাঠাও ──
+                // ── Service notification → requester device কে confirmation পাঠাও ──
                 if (!empty($req_device_id)) {
                     $sn_msg = "🆘 আপনার Emergency Blood Request সফলভাবে পাঠানো হয়েছে!\n\n"
                             . "🩸 Blood Group: {$blood_grp}\n"
                             . "🏥 Hospital: {$hospital}\n"
-                            . "🆔 Request ID: #{$new_id}\n"
-                            . "🔑 Delete Token: {$delete_token}\n\n"
-                            . "⚠️ এই Token দিয়ে Request মুছতে পারবেন। স্ক্রিনশট নিন বা সেভ করুন!\n"
+                            . "🆔 Request ID: #{$new_id}\n\n"
+                            . "🗑️ Account Dashboard → \"আমার Requests\" থেকে যেকোনো সময় Request মুছতে পারবেন।\n"
                             . "⏳ ৩ দিন পর Request স্বয়ংক্রিয়ভাবে Expire হয়ে যাবে।";
                     $sn_type = 'blood_request';
                     mysqli_report(MYSQLI_REPORT_OFF);
@@ -1559,75 +1551,7 @@ if(isset($_POST['submit_blood_request'])){
     exit();
 }
 
-// === DELETE BLOOD REQUEST (token only — no req_id or contact needed) ===
-if(isset($_POST['delete_blood_request'])){
-    checkCSRF();
-    header('Content-Type: application/json; charset=utf-8');
-    while(ob_get_level()) ob_end_clean(); ob_start();
-    checkRateLimit('delete_request', 10, 60);
-
-    $del_token = trim($_POST['delete_token'] ?? '');
-
-    if(!preg_match('/^\d{6}$/', $del_token)){
-        echo json_encode(["status"=>"error","msg"=>"❌ Token ভুল। ৬টি সংখ্যা দিন।"]);
-        exit();
-    }
-
-    mysqli_report(MYSQLI_REPORT_OFF);
-    try {
-        $stmt = $conn->prepare("SELECT id FROM blood_requests WHERE delete_token=? AND status='Active'");
-        $stmt->bind_param("s", $del_token);
-        $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-
-        if(!$row){
-            echo json_encode(["status"=>"error","msg"=>"❌ Token দিয়ে কোনো Active Request পাওয়া যায়নি।"]);
-            exit();
-        }
-
-        $upd = $conn->prepare("UPDATE blood_requests SET status='Deleted' WHERE id=?");
-        $upd->bind_param("i", $row['id']);
-        if($upd->execute()){
-            echo json_encode(["status"=>"success","msg"=>"✅ আপনার Request সফলভাবে মুছে ফেলা হয়েছে।"]);
-        } else {
-            echo json_encode(["status"=>"error","msg"=>"❌ মুছতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"]);
-        }
-        $upd->close();
-    } catch(Exception $ex) {
-        echo json_encode(["status"=>"error","msg"=>"DB error। আবার চেষ্টা করুন।"]);
-    }
-    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
-    exit();
-}
-
-// === FIND REQUEST BY DELETE TOKEN (token দিয়ে req_id বের করা) ===
-if(isset($_POST['find_my_request'])){
-    checkCSRF();
-    header('Content-Type: application/json; charset=utf-8');
-    while(ob_get_level()) ob_end_clean(); ob_start();
-    checkRateLimit('find_my_request', 10, 60);
-    $del_token = trim($_POST['delete_token'] ?? '');
-    if(!preg_match('/^\d{6}$/', $del_token)){
-        echo json_encode(["status"=>"error","msg"=>"❌ ৬ সংখ্যার Token দিন।"]);
-        exit();
-    }
-    mysqli_report(MYSQLI_REPORT_OFF);
-    $stmt = $conn->prepare("SELECT id FROM blood_requests WHERE delete_token=? AND status='Active'");
-    $stmt->bind_param("s", $del_token);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
-    if($row){
-        echo json_encode(["status"=>"success","request_id"=>(int)$row['id']]);
-    } else {
-        echo json_encode(["status"=>"error","msg"=>"❌ Token দিয়ে কোনো Active Request পাওয়া যায়নি।"]);
-    }
-    exit();
-}
-
-// === GET MY BLOOD REQUESTS (signed-in account — token লাগে না) ===
+// === GET MY BLOOD REQUESTS (signed-in account) ===
 if(isset($_POST['get_my_requests'])){
     checkCSRF();
     header('Content-Type: application/json; charset=utf-8');
@@ -1653,7 +1577,7 @@ if(isset($_POST['get_my_requests'])){
     exit();
 }
 
-// === DELETE MY BLOOD REQUEST (account-owned — token লাগে না) ===
+// === DELETE MY BLOOD REQUEST (account-owned) ===
 if(isset($_POST['delete_my_request'])){
     checkCSRF();
     header('Content-Type: application/json; charset=utf-8');
@@ -1705,7 +1629,6 @@ if(isset($_POST['get_blood_requests'])){
         `bags_needed` INT DEFAULT 1,
         `note` VARCHAR(500) DEFAULT '',
         `status` VARCHAR(20) DEFAULT 'Active',
-        `delete_token` VARCHAR(10) DEFAULT NULL,
         `req_ip` VARCHAR(50) DEFAULT NULL,
         `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");

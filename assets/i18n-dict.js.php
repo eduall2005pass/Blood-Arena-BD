@@ -101,26 +101,11 @@ window.BA_I18N = {
     "Emergency request করুন — সব donor দেখতে পাবে": "Make an emergency request — every donor will see it",
     "📋 Active Requests দেখুন": "📋 View Active Requests",
 
-    // ── Manual token recovery modal ──────────────────────────────────
-    "Token দিয়ে Request খুঁজুন": "Find Request by Token",
-    "Request submit করার সময় পাওয়া Delete Token দিন": "Enter the Delete Token you received when submitting the request",
-    "Delete Token (৬ সংখ্যা)": "Delete Token (6 digits)",
+    // ── Shared buttons ───────────────────────────────────────────────
     "বাতিল": "Cancel",
     "✅ সংরক্ষণ করুন": "✅ Save",
-
-    // ── Delete-token info modal ──────────────────────────────────────
     "Request সফলভাবে পাঠানো হয়েছে!": "Request sent successfully!",
-    "Services Notification-এও Token পাঠানো হয়েছে।": "The token has also been sent to Services Notifications.",
-    "📋 Token Copy করুন": "📋 Copy Token",
     "✓ ঠিক আছে": "✓ OK",
-    "🔑 আপনার Delete Token": "🔑 Your Delete Token",
-    "উপরের নম্বরটি চেপে ধরলে select হবে": "Press and hold the number above to select it",
-
-    // ── Delete request confirmation modal ────────────────────────────
-    "Request Delete করুন": "Delete Request",
-    "Delete Token দিলেই Request মুছে যাবে": "Entering the Delete Token will remove the request",
-    "🔑 Delete Token (৬ সংখ্যা)": "🔑 Delete Token (6 digits)",
-    "✅ Delete নিশ্চিত করুন": "✅ Confirm Delete",
 
     // ── Active blood requests section ────────────────────────────────
     "রক্তের জন্য অপেক্ষা করছেন এমন রোগীরা": "Patients waiting for blood",
@@ -339,7 +324,7 @@ window.BA_I18N = {
     "নিচের Donors ট্যাবে যান। রক্তের গ্রুপ, Badge ও availability অনুযায়ী filter করুন।": "Go to the Donors tab below. Filter by blood group, badge, and availability.",
     "Register করুন:": "Register:",
     "Register ট্যাবে গিয়ে আপনার তথ্য দিন — এটা সম্পূর্ণ বিনামূল্যে।": "Go to the Register tab and enter your details — it's completely free.",
-    "জরুরি রক্তের দরকার হলে SOS বাটন চেপে Emergency Request পাঠান। Request পাঠানোর পর একটি Delete Token পাবেন — সেটি দিয়ে পরে request মুছতে পারবেন।": "If you urgently need blood, tap the SOS button to send an Emergency Request. After sending, you'll receive a Delete Token — use it to delete the request later.",
+    "জরুরি রক্তের দরকার হলে SOS বাটন চেপে Emergency Request পাঠান। Request আপনার অ্যাকাউন্টের সাথে যুক্ত থাকে, তাই পরে \"👤 আমার Request\" tab থেকে যেকোনো সময় মুছতে পারবেন।": "If you urgently need blood, tap the SOS button to send an Emergency Request. The request is tied to your account, so you can delete it anytime later from the \"👤 My Request\" tab.",
     "কাছের donors খুঁজতে Location চালু রেখে Nearby ট্যাবে যান।": "Keep Location on and go to the Nearby tab to find nearby donors.",
     "তথ্য মুছুন:": "Delete your data:",
     "Update My Info → সাইন ইন → নিচে \"🗑️ আমার সকল তথ্য মুছে ফেলুন\" থেকে নিজেই account delete করতে পারবেন।": "Update My Info → sign in → from \"🗑️ Delete all my information\" below, you can delete your account yourself.",
@@ -364,14 +349,15 @@ window.BA_I18N = {
     "Update My Info-এ গিয়ে availability \"⛔ এখন দিতে পারব না\" করুন — এতে আপনি list-এ দেখাবেন না কিন্তু তথ্য থাকবে।": "Go to Update My Info and set availability to \"⛔ Can't right now\" — you won't appear in the list, but your data stays.",
     "সম্পূর্ণ মুছুন:": "Delete completely:",
     "Update My Info → সাইন ইন করুন → নিচে স্ক্রোল করুন → \"🗑️ আমার সকল তথ্য মুছে ফেলুন\" section খুলুন → DELETE লিখে confirm করুন। আপনার নাম, ফোন, রক্তের গ্রুপ সহ সকল তথ্য চিরতরে মুছে যাবে।": "Update My Info → sign in → scroll down → open the \"🗑️ Delete all my information\" section → type DELETE and confirm. All your information including name, phone, and blood group will be erased forever.",
-    "Request submit করার সাথে সাথে একটি": "As soon as you submit a request, a",
-    "দেওয়া হয় (যেমন: 482917)। এই Token অবশ্যই সেভ করুন।": "is issued (e.g. 482917). Be sure to save this token.",
+    "Emergency Request পাঠাতে আগে সাইন ইন করতে হয়, তাই প্রতিটি Request আপনার অ্যাকাউন্টের সাথে যুক্ত থাকে। কোনো Token মনে রাখার দরকার নেই।": "Sending an Emergency Request requires signing in first, so every request is tied to your account. No token to remember.",
     "পরে Request মুছতে:": "To delete the request later:",
     "Home-এ \"📋 Active Requests দেখুন\" বাটনে ক্লিক করুন।": "On Home, tap the \"📋 View Active Requests\" button.",
     "tab-এ যান — নিজের card দেখতে পাবেন।": "tab — you'll see your own card.",
     "বাটনে ক্লিক করুন।": "tap the button.",
-    "Delete Token দিলে Request সাথে সাথে মুছে যাবে।": "Entering the Delete Token removes the request instantly.",
-    "⚠️ Token হারিয়ে ফেললে request নিজে মুছতে পারবেন না — ৭২ ঘণ্টা পর স্বয়ংক্রিয়ভাবে Expire হয়ে যাবে।": "⚠️ If you lose the token you can't delete the request yourself — it expires automatically after 72 hours.",
+    "বাটনে ক্লিক করলেই সাথে সাথে মুছে যাবে।": "tap the button and it is removed instantly.",
+    "অথবা Account Dashboard → ": "Or from Account Dashboard → ",
+    "থেকেও মুছতে পারবেন।": "you can also delete it.",
+    "⏳ Request ৭২ ঘণ্টা পর স্বয়ংক্রিয়ভাবে Expire হয়ে যায়।": "⏳ A request expires automatically after 72 hours.",
     "Active Requests section-এ দুই ধরনের filter আছে:": "There are two kinds of filter in the Active Requests section:",
     "সকল active request দেখাবে।": "shows all active requests.",
     "শুধু আপনার পাঠানো request দেখাবে — এখান থেকেই delete করা যাবে।": "shows only the requests you sent — you can delete them from here.",
@@ -571,30 +557,21 @@ window.BA_I18N = {
     "সঠিক যোগাযোগ নম্বর দিন (+8801XXXXXXXXX)।": "Enter a valid contact number (+8801XXXXXXXXX).",
     "⏳ পাঠানো হচ্ছে...": "⏳ Sending...",
     "🆘 Emergency Request পাঠান": "🆘 Send Emergency Request",
-    "✅ Request পাঠানো হয়েছে! (Token পাওয়া যায়নি — Settings > Clear App Data চাপুন, তারপর আবার চেষ্টা করুন।)": "✅ Request sent! (Token not received — tap Settings > Clear App Data, then try again.)",
     "ব্যর্থ হয়েছে। আবার চেষ্টা করুন।": "Failed. Please try again.",
-    "✅ Emergency request পাঠানো হয়েছে! Available donors এখন দেখতে পাবেন।": "✅ Emergency request sent! Available donors can see it now.",
+    "✅ Emergency request পাঠানো হয়েছে! \"👤 আমার Request\" tab থেকে যেকোনো সময় মুছতে পারবেন।": "✅ Emergency request sent! You can delete it anytime from the \"👤 My Request\" tab.",
 
     // ── Active requests list ─────────────────────────────────────────
-    "এখানে আপনার কোনো Request নেই": "You have no requests here",
-    "নতুন device বা browser থেকে এলে Request দেখাবে না।": "Requests won't show if you come from a new device or browser.",
-    "🔑 Token দিয়ে Request খুঁজুন": "🔑 Find Request by Token",
+    "আপনার কোনো active Request নেই": "You have no active requests",
+    "জরুরি প্রয়োজনে উপরের 🆘 বাটনে ক্লিক করে Request পাঠান।": "In an emergency, tap the 🆘 button above to send a request.",
+    "নিজের Request দেখতে সাইন ইন করুন": "Sign in to see your own requests",
+    "Google অথবা ফোন নম্বর দিয়ে সাইন ইন করলে আপনার পাঠানো Request এখানে দেখাবে।": "Sign in with Google or your phone number and the requests you sent will appear here.",
+    "🔑 সাইন ইন করুন": "🔑 Sign in",
     "এখন কোনো active request নেই": "No active requests right now",
     "জরুরি প্রয়োজনে উপরের 🆘 বাটনে ক্লিক করুন": "In an emergency, tap the 🆘 button above",
     "এইমাত্র": "just now",
     "🗑️ আমার Request মুছুন": "🗑️ Delete My Request",
     "👤 আমার": "👤 Mine",
     "❌ লোড করতে সমস্যা": "❌ Loading problem",
-
-    // ── Token copy / manual token / delete request ───────────────────
-    "✅ Copy হয়েছে!": "✅ Copied!",
-    "❌ manually copy করুন": "❌ Copy manually",
-    "❌ ৬ সংখ্যার Token দিন।": "❌ Enter the 6-digit token.",
-    "⏳ খোঁজা হচ্ছে...": "⏳ Searching...",
-    "✅ Request সংরক্ষণ হয়েছে। \"👤 আমার Request\" tab-এ দেখুন।": "✅ Request saved. See it in the \"👤 My Requests\" tab.",
-    "❌ Token দিয়ে Request পাওয়া যায়নি।": "❌ No request found for that token.",
-    "৬ সংখ্যার Delete Token দিন।": "Enter the 6-digit Delete Token.",
-    "⏳ যাচাই হচ্ছে...": "⏳ Verifying...",
     "✅ Request মুছে ফেলা হয়েছে।": "✅ Request deleted.",
 
     // ── Nearby donors ────────────────────────────────────────────────
@@ -690,9 +667,6 @@ window.BA_I18N = {
     "রোগীর নাম ও হাসপাতাল দিন।": "Provide the patient's name and hospital.",
     "✅ রক্তের অনুরোধ পাঠানো হয়েছে!": "✅ Blood request sent!",
     "DB error। আবার চেষ্টা করুন।": "DB error. Please try again.",
-    "❌ Token ভুল। ৬টি সংখ্যা দিন।": "❌ Wrong token. Enter 6 digits.",
-    "❌ Token দিয়ে কোনো Active Request পাওয়া যায়নি।": "❌ No active request found for that token.",
-    "✅ আপনার Request সফলভাবে মুছে ফেলা হয়েছে।": "✅ Your request has been deleted successfully.",
     "❌ Request পাওয়া যায়নি।": "❌ Request not found.",
     "❌ এই Request আপনার নয় অথবা পাওয়া যায়নি।": "❌ This request isn't yours or wasn't found.",
     "✅ আপনার Request মুছে ফেলা হয়েছে।": "✅ Your request has been deleted.",

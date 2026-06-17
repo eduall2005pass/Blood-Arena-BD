@@ -198,6 +198,10 @@ window.addEventListener('load', function() {
   } catch(e) {}
   // Firebase v9 compat automatically uses /firebase-messaging-sw.js from root
   // Manual registration not needed — just ensure file exists at root
+
+  // Active Requests is now its own page (always visible on desktop) — prime its
+  // list once so it isn't stuck on the loading placeholder before first visit.
+  try { if (typeof loadBloodRequests === 'function') loadBloodRequests(); } catch(e) {}
 });
 
 // ============================================================

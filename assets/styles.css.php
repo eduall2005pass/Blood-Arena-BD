@@ -1781,6 +1781,37 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
     margin: 4px 12px 0 0;
 }
 
+/* ── Header account quick popup ── */
+.acct-pop-anchor {
+    position: fixed;
+    top: 76px;
+    right: 0;
+    z-index: 10051; /* above notif-panel-anchor */
+    pointer-events: none;
+}
+.acct-pop {
+    pointer-events: all;
+    margin: 4px 12px 0 0;
+    background: var(--bg-glass); border: 1px solid var(--glass-border);
+    backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-glass);
+    width: 220px; padding: 6px; display: none;
+}
+.acct-pop.show { display: block; animation: fadeIn 0.18s ease; }
+.acct-pop-item {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; margin: 0; padding: 11px 12px;
+    background: transparent; border: none; box-shadow: none;
+    color: var(--text-main); font-size: 0.9em; font-weight: 600;
+    text-align: left; cursor: pointer; border-radius: 10px;
+    min-height: unset; transition: background 0.15s;
+}
+.acct-pop-item:hover { background: rgba(255,255,255,0.07); }
+.acct-pop-ic { font-size: 1.05em; width: 22px; text-align: center; flex-shrink: 0; }
+.acct-pop-danger { color: var(--danger); }
+.acct-pop-danger:hover { background: rgba(220,38,38,0.1); }
+
 /* Notification Panel */
 .notif-panel {
     background:var(--bg-glass); border:1px solid var(--glass-border);

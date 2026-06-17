@@ -1052,9 +1052,7 @@ if($logged_in && $conn){
     if(!$res) $res=dbq($conn,"SELECT id,name,blood_group,location,phone,last_donation,willing_to_donate,total_donations,badge_level FROM donors ORDER BY id DESC LIMIT 300");
     if($res) while($row=$res->fetch_assoc()) $donors[]=$row;
 
-    $conn->query("CREATE TABLE IF NOT EXISTS `blood_requests`(`id` INT AUTO_INCREMENT PRIMARY KEY,`patient_name` VARCHAR(100),`blood_group` VARCHAR(5),`hospital` VARCHAR(200),`contact` VARCHAR(20),`urgency` VARCHAR(10) DEFAULT 'High',`bags_needed` INT DEFAULT 1,`note` VARCHAR(500) DEFAULT '',`status` VARCHAR(20) DEFAULT 'Active',`delete_token` VARCHAR(10) DEFAULT NULL,`req_ip` VARCHAR(50) DEFAULT NULL,`created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP)ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    // Ensure delete_token column exists on older installs
-    @$conn->query("ALTER TABLE blood_requests ADD COLUMN IF NOT EXISTS delete_token VARCHAR(10) DEFAULT NULL");
+    $conn->query("CREATE TABLE IF NOT EXISTS `blood_requests`(`id` INT AUTO_INCREMENT PRIMARY KEY,`patient_name` VARCHAR(100),`blood_group` VARCHAR(5),`hospital` VARCHAR(200),`contact` VARCHAR(20),`urgency` VARCHAR(10) DEFAULT 'High',`bags_needed` INT DEFAULT 1,`note` VARCHAR(500) DEFAULT '',`status` VARCHAR(20) DEFAULT 'Active',`req_ip` VARCHAR(50) DEFAULT NULL,`created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP)ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $conn->query("ALTER TABLE `blood_requests` AUTO_INCREMENT=1");
     $res2=dbq($conn,"SELECT * FROM blood_requests ORDER BY FIELD(status,'Active','Fulfilled','Expired'),created_at DESC LIMIT 100");
     if($res2) while($row=$res2->fetch_assoc()) $requests[]=$row;
@@ -1588,7 +1586,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
         <div class="ow"><table>
           <thead><tr>
             <th class="cb-th"><input type="checkbox" id="cb-all-requests" onchange="toggleAll('requests',this.checked)"></th>
-            <th>#</th><th>Patient</th><th>Group</th><th>Hospital</th><th>Contact</th><th>Urgency</th><th>Bags</th><th>Delete Token</th><th>Status</th><th>Time</th><th>Actions</th>
+            <th>#</th><th>Patient</th><th>Group</th><th>Hospital</th><th>Contact</th><th>Urgency</th><th>Bags</th><th>Status</th><th>Time</th><th>Actions</th>
           </tr></thead>
           <tbody id="rtb">
           <?php foreach($requests as $i=>$r):
@@ -1605,7 +1603,6 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
             <td style="font-family:monospace;font-size:.8em;"><?=esc($r['contact'])?></td>
             <td><span class="uc <?=$ucmap[$uc]?>"><?=esc($r['urgency'])?></span></td>
             <td style="text-align:center;"><?=(int)($r['bags_needed']??1)?></td>
-            <td style="font-family:monospace;font-size:.78em;color:var(--cyan);"><?=esc($r['delete_token']??'—')?></td>
             <td><span class="sp <?=strtolower(substr($r['status']??'Active',0,2))?>"><?=esc($r['status']??'Active')?></span></td>
             <td style="font-size:.77em;color:var(--muted);white-space:nowrap;"><?=$tm?></td>
             <td>
@@ -1614,7 +1611,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
                 <?php if($is_super):?><button class="btn bd" onclick="act('del_req',<?=$r['id']?>,this,'rr<?=$r['id']?>')">🗑</button><?php endif;?>
               </div>
             </td>
-          </tr><?php endforeach; if(empty($requests)):?><tr><td colspan="12" class="empty">কোনো request নেই</td></tr><?php endif;?>
+          </tr><?php endforeach; if(empty($requests)):?><tr><td colspan="11" class="empty">কোনো request নেই</td></tr><?php endif;?>
           </tbody>
         </table></div>
       </div>

@@ -1299,17 +1299,7 @@ function quickFilter(group) {
 // donated → recently-donated list (sorted by last donation date) · requests → Active Requests
 function kpiGoto(type) {
     if (type === 'requests') {
-        appSwitchPage('home');
-        // Force the Active Requests section open (don't toggle it shut if already open)
-        setTimeout(function () {
-            const sec = document.getElementById('reqSection');
-            if (sec) {
-                sec.style.display = 'block';
-                if (typeof loadBloodRequests === 'function') loadBloodRequests();
-                const y = sec.getBoundingClientRect().top + window.pageYOffset - 70;
-                window.scrollTo({ top: y });
-            }
-        }, 60);
+        appSwitchPage('requests');   // dedicated Active Requests page (loads its own data)
         return;
     }
 
@@ -2197,9 +2187,6 @@ document.addEventListener('DOMContentLoaded', function() {
         'aboutUsPopupOverlay',
         'locationBlockedOverlay',
         'bloodReqModal',
-        'deleteTokenInfoModal',   // FIX: was missing — token popup never got appended to body
-        'deleteRequestModal',     // FIX: was missing — delete modal stuck inside page-home
-        'manualTokenModal',       // FIX: was missing
         'requestSecretCodeModal', // new: request secret code
         'getSecretCodeModal',     // new: get secret code by ref
         'adminMsgModal',          // new: message to admin
@@ -2457,20 +2444,11 @@ function submitBloodRequest(){
             document.getElementById('req_bags').value = '1';
             document.getElementById('req_note').value = '';
             document.querySelectorAll('#reqGroupGrid .req-group-btn').forEach(function(b){ b.classList.remove('selected'); });
-            loadBloodRequests();
-            document.getElementById('reqSection').style.display='block';
-            // Show token modal after bloodReqModal close animation
-            // FIX: increased from 320ms → 450ms so MutationObserver scroll-unlock
-            // fully completes before token modal re-locks scroll (prevents hang)
-            if(d.delete_token && d.request_id){
-                addMyRequest(d.request_id, d.delete_token);
-                setTimeout(function(){
-                    showDeleteTokenModal(d.request_id, d.delete_token);
-                }, 450);
-            } else if(d.status === 'success') {
-                // Token missing — show toast with manual instructions
-                showToast('✅ Request পাঠানো হয়েছে! (Token পাওয়া যায়নি — Settings > Clear App Data চাপুন, তারপর আবার চেষ্টা করুন।)', 'success');
-            }
+            appSwitchPage('requests');   // jump to the Active Requests page (reloads the list)
+            // Request is tied to the signed-in account — manage/delete it from the
+            // "👤 আমার Request" tab here or the Account Dashboard. No token needed.
+            showToast('✅ Emergency request পাঠানো হয়েছে! "👤 আমার Request" tab থেকে যেকোনো সময় মুছতে পারবেন।', 'success');
+            if (typeof refreshMyReqIds === 'function') refreshMyReqIds();
         } else {
             showValidationError(d.msg||'ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
         }
@@ -2480,30 +2458,40 @@ function submitBloodRequest(){
     });
 }
 
+// Kept for backward-compat: Active Requests is now a dedicated page, not an
+// inline toggle — route any caller to the page.
 function toggleRequestSection(){
-    const sec = document.getElementById('reqSection');
-    if(sec.style.display==='none'||sec.style.display===''){
-        sec.style.display='block';
-        loadBloodRequests();
-    } else {
-        sec.style.display='none';
-    }
+    appSwitchPage('requests');
 }
 
-// ── My Requests localStorage helpers ──────────────────────────
-var _myRequests = (function(){
-    try { return JSON.parse(localStorage.getItem('my_blood_requests') || '[]'); } catch(e){ return []; }
-})();
-function _saveMyRequests(){ try{ localStorage.setItem('my_blood_requests', JSON.stringify(_myRequests)); }catch(e){} }
-function addMyRequest(id, token){
-    var sid = String(id);
-    // Avoid duplicates
-    _myRequests = _myRequests.filter(function(x){ return String(x.id) !== sid; });
-    _myRequests.push({id: sid, token: String(token)});
-    _saveMyRequests();
+// ── My Requests (account-owned) ───────────────────────────────
+// Ownership is derived from the signed-in account (auth_uid) via the
+// get_my_requests endpoint — no client-side token storage.
+var _myReqIds = new Set();
+function isMyRequest(id){ return _myReqIds.has(String(id)); }
+// Refresh the set of request IDs owned by the signed-in account, then re-filter.
+function refreshMyReqIds(cb){
+    if (typeof _isSignedIn === 'function' && !_isSignedIn()) {
+        _myReqIds = new Set();
+        if (typeof applyReqFilter === 'function') applyReqFilter();
+        if (cb) cb();
+        return;
+    }
+    var fd = new FormData();
+    fd.append('get_my_requests', '1');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+        .then(safeJSON)
+        .then(function(res){
+            var rows = (res && res.status === 'success' && Array.isArray(res.requests)) ? res.requests : [];
+            _myReqIds = new Set(rows.map(function(r){ return String(r.id); }));
+        })
+        .catch(function(){ /* keep previous set on error */ })
+        .then(function(){
+            if (typeof applyReqFilter === 'function') applyReqFilter();
+            if (cb) cb();
+        });
 }
-function getMyRequestToken(id){ var sid=String(id); var r=_myRequests.find(function(x){ return String(x.id)===sid; }); return r?r.token:null; }
-function isMyRequest(id){ return !!getMyRequestToken(id); }
 
 // ── Active filter state ────────────────────────────────────────
 var _reqAllData    = [];
@@ -2516,7 +2504,12 @@ function setReqTab(mode){
     var mineBtn = document.getElementById('reqTab_mine');
     if(allBtn)  allBtn.classList.toggle('req-tab-active',  mode === 'all');
     if(mineBtn) mineBtn.classList.toggle('req-tab-active', mode === 'mine');
-    applyReqFilter();
+    if(mode === 'mine'){
+        // Pull the latest account-owned request IDs; applyReqFilter runs inside.
+        refreshMyReqIds();
+    } else {
+        applyReqFilter();
+    }
 }
 
 function setReqGroupFilter(group){
@@ -2548,11 +2541,16 @@ function renderReqGrid(reqs, showDeleteBtns) {
     var grid = document.getElementById('reqGrid');
     if(!grid) return;
     if(!reqs.length){
+        var signedIn = (typeof _isSignedIn !== 'function') || _isSignedIn();
         var emptyMsg = (_reqTabMode === 'mine')
-            ? '<div style="font-size:2.5rem;margin-bottom:10px;">📭</div>'
-              +'<p style="font-weight:700;color:var(--text-main);">এখানে আপনার কোনো Request নেই</p>'
-              +'<p style="font-size:0.82em;margin-top:5px;color:var(--text-muted);">নতুন device বা browser থেকে এলে Request দেখাবে না।</p>'
-              +'<button onclick="openManualTokenModal()" style="margin-top:14px;width:auto!important;min-height:unset!important;padding:9px 18px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.3);color:var(--danger);border-radius:20px;font-size:0.82em;font-weight:700;box-shadow:none;">🔑 Token দিয়ে Request খুঁজুন</button>'
+            ? (signedIn
+                ? '<div style="font-size:2.5rem;margin-bottom:10px;">📭</div>'
+                  +'<p style="font-weight:700;color:var(--text-main);">আপনার কোনো active Request নেই</p>'
+                  +'<p style="font-size:0.82em;margin-top:5px;color:var(--text-muted);">জরুরি প্রয়োজনে উপরের 🆘 বাটনে ক্লিক করে Request পাঠান।</p>'
+                : '<div style="font-size:2.5rem;margin-bottom:10px;">🔒</div>'
+                  +'<p style="font-weight:700;color:var(--text-main);">নিজের Request দেখতে সাইন ইন করুন</p>'
+                  +'<p style="font-size:0.82em;margin-top:5px;color:var(--text-muted);">Google অথবা ফোন নম্বর দিয়ে সাইন ইন করলে আপনার পাঠানো Request এখানে দেখাবে।</p>'
+                  +'<button onclick="if(typeof openAuthModal===\'function\')openAuthModal()" style="margin-top:14px;width:auto!important;min-height:unset!important;padding:9px 18px;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.3);color:var(--danger);border-radius:20px;font-size:0.82em;font-weight:700;box-shadow:none;">🔑 সাইন ইন করুন</button>')
             : '<div style="font-size:3rem;margin-bottom:10px;">🕊️</div><p style="font-weight:600;color:var(--text-main);">এখন কোনো active request নেই</p><p style="font-size:0.85em;margin-top:5px;color:var(--text-muted);">জরুরি প্রয়োজনে উপরের 🆘 বাটনে ক্লিক করুন</p>';
         grid.innerHTML = '<div style="text-align:center;padding:40px;grid-column:1/-1;">' + emptyMsg + '</div>';
         return;
@@ -2572,7 +2570,7 @@ function renderReqGrid(reqs, showDeleteBtns) {
     grid.innerHTML = reqs.map(function(r){
         var mine = isMyRequest(r.id);
         var deleteBtn = mine
-            ? '<button onclick="openDeleteRequestModal('+r.id+', \''+escHtml(r.contact)+'\')" style="margin-top:8px;width:100%;padding:9px;background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.35);color:var(--danger);border-radius:10px;font-size:0.82em;cursor:pointer;font-weight:700;min-height:unset;box-shadow:none;margin-top:8px;">🗑️ আমার Request মুছুন</button>'
+            ? '<button onclick="deleteMyAccountRequest('+r.id+', this)" style="margin-top:8px;width:100%;padding:9px;background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.35);color:var(--danger);border-radius:10px;font-size:0.82em;cursor:pointer;font-weight:700;min-height:unset;box-shadow:none;margin-top:8px;">🗑️ আমার Request মুছুন</button>'
             : '';
         var myBadge = mine ? '<span style="font-size:0.7em;background:rgba(220,38,38,0.12);color:var(--danger);border-radius:20px;padding:2px 8px;font-weight:700;margin-left:6px;">👤 আমার</span>' : '';
         return '<div class="req-card '+(urgencyClass[r.urgency]||'high')+'">'
@@ -2602,100 +2600,14 @@ function loadBloodRequests(){
     .then(safeJSON)
     .then(function(reqs){
         _reqAllData = reqs;
-        applyReqFilter();
+        // Refresh account ownership so "👤 আমার" badge + delete buttons show on every tab
+        // (refreshMyReqIds calls applyReqFilter once it resolves).
+        refreshMyReqIds();
     }).catch(function(){
         document.getElementById('reqGrid').innerHTML = '<div style="text-align:center;padding:20px;color:var(--danger);grid-column:1/-1;">❌ লোড করতে সমস্যা</div>';
     });
 }
 
-// ============================================================
-// FEATURE: DELETE BLOOD REQUEST (OTP token verify)
-// ============================================================
-var _dtmCountdownTimer = null;
-
-function showDeleteTokenModal(reqId, token) {
-    document.getElementById('dtm_token_show').textContent  = token;
-    // Reset state
-    var okBtn       = document.getElementById('dtm_ok_btn');
-    var copyBtn     = document.getElementById('dtm_copy_btn');
-    var countdownEl = document.getElementById('dtm_countdown');
-    okBtn.disabled  = false;
-    okBtn.style.background = 'var(--danger)';
-    okBtn.style.cursor     = 'pointer';
-    copyBtn.innerHTML      = '📋 Token Copy করুন';
-    okBtn.dataset.reqId = reqId;
-    okBtn.dataset.token = token;
-    countdownEl.textContent = '';
-    if (_dtmCountdownTimer) { clearInterval(_dtmCountdownTimer); _dtmCountdownTimer = null; }
-    // Play sound
-    if (localStorage.getItem('sound_off') !== '1') {
-        try { var s = document.getElementById('successSound'); if (s) { s.currentTime = 0; s.play().catch(function(){}); } } catch(e) {}
-    }
-    document.getElementById('deleteTokenInfoModal').classList.add('active');
-}
-
-function copyDeleteToken() {
-    var btn     = document.getElementById('dtm_copy_btn');
-    var token   = document.getElementById('dtm_token_show').textContent;
-    var text    = 'Blood Arena — Delete Token: ' + token + '\n⚠️ এই Token দিয়ে request মুছতে পারবেন।';
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(function(){
-            btn.innerHTML = '✅ Copy হয়েছে!';
-        }).catch(function(){ _fallbackCopyToken(text, btn); });
-    } else {
-        _fallbackCopyToken(text, btn);
-    }
-}
-
-function _fallbackCopyToken(text, btn) {
-    var ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.focus(); ta.select();
-    try { document.execCommand('copy'); btn.innerHTML = '✅ Copy হয়েছে!'; } catch(e) { btn.innerHTML = '❌ manually copy করুন'; }
-    document.body.removeChild(ta);
-}
-
-function openDeleteRequestModal(reqId, contact) {
-    // Auto-fill token if saved in localStorage (search by reqId)
-    var savedToken = getMyRequestToken(reqId);
-    document.getElementById('del_token_input').value = savedToken || '';
-    document.getElementById('del_error_msg').style.display = 'none';
-    document.getElementById('deleteRequestModal').classList.add('active');
-}
-
-function closeDeleteRequestModal() {
-    document.getElementById('deleteRequestModal').classList.remove('active');
-    _forceUnlockBodyScroll();
-}
-
-function closeDeleteTokenInfoModal() {
-    document.getElementById('deleteTokenInfoModal').classList.remove('active');
-    // FIX: Force-reset ALL scroll lock state.
-    // Previously only _forceUnlockBodyScroll() was called, but if _scrollLockCount
-    // was out of sync (due to modal stacking), body stayed position:fixed forever —
-    // causing home tab and all navigation to appear frozen/broken.
-    _scrollLockCount = 0;
-    document.body.dataset.scrollLocked = '0';
-    var scrollY = parseInt(document.body.dataset.scrollY || '0', 10);
-    document.body.style.position = '';
-    document.body.style.top      = '';
-    document.body.style.left     = '';
-    document.body.style.right    = '';
-    document.body.style.overflow = '';
-    window.scrollTo(0, scrollY);
-    showToast('✅ Emergency request পাঠানো হয়েছে! Available donors এখন দেখতে পাবেন।', 'success');
-}
-
-function openManualTokenModal() {
-    document.getElementById('manual_token').value   = '';
-    document.getElementById('manual_token_error').style.display = 'none';
-    document.getElementById('manualTokenModal').classList.add('active');
-}
-function closeManualTokenModal() {
-    document.getElementById('manualTokenModal').classList.remove('active');
-    // Force-unlock body scroll in case MutationObserver missed it
-    _forceUnlockBodyScroll();
-}
 // Safety: unlock body scroll if no popup-overlay or settings panel is open
 function _forceUnlockBodyScroll() {
     setTimeout(function() {
@@ -2713,79 +2625,6 @@ function _forceUnlockBodyScroll() {
             window.scrollTo(0, scrollY);
         }
     }, 50);
-}
-function saveManualToken() {
-    var token = document.getElementById('manual_token').value.trim();
-    var errEl = document.getElementById('manual_token_error');
-    if(!/^\d{6}$/.test(token)) {
-        errEl.textContent='❌ ৬ সংখ্যার Token দিন।'; errEl.style.display='block'; return;
-    }
-    errEl.style.display = 'none';
-    var btn = document.querySelector('#manualTokenModal button[onclick="saveManualToken()"]');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ খোঁজা হচ্ছে...'; }
-
-    var fd = new FormData();
-    fd.append('find_my_request', '1');
-    fd.append('delete_token', token);
-    fd.append('csrf_token', CSRF_TOKEN);
-    fetch(_AJAX_URL, {method:'POST', body:fd})
-    .then(safeJSON)
-    .then(function(d) {
-        if (btn) { btn.disabled = false; btn.textContent = '✅ সংরক্ষণ করুন'; }
-        if (d.status === 'success') {
-            addMyRequest(d.request_id, token);
-            closeManualTokenModal();
-            showToast('✅ Request সংরক্ষণ হয়েছে। "👤 আমার Request" tab-এ দেখুন।', 'success');
-            loadBloodRequests();
-        } else {
-            errEl.textContent = d.msg || '❌ Token দিয়ে Request পাওয়া যায়নি।';
-            errEl.style.display = 'block';
-        }
-    }).catch(function() {
-        if (btn) { btn.disabled = false; btn.textContent = '✅ সংরক্ষণ করুন'; }
-        errEl.textContent = '❌ Network error। আবার চেষ্টা করুন।';
-        errEl.style.display = 'block';
-    });
-}
-
-function confirmDeleteRequest() {
-    const token   = document.getElementById('del_token_input').value.trim();
-    const errEl   = document.getElementById('del_error_msg');
-
-    if(!/^\d{6}$/.test(token)){
-        errEl.textContent = '৬ সংখ্যার Delete Token দিন।';
-        errEl.style.display = 'block';
-        return;
-    }
-
-    const btn = document.getElementById('del_confirm_btn');
-    btn.disabled = true; btn.textContent = '⏳ যাচাই হচ্ছে...';
-
-    const fd = new FormData();
-    fd.append('delete_blood_request', '1');
-    fd.append('delete_token', token);
-    fd.append('csrf_token', CSRF_TOKEN);
-
-    fetch(_AJAX_URL, {method:'POST', body:fd})
-    .then(safeJSON)
-    .then(d=>{
-        btn.disabled = false; btn.textContent = '✅ Delete নিশ্চিত করুন';
-        if(d.status === 'success'){
-            // Remove any matching token from localStorage
-            _myRequests = _myRequests.filter(function(x){ return x.token !== token; });
-            _saveMyRequests();
-            closeDeleteRequestModal();
-            showToast(d.msg || '✅ Request মুছে ফেলা হয়েছে।', 'success');
-            loadBloodRequests();
-        } else {
-            errEl.textContent = d.msg || '❌ ব্যর্থ হয়েছে।';
-            errEl.style.display = 'block';
-        }
-    }).catch(()=>{
-        btn.disabled = false; btn.textContent = '✅ Delete নিশ্চিত করুন';
-        errEl.textContent = '❌ Network error। আবার চেষ্টা করুন।';
-        errEl.style.display = 'block';
-    });
 }
 
 // ============================================================
@@ -3036,13 +2875,12 @@ function startLiveNotif() {
             // _reqAllData সব সময় update রাখো — refreshNPanel এটা ব্যবহার করে
             _reqAllData = reqs;
             refreshNPanel(reqs);
-            var sec = document.getElementById('reqSection');
-            if(sec && sec.style.display !== 'none' && sec.style.display !== '') {
-                // Don't re-render if manualTokenModal is open — would reset user input
-                var mtModal = document.getElementById('manualTokenModal');
-                if (!mtModal || !mtModal.classList.contains('active')) {
-                    applyReqFilter();
-                }
+            // Re-render the Active Requests grid only while its page is on screen
+            // (mobile: page-active; desktop: all pages are always visible).
+            var reqPage = document.getElementById('page-requests');
+            var reqVisible = reqPage && (reqPage.classList.contains('page-active') || window.innerWidth > 650);
+            if(reqVisible) {
+                applyReqFilter();
             }
         }).catch(function(){});
     }
@@ -3633,10 +3471,12 @@ function appSwitchPage(pageKey) {
             'donors':   'donorListSection',
             'register': 'regSection',
             'more':     'analyticsSection',
-            'nearby':   'nearbySection'
+            'nearby':   'nearbySection',
+            'requests': 'page-requests'
         };
         if (sectionMap[pageKey]) navGo(sectionMap[pageKey]);
         if (pageKey === 'donors') fetchFilteredData(1);
+        if (pageKey === 'requests') loadBloodRequests();
         if (pageKey === 'more') loadAnalytics();
         if (pageKey === 'home') refreshHomeCounts();   // FIX: refresh hero bar + stat cards on home return
         // NOTE: nearby NOT auto-loaded on desktop — user clicks the search button manually
@@ -3661,6 +3501,7 @@ function appSwitchPage(pageKey) {
         nextEl.classList.add('page-active');
         window.scrollTo(0, 0);
         if (pageKey === 'donors')  fetchFilteredData(1);
+        if (pageKey === 'requests') loadBloodRequests();
         if (pageKey === 'more')    loadAnalytics();
         if (pageKey === 'home')    refreshHomeCounts();   // FIX: refresh hero bar + stat cards on home return
         if (pageKey === 'nearby')  {
@@ -3801,7 +3642,7 @@ function _syncAuthModalSections() {
             sub.textContent = 'Telegram (প্রস্তাবিত) বা WhatsApp দিয়ে';
         } else {
             title.textContent = '🔐 সাইন ইন';
-            sub.textContent = 'Google অথবা ফোন নম্বর দিয়ে';
+            sub.textContent = 'Google দিয়ে';
         }
     }
 }
@@ -3824,11 +3665,6 @@ function openVerifyModal() {
 function closeAuthModal() {
     var m = document.getElementById('authModal');
     if (m) m.classList.remove('active');
-    // reset phone OTP step
-    var step = document.getElementById('authOtpStep');
-    if (step) step.style.display = 'none';
-    var oi = document.getElementById('authOtpInput');
-    if (oi) oi.value = '';
     // reset Telegram/WhatsApp verify steps
     ['waOtpStep','tgOtpStep','tgOpenBotDiv'].forEach(function(id){
         var e = document.getElementById(id); if (e) e.style.display = 'none';
@@ -3891,7 +3727,7 @@ function _renderHeaderAccountBtn(loggedIn, auth) {
         btn.innerHTML = '<span class="header-account-fallback" id="headerAccountInit">👤</span>';
         return;
     }
-    btn.onclick = openAccountDashboard;
+    btn.onclick = toggleAcctPop;
     var nm    = (auth && (auth.name || auth.email || auth.phone)) || 'Account';
     btn.title = nm;
     var photo = auth && auth.photo;
@@ -3904,6 +3740,29 @@ function _renderHeaderAccountBtn(loggedIn, auth) {
         btn.innerHTML = '<span class="header-account-fallback">' + _esc(initial) + '</span>';
     }
 }
+
+// ── Header account quick popup (signed-in: Dashboard / Verify / Logout) ──
+function toggleAcctPop() {
+    var p = document.getElementById('acctPop');
+    if (!p) return;
+    if (p.classList.contains('show')) { p.classList.remove('show'); return; }
+    // Show "Verify Now" only when signed-in but not yet verified
+    var vb = document.getElementById('acctPopVerify');
+    if (vb) vb.style.display = (_isSignedIn() && !_isVerified()) ? '' : 'none';
+    p.classList.add('show');
+}
+function closeAcctPop() {
+    var p = document.getElementById('acctPop');
+    if (p) p.classList.remove('show');
+}
+document.addEventListener('click', function(e){
+    var p = document.getElementById('acctPop');
+    if (!p || !p.classList.contains('show')) return;
+    var btn = document.getElementById('headerAccountBtn');
+    if ((!btn || !btn.contains(e.target)) && !p.contains(e.target)) {
+        p.classList.remove('show');
+    }
+});
 
 // ============================================================
 // 👤 ACCOUNT DASHBOARD
@@ -4008,8 +3867,8 @@ function deleteMyAccountRequest(reqId, btn) {
         .then(function(d){
             if (d && d.status === 'success') {
                 showToast(d.msg || '✅ Request মুছে ফেলা হয়েছে।', 'success');
-                // local token cache থাকলে পরিষ্কার করো
-                try { if (typeof _myRequests !== 'undefined') { _myRequests = _myRequests.filter(function(x){ return String(x.id) !== String(reqId); }); _saveMyRequests(); } } catch(e){}
+                // Drop from the account-owned ID set so the Emergency "mine" tab updates
+                try { if (typeof _myReqIds !== 'undefined') _myReqIds.delete(String(reqId)); } catch(e){}
                 loadMyAccountRequests();
                 if (typeof loadBloodRequests === 'function') loadBloodRequests();
             } else {

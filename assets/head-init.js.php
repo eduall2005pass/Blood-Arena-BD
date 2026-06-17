@@ -101,9 +101,9 @@ if (_fbMessaging) {
 }
 
 // ════════════════════════════════════════════════════════════
-// 🔐 FIREBASE AUTH — Google sign-in + Phone OTP (Bangladeshi only)
+// 🔐 FIREBASE AUTH — Google sign-in
 // ════════════════════════════════════════════════════════════
-var _fbAuth, _recaptchaVerifier, _otpConfirmation;
+var _fbAuth;
 try { if (_fbApp && firebase.auth) _fbAuth = firebase.auth(); } catch(e) { console.warn('[Auth] init failed', e); }
 
 // সার্ভারে ID token পাঠিয়ে session তৈরি করো
@@ -219,117 +219,6 @@ function _completeGoogleRedirect() {
     });
 }
 try { _completeGoogleRedirect(); } catch(e){ console.warn('[Auth] redirect init', e); }
-
-// ── Firebase auth error code → বোধগম্য বাংলা বার্তা (diagnosis সহ) ──
-function _authErrMsg(err) {
-  var code = (err && err.code) ? err.code : '';
-  switch (code) {
-    case 'auth/invalid-phone-number':
-      return 'ফোন নম্বরটি সঠিক নয় (+8801XXXXXXXXX দিন)।';
-    case 'auth/missing-phone-number':
-      return 'ফোন নম্বর দিন।';
-    case 'auth/quota-exceeded':
-      return 'আজকের OTP সীমা শেষ। কিছুক্ষণ পর আবার চেষ্টা করুন অথবা Google দিয়ে সাইন ইন করুন।';
-    case 'auth/too-many-requests':
-      return 'অনেকবার চেষ্টা হয়েছে — সাময়িকভাবে বন্ধ। কিছুক্ষণ পর আবার চেষ্টা করুন।';
-    case 'auth/operation-not-allowed':
-      return 'Phone sign-in এখনো চালু করা হয়নি (Firebase Console → Authentication → Sign-in method → Phone enable করুন)।';
-    case 'auth/unauthorized-domain':
-      return 'এই ডোমেইনটি Firebase-এ অনুমোদিত নয় (Console → Authentication → Settings → Authorized domains-এ যোগ করুন)।';
-    case 'auth/captcha-check-failed':
-    case 'auth/invalid-app-credential':
-    case 'auth/missing-app-credential':
-      return 'reCAPTCHA যাচাই ব্যর্থ। পেজ refresh করে আবার চেষ্টা করুন।';
-    case 'auth/code-expired':
-      return 'OTP-এর মেয়াদ শেষ। আবার নতুন OTP পাঠান।';
-    case 'auth/invalid-verification-code':
-      return 'ভুল OTP কোড। আবার দেখুন।';
-    case 'auth/network-request-failed':
-      return 'নেটওয়ার্ক সমস্যা। Internet connection চেক করুন।';
-    default:
-      return 'OTP সমস্যা: ' + (code || (err && err.message) || 'unknown') + '. না হলে Google দিয়ে সাইন ইন করুন।';
-  }
-}
-
-// ── invisible reCAPTCHA তৈরি (phone OTP-এর জন্য আবশ্যক) ──
-//  compat SDK: signature (container, parameters)। render() কল করায় হারিয়ে যাওয়া
-//  বা hidden-modal verifier আগেই initialize হয়ে stable থাকে।
-function _ensureRecaptcha() {
-  if (_recaptchaVerifier) return _recaptchaVerifier;
-  _recaptchaVerifier = new firebase.auth.RecaptchaVerifier('authRecaptcha', {
-    size: 'invisible',
-    callback: function(){}
-  });
-  try { _recaptchaVerifier.render(); } catch(e) { console.warn('[Auth] recaptcha render', e); }
-  return _recaptchaVerifier;
-}
-
-// ── ব্যর্থ হলে reCAPTCHA verifier পরিষ্কার করো যাতে retry-তে নতুন করে তৈরি হয় ──
-function _resetRecaptcha() {
-  try { if (_recaptchaVerifier) { _recaptchaVerifier.clear(); } } catch(e){}
-  _recaptchaVerifier = null;
-}
-
-// ── Phone OTP — Step 1: OTP পাঠাও ──
-function authSendOtp() {
-  if (!_fbAuth) { _authToast('Auth এখন উপলব্ধ নয়। পেজ refresh করুন।', 'error'); return; }
-  var input = document.getElementById('authPhoneInput');
-  var phone = (input ? input.value : '').trim();
-  // Bangladeshi number normalize: 01XXXXXXXXX → +8801XXXXXXXXX
-  if (/^01\d{9}$/.test(phone)) phone = '+88' + phone;
-  if (!/^\+8801\d{9}$/.test(phone)) {
-    _authToast('সঠিক বাংলাদেশি নম্বর দিন (+8801XXXXXXXXX)।', 'error');
-    return;
-  }
-  _authBusy(true, 'authSendOtpBtn');
-  var verifier;
-  try {
-    verifier = _ensureRecaptcha();
-  } catch(e) {
-    _authBusy(false, 'authSendOtpBtn');
-    console.warn('[Auth] recaptcha init', e);
-    _resetRecaptcha();
-    _authToast('reCAPTCHA চালু করা যায়নি। পেজ refresh করে আবার চেষ্টা করুন।', 'error');
-    return;
-  }
-  _fbAuth.signInWithPhoneNumber(phone, verifier)
-    .then(function(confirmation){
-      _otpConfirmation = confirmation;
-      _authBusy(false, 'authSendOtpBtn');
-      var step2 = document.getElementById('authOtpStep');
-      if (step2) step2.style.display = 'block';
-      _authToast('📲 OTP পাঠানো হয়েছে ' + phone + ' নম্বরে।', 'success');
-    })
-    .catch(function(err){
-      _authBusy(false, 'authSendOtpBtn');
-      console.warn('[Auth] OTP send', err);
-      // verifier পরিষ্কার করো — না করলে পরের চেষ্টা একই stale verifier-এ আটকে যায়
-      _resetRecaptcha();
-      _authToast(_authErrMsg(err), 'error');
-    });
-}
-
-// ── Phone OTP — Step 2: কোড verify করো ──
-function authVerifyOtp() {
-  if (!_otpConfirmation) { _authToast('আগে OTP পাঠান।', 'error'); return; }
-  var codeEl = document.getElementById('authOtpInput');
-  var code = (codeEl ? codeEl.value : '').trim();
-  if (!/^\d{6}$/.test(code)) { _authToast('৬-সংখ্যার কোড দিন।', 'error'); return; }
-  _authBusy(true, 'authVerifyOtpBtn');
-  _otpConfirmation.confirm(code)
-    .then(function(result){ return result.user.getIdToken(); })
-    .then(function(idToken){ return _postAuthToServer(idToken); })
-    .then(function(res){
-      _authBusy(false, 'authVerifyOtpBtn');
-      if (res && res.status === 'success') _onAuthSuccess(res);
-      else _authToast((res && res.msg) ? res.msg : 'যাচাই ব্যর্থ।', 'error');
-    })
-    .catch(function(err){
-      _authBusy(false, 'authVerifyOtpBtn');
-      console.warn('[Auth] OTP verify', err);
-      _authToast(_authErrMsg(err), 'error');
-    });
-}
 
 // ── সফল login হলে ──
 function _onAuthSuccess(res) {
