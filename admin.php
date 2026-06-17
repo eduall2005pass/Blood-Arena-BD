@@ -635,22 +635,21 @@ if($logged_in && isset($_POST['act'])){
         $handles = [];
         $tok_map = [];
         foreach($tokens as $tok){
+            // Data-only — notification field থাকলে onBackgroundMessage bypass হয়,
+            // ফলে SW notification দেখায় না (push আসে না)। তাই title/body data-তে পাঠাই।
             $pl=json_encode(['message'=>[
                 'token'=>$tok,
-                'notification'=>['title'=>$push_title,'body'=>$push_body],
                 'webpush'=>[
-                    'notification'=>[
-                        'title'=>$push_title,'body'=>$push_body,
-                        'icon'=>SITE_URL.'/icon.png',
-                        'badge'=>SITE_URL.'/?badge_icon',
-                        'requireInteraction'=>false,
-                        'vibrate'=>[300,100,300,100,200],
-                        'tag'=>$pid,
-                        'data'=>['url'=>SITE_URL.'/','type'=>'admin_push','push_id'=>$pid]
-                    ],
                     'fcm_options'=>['link'=>SITE_URL.'/']
                 ],
-                'data'=>['type'=>'admin_push','push_id'=>$pid,'message'=>$push_body,'url'=>SITE_URL.'/']
+                'data'=>[
+                    'type'    =>'admin_push',
+                    'push_id' =>$pid,
+                    'title'   =>$push_title,
+                    'body'    =>$push_body,
+                    'message' =>$push_body,
+                    'url'     =>SITE_URL.'/'
+                ]
             ]]);
             $ch=curl_init($ep);
             curl_setopt_array($ch,[

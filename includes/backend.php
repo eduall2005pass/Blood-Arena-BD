@@ -970,6 +970,7 @@ if(isset($_POST['ajax_submit'])){
     // page reaches the client — and the "{main}" defeats safeJSON(), producing the
     // "Response parse করা যায়নি / Registration failed" error instead of a clean JSON message.
     mysqli_report(MYSQLI_REPORT_OFF);
+    try {
     checkRateLimit('register', 5, 300);
     $uid        = requireAuth();
     $auth_email = $_SESSION['auth_email'] ?? null;
@@ -998,6 +999,13 @@ if(isset($_POST['ajax_submit'])){
     }
     if(!preg_match('/^\+8801\d{9}$/', $phone)){
         echo json_encode(["status"=>"error","msg"=>"Phone must start with +8801 followed by 9 digits."]);
+        exit();
+    }
+
+    // verify করা নম্বর থাকলে সেটিই বাধ্যতামূলক — client-side lock bypass করলেও server মানবে না
+    $verified_phone = trim($_SESSION['auth_verify_phone'] ?? '');
+    if($verified_phone !== '' && $phone !== $verified_phone){
+        echo json_encode(["status"=>"error","msg"=>"আপনার verify করা নম্বরটিই ব্যবহার করতে হবে।"]);
         exit();
     }
 
@@ -1092,6 +1100,15 @@ if(isset($_POST['ajax_submit'])){
         echo json_encode(["status"=>"error","msg"=>"Registration failed. Please try again."]);
     }
     $stmt->close();
+    } catch (Throwable $e) {
+        // With mysqli exception mode OFF, a failed prepare() returns false and the next
+        // ->bind_param()/->execute() call throws a fatal Error whose "#0 {main}" trace
+        // defeats safeJSON() → "Response parse করা যায়নি". Catch it and emit clean JSON.
+        error_log('register handler: ' . $e->getMessage());
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(["status"=>"error","msg"=>"Registration failed. Please try again."]);
+    }
     exit();
 }
 

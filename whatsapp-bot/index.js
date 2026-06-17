@@ -70,12 +70,17 @@ app.post('/send', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'bad_message' });
   }
   // whatsapp-web.js chatId = আন্তর্জাতিক নম্বর '+' ছাড়া + "@c.us"
-  const chatId = String(phone).replace('+', '') + '@c.us';
+  const num = String(phone).replace('+', '');
+  let chatId = num + '@c.us';
   try {
-    // নম্বরটি আসলে WhatsApp-এ আছে কিনা যাচাই করো
-    const numId = await client.getNumberId(String(phone).replace('+', ''));
-    if (!numId) return res.status(422).json({ ok: false, error: 'not_on_whatsapp' });
-    await client.sendMessage(numId._serialized || chatId, String(message));
+    // ⚠️ getNumberId() নির্ভরযোগ্য নয় — valid WhatsApp নম্বরেও মাঝে মাঝে null
+    //    দেয় (contact-sync/privacy quirk)। তাই এটি দিয়ে আর block করি না; id
+    //    পেলে সেই সঠিক serialized id ব্যবহার করি, না পেলে সরাসরি <num>@c.us-এ
+    //    পাঠাই। এতে আসল নম্বর "not_on_whatsapp" বলে ভুলভাবে আটকে যায় না।
+    let numId = null;
+    try { numId = await client.getNumberId(num); } catch (e) { /* উপেক্ষা করো — সরাসরি পাঠাবো */ }
+    if (numId && numId._serialized) chatId = numId._serialized;
+    await client.sendMessage(chatId, String(message));
     return res.json({ ok: true });
   } catch (e) {
     console.error('send error:', e && e.message);

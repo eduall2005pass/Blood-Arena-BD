@@ -4169,9 +4169,25 @@ function _prefillRegFromAuth(auth) {
         var nameEl = form.querySelector('input[name="name"]');
         if (nameEl && !nameEl.value && auth.name) nameEl.value = auth.name;
         var phoneEl = form.querySelector('input[name="phone"]');
-        if (phoneEl && auth.phone && /^\+8801\d{9}$/.test(auth.phone)
-            && (!phoneEl.value || phoneEl.value === '+880')) {
-            phoneEl.value = auth.phone;
+        if (!phoneEl) return;
+        // verify করতে যে নম্বরটি ব্যবহার হয়েছে (Telegram/WhatsApp-bound) সেটিই বসাও ও lock করো
+        var verifiedPhone = auth.verify_phone || '';
+        if (verifiedPhone && /^\+8801\d{9}$/.test(verifiedPhone)) {
+            phoneEl.value = verifiedPhone;
+            phoneEl.readOnly = true;
+            phoneEl.setAttribute('readonly', 'readonly');
+            phoneEl.classList.add('locked-field');
+            phoneEl.title = 'এই নম্বরটি আপনার verify করা নম্বর — পরিবর্তন করা যাবে না';
+        } else {
+            // verified নম্বর নেই → আগের মতো editable রাখো
+            phoneEl.readOnly = false;
+            phoneEl.removeAttribute('readonly');
+            phoneEl.classList.remove('locked-field');
+            phoneEl.removeAttribute('title');
+            if (auth.phone && /^\+8801\d{9}$/.test(auth.phone)
+                && (!phoneEl.value || phoneEl.value === '+880')) {
+                phoneEl.value = auth.phone;
+            }
         }
     } catch(e){}
 }

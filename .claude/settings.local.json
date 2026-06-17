@@ -52,7 +52,9 @@
       "Bash(php includes/../assets/head-init.js.php)",
       "Bash(command -v node)",
       "Bash(echo \"node not available; php render exit: $?\")",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Read(//Users/dev/**)",
+      "Bash(php -l admin.php)"
     ]
   }
 }

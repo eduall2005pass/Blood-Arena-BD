@@ -193,6 +193,18 @@ input, select, textarea{
     cursor: text; -webkit-appearance: none; appearance: none; 
 }  
 input::placeholder, textarea::placeholder { color: var(--text-muted); }
+input.locked-field {
+    background: var(--input-bg);
+    opacity: 0.72;
+    cursor: not-allowed;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+input.locked-field:focus {
+    border-color: var(--border-color);
+    background: var(--input-bg);
+    box-shadow: none;
+}
 input:focus, select:focus, textarea:focus {
     border-color: var(--primary-red);
     background: var(--primary-red-soft);
