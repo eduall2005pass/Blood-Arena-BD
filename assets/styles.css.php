@@ -432,6 +432,37 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
 @media(min-width: 651px) {
     .popup-overlay { left: 230px !important; width: calc(100% - 230px) !important; }
 }
+
+/* ── Auth wait overlay — Google সাইন-ইন প্রসেস হওয়ার সময় "অপেক্ষা করুন" ── */
+.auth-wait-overlay {
+    position: fixed; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    z-index: 10600; /* above auth modal (10100) */
+    background: rgba(10,14,22,0.82);
+    padding: 24px;
+}
+.auth-wait-overlay.show { display: flex; }
+.auth-wait-card {
+    background: var(--card-bg, #141b2a);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 18px; padding: 30px 26px; max-width: 320px; width: 100%;
+    text-align: center; box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+}
+.auth-wait-spinner {
+    width: 44px; height: 44px; display: inline-block;
+    border: 4px solid rgba(255,255,255,0.18);
+    border-top-color: var(--primary-red, #dc2743);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+.auth-wait-title {
+    margin: 16px 0 6px; font-family: var(--font-heading);
+    font-weight: 700; font-size: 1.05em; color: var(--text-main, #fff);
+}
+.auth-wait-sub {
+    margin: 0; font-size: 0.82em; line-height: 1.6; color: var(--text-muted, #94a3b8);
+}
+
 /* Validation/result popup must always render above all other popups */
 #popup {
     z-index: 10200;

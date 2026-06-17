@@ -2080,7 +2080,22 @@ if(isset($_POST['wa_send_otp'])){
     $r = _bot_send(WA_BOT_URL, ["secret"=>WA_BOT_SECRET, "phone"=>$phone, "message"=>$message],
                    defined('WA_BOT_INSECURE_TLS') && WA_BOT_INSECURE_TLS);
     if($r['http'] !== 200){
-        echo json_encode(["status"=>"error","msg"=>"কোড পাঠানো যায়নি। নম্বরটি WhatsApp-এ আছে কিনা দেখে আবার চেষ্টা করুন।"]); exit();
+        // bot-এর আসল error কোড দেখিয়ে দাও যাতে কারণ বোঝা যায় (শুধু "failed" নয়)
+        $err = '';
+        $j = json_decode($r['body'] ?? '', true);
+        if(is_array($j) && !empty($j['error'])) $err = $j['error'];
+        $map = [
+            'not_ready'       => "WhatsApp bot এখনো প্রস্তুত নয় (সম্ভবত QR scan/পুনঃসংযোগ দরকার)। একটু পরে আবার চেষ্টা করুন।",
+            'not_on_whatsapp' => "এই নম্বরটি WhatsApp-এ পাওয়া যায়নি। সঠিক WhatsApp নম্বর দিন।",
+            'bad_phone'       => "নম্বরটি সঠিক ফরম্যাটে নেই (+8801XXXXXXXXX)।",
+            'bad_message'     => "বার্তা পাঠানো যায়নি। আবার চেষ্টা করুন।",
+            'forbidden'       => "যাচাই সার্ভিসে অনুমোদন ব্যর্থ (secret mismatch)। অ্যাডমিনকে জানান।",
+            'send_failed'     => "কোড পাঠানো যায়নি। একটু পরে আবার চেষ্টা করুন।",
+        ];
+        $msg = $map[$err] ?? ($r['http'] === 0
+            ? "যাচাই সার্ভারে সংযোগ করা যায়নি। একটু পরে আবার চেষ্টা করুন।"
+            : "কোড পাঠানো যায়নি। নম্বরটি WhatsApp-এ আছে কিনা দেখে আবার চেষ্টা করুন।");
+        echo json_encode(["status"=>"error","msg"=>$msg]); exit();
     }
     echo json_encode(["status"=>"success","msg"=>"📲 WhatsApp-এ কোড পাঠানো হয়েছে {$phone} নম্বরে।"]);
     exit();

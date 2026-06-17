@@ -1531,6 +1531,16 @@ if (!function_exists('render_social_bar')) {
     </div>
 </div>
 
+<!-- ══════════ ⏳ AUTH WAIT OVERLAY (Google সাইন-ইন প্রসেস হওয়ার সময়) ══════════ -->
+<!-- redirect থেকে ফিরলে / popup-এর পর প্রোফাইল লোড না হওয়া পর্যন্ত "অপেক্ষা করুন" দেখায় -->
+<div class="auth-wait-overlay" id="authWaitOverlay" role="alert" aria-live="assertive" aria-hidden="true">
+  <div class="auth-wait-card">
+    <span class="auth-wait-spinner" aria-hidden="true"></span>
+    <p class="auth-wait-title" id="authWaitTitle">সাইন ইন হচ্ছে…</p>
+    <p class="auth-wait-sub" id="authWaitSub">অনুগ্রহ করে অপেক্ষা করুন।</p>
+  </div>
+</div>
+
 <!-- ══════════ 👤 ACCOUNT DASHBOARD MODAL ══════════ -->
 <div class="popup-overlay" id="accountModal" onclick="if(event.target===this)closeAccountModal()">
     <div class="popup" style="max-width:440px;padding:0;overflow:hidden;max-height:88vh;display:flex;flex-direction:column;">

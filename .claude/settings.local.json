@@ -47,7 +47,12 @@
       "Bash(git *)",
       "Bash(awk 'NR==144' assets/styles.css.php)",
       "Bash(awk 'NR>=3733 && NR<=3747' assets/app.js.php)",
-      "Bash(awk 'NR==3734' assets/app.js.php)"
+      "Bash(awk 'NR==3734' assets/app.js.php)",
+      "Bash(awk '{print $6, $7, $9}')",
+      "Bash(php includes/../assets/head-init.js.php)",
+      "Bash(command -v node)",
+      "Bash(echo \"node not available; php render exit: $?\")",
+      "Read(//tmp/**)"
     ]
   }
 }

@@ -135,6 +135,36 @@ function _googleBtnsBusy(on) {
   });
 }
 
+// ── "অনুগ্রহ করে অপেক্ষা করুন" overlay — Google সাইন-ইন প্রসেস হওয়ার সময় ──
+//  redirect থেকে ফিরলে / popup বন্ধ হওয়ার পর প্রোফাইল লোড না হওয়া পর্যন্ত দেখায়।
+function _tt(bn) { return (typeof t === 'function') ? t(bn) : bn; }
+function _authWait(on, title, sub) {
+  var el = document.getElementById('authWaitOverlay');
+  if (!el) return;
+  if (on) {
+    if (title) { var ti = document.getElementById('authWaitTitle'); if (ti) ti.textContent = _tt(title); }
+    if (sub)   { var su = document.getElementById('authWaitSub');   if (su) su.textContent = _tt(sub); }
+    el.classList.add('show'); el.setAttribute('aria-hidden', 'false');
+  } else {
+    el.classList.remove('show'); el.setAttribute('aria-hidden', 'true');
+  }
+}
+function _gRedirectFlag(set) {
+  try { set ? sessionStorage.setItem('ba_g_redirect', '1') : sessionStorage.removeItem('ba_g_redirect'); } catch (e) {}
+}
+// redirect থেকে ফিরে এলে DOM ready হওয়ামাত্রই overlay দেখাও (getRedirectResult resolve হওয়ার আগেই)
+function _maybeShowRedirectWait() {
+  var pending = false;
+  try { pending = sessionStorage.getItem('ba_g_redirect') === '1'; } catch (e) {}
+  if (!pending) return;
+  _authWait(true, 'সাইন ইন সম্পন্ন হচ্ছে…', 'অনুগ্রহ করে অপেক্ষা করুন, প্রোফাইল লোড হচ্ছে।');
+  // failsafe — কোনো কারণে complete না হলে overlay যেন আটকে না থাকে
+  setTimeout(function () { _authWait(false); }, 20000);
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _maybeShowRedirectWait);
+} else { _maybeShowRedirectWait(); }
+
 // standalone PWA / iOS / in-app browser-এ popup ব্লক হয় — সেক্ষেত্রে redirect লাগে
 function _isStandalonePWA() {
   try {
@@ -152,7 +182,10 @@ function authGoogleSignIn() {
 
   // PWA standalone mode-এ popup কাজ করে না → সরাসরি redirect
   if (_isStandalonePWA()) {
+    _gRedirectFlag(true);
+    _authWait(true, 'Google-এ নিয়ে যাওয়া হচ্ছে…', 'অনুগ্রহ করে অপেক্ষা করুন।');
     _fbAuth.signInWithRedirect(provider).catch(function(err){
+      _authWait(false); _gRedirectFlag(false);
       _googleBtnsBusy(false);
       console.warn('[Auth] Google redirect', err);
       _authToast('Google সাইন-ইন শুরু করা যায়নি।', 'error');
@@ -161,21 +194,25 @@ function authGoogleSignIn() {
   }
 
   _fbAuth.signInWithPopup(provider)
-    .then(function(result){ return result.user.getIdToken(); })
+    .then(function(result){ _authWait(true, 'প্রোফাইল লোড হচ্ছে…', 'অনুগ্রহ করে অপেক্ষা করুন।'); return result.user.getIdToken(); })
     .then(function(idToken){ return _postAuthToServer(idToken); })
     .then(function(res){
       _googleBtnsBusy(false);
       if (res && res.status === 'success') _onAuthSuccess(res);
-      else _authToast((res && res.msg) ? res.msg : 'সাইন-ইন ব্যর্থ।', 'error');
+      else { _authWait(false); _authToast((res && res.msg) ? res.msg : 'সাইন-ইন ব্যর্থ।', 'error'); }
     })
     .catch(function(err){
+      _authWait(false);
       console.warn('[Auth] Google popup', err);
       if (err && err.code === 'auth/popup-closed-by-user') { _googleBtnsBusy(false); return; }
       // popup ব্লক / এই environment-এ unsupported হলে redirect-এ fallback করো
       var fallback = ['auth/popup-blocked','auth/cancelled-popup-request',
                       'auth/operation-not-supported-in-this-environment','auth/web-storage-unsupported'];
       if (err && fallback.indexOf(err.code) !== -1) {
+        _gRedirectFlag(true);
+        _authWait(true, 'Google-এ নিয়ে যাওয়া হচ্ছে…', 'অনুগ্রহ করে অপেক্ষা করুন।');
         _fbAuth.signInWithRedirect(provider).catch(function(e2){
+          _authWait(false); _gRedirectFlag(false);
           _googleBtnsBusy(false);
           console.warn('[Auth] Google redirect fallback', e2);
           _authToast('Google সাইন-ইন ব্যর্থ হয়েছে।', 'error');
@@ -198,18 +235,21 @@ function _completeGoogleRedirect() {
   if (!_fbAuth || typeof _fbAuth.getRedirectResult !== 'function') return;
   _fbAuth.getRedirectResult()
     .then(function(result){
-      if (!result || !result.user) return; // redirect থেকে আসেনি — কিছু করার নেই
+      if (!result || !result.user) { _authWait(false); _gRedirectFlag(false); return; } // redirect থেকে আসেনি
       _googleBtnsBusy(true);
+      _authWait(true, 'প্রোফাইল লোড হচ্ছে…', 'অনুগ্রহ করে অপেক্ষা করুন।');
       return result.user.getIdToken()
         .then(function(idToken){ return _postAuthToServer(idToken); })
         .then(function(res){
           _googleBtnsBusy(false);
+          _gRedirectFlag(false);
           if (res && res.status === 'success') _onAuthSuccess(res);
-          else _authToast((res && res.msg) ? res.msg : 'সাইন-ইন ব্যর্থ।', 'error');
+          else { _authWait(false); _authToast((res && res.msg) ? res.msg : 'সাইন-ইন ব্যর্থ।', 'error'); }
         });
     })
     .catch(function(err){
       _googleBtnsBusy(false);
+      _authWait(false); _gRedirectFlag(false);
       console.warn('[Auth] redirect result', err);
       if (err && err.code === 'auth/unauthorized-domain') {
         _authToast('এই ডোমেইনটি Firebase-এ অনুমোদিত নয়। Console → Authentication → Settings → Authorized domains-এ যোগ করুন।', 'error');
@@ -222,6 +262,7 @@ try { _completeGoogleRedirect(); } catch(e){ console.warn('[Auth] redirect init'
 
 // ── সফল login হলে ──
 function _onAuthSuccess(res) {
+  _authWait(false); _gRedirectFlag(false);
   try { localStorage.setItem('ba_auth', JSON.stringify({
     provider: res.provider, email: res.email, phone: res.phone, name: res.name, photo: res.photo,
     verified: !!res.verified, verify_channel: res.verify_channel || null
