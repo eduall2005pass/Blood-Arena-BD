@@ -891,25 +891,26 @@ if (!function_exists('render_social_bar')) {
 
 <div id="paginationSection" class="pagination"></div>
 
-<!-- Sponsor card (horizontal) — opens Contact us popup -->
+<!-- Sponsor card (horizontal) — opens "Be a Sponsor" popup -->
 <div class="sponsor-card" onclick="document.getElementById('sponsorContactPopup').classList.add('active')" role="button" tabindex="0">
     <div class="sponsor-card-icon">🤝</div>
     <div class="sponsor-card-text">
-        <span class="sponsor-card-title">Our Sponsor</span>
-        <span class="sponsor-card-sub">Contact us</span>
+        <span class="sponsor-card-title">স্পন্সর হোন</span>
+        <span class="sponsor-card-sub">প্ল্যাটফর্মকে সহযোগিতা করুন — যোগাযোগ করতে ট্যাপ করুন</span>
     </div>
     <span class="sponsor-card-cta">›</span>
 </div>
 
-<!-- POPUP: Sponsor / Contact us -->
+<!-- POPUP: Be a Sponsor -->
 <div class="popup-overlay" id="sponsorContactPopup" onclick="if(event.target===this)this.classList.remove('active')">
-    <div class="popup" style="max-width:360px;text-align:center;">
+    <div class="popup" style="max-width:380px;text-align:center;">
         <button class="dd-close" onclick="document.getElementById('sponsorContactPopup').classList.remove('active')" aria-label="Close">✕</button>
-        <div style="font-size:2.4rem;margin-bottom:6px;">🤝</div>
-        <h2 style="color:var(--primary-red);margin-bottom:6px;font-family:var(--font-heading);">Our Sponsor</h2>
-        <p style="font-size:0.9em;color:var(--text-muted);margin-bottom:18px;">Contact us</p>
+        <div style="font-size:2.6rem;margin-bottom:8px;">🤝</div>
+        <h2 style="color:var(--primary-red);margin-bottom:8px;font-family:var(--font-heading);">স্পন্সর হোন</h2>
+        <p style="font-size:0.9em;color:var(--text-muted);line-height:1.6;margin-bottom:20px;">এই রক্তদান প্ল্যাটফর্মটি সবার জন্য বিনামূল্যে ও সচল রাখতে আমাদের সহযোগিতা করুন। আপনার স্পন্সরশিপ দাতা সংগ্রহ, সার্ভার খরচ এবং দ্রুত জরুরি সাড়াদানে সহায়তা করে। আমাদের সাথে যুক্ত হয়ে আপনার ব্র্যান্ডকে আমাদের কমিউনিটির কাছে তুলে ধরুন।</p>
+        <span style="display:block;font-size:0.8em;color:var(--text-muted);margin-bottom:8px;">শুরু করতে আমাদের কল করুন</span>
         <a href="tel:01518981827" class="sponsor-contact-number">📞 01518981827</a>
-        <button onclick="document.getElementById('sponsorContactPopup').classList.remove('active')" style="background:transparent;border:1px solid var(--border-color);color:var(--text-main);margin-top:18px;box-shadow:none;width:100%;">Close</button>
+        <button onclick="document.getElementById('sponsorContactPopup').classList.remove('active')" style="background:transparent;border:1px solid var(--border-color);color:var(--text-main);margin-top:20px;box-shadow:none;width:100%;">বন্ধ করুন</button>
     </div>
 </div>
 

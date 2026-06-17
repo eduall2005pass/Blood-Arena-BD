@@ -45,6 +45,13 @@ window.BA_I18N = {
     // ── Call confirmation popup ──────────────────────────────────────
     "আপনার তথ্য সিস্টেমে লগ করা হচ্ছে আইনি নিরাপত্তার স্বার্থে।": "Your information is being logged in the system for legal safety.",
 
+    // ── Be a Sponsor card + popup ────────────────────────────────────
+    "স্পন্সর হোন": "Be a Sponsor",
+    "প্ল্যাটফর্মকে সহযোগিতা করুন — যোগাযোগ করতে ট্যাপ করুন": "Support the platform — tap to contact us",
+    "এই রক্তদান প্ল্যাটফর্মটি সবার জন্য বিনামূল্যে ও সচল রাখতে আমাদের সহযোগিতা করুন। আপনার স্পন্সরশিপ দাতা সংগ্রহ, সার্ভার খরচ এবং দ্রুত জরুরি সাড়াদানে সহায়তা করে। আমাদের সাথে যুক্ত হয়ে আপনার ব্র্যান্ডকে আমাদের কমিউনিটির কাছে তুলে ধরুন।": "Help us keep this blood-donation platform free and running for everyone. Your sponsorship supports donor outreach, server costs, and faster emergency response. Partner with us to get your brand featured to our community.",
+    "শুরু করতে আমাদের কল করুন": "Call us to get started",
+    "বন্ধ করুন": "Close",
+
     // ── Report harassment popup ──────────────────────────────────────
     "দাতার সাথে অশালীন আচরণ বা হয়রানি করলে আইনি ব্যবস্থা নেওয়া হবে।": "Legal action will be taken for indecent behavior or harassment toward a donor.",
     "দাতার ফোন নম্বরটি দিন (+8801XXXXXXXXX)": "Enter the donor's phone number (+8801XXXXXXXXX)",
