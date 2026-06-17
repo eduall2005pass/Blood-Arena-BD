@@ -8,7 +8,7 @@
 // ───── Brand / Identity ─────────────────────────────────────────────
 const BRAND_NAME    = 'Blood Arena';                       // full app name
 const BRAND_SHORT   = 'Blood Arena';                       // short / PWA name
-const BRAND_TAGLINE = 'বাংলাদেশের রক্তদান পোর্টাল';          // splash tagline
+const BRAND_TAGLINE = 'স্বেচ্ছাসেবী রক্তদান প্ল্যাটফর্ম';          // splash tagline
 const ORG_NAME      = 'Blood Arena Bangladesh';            // parent org (English)
 const ORG_NAME_BN   = 'ব্লাড অ্যারেনা বাংলাদেশ';            // parent org (Bangla)
 const APP_DESC      = 'Blood Arena — বাংলাদেশের রক্তদান পোর্টাল — জরুরি রক্ত খুঁজুন, রক্তদাতা হিসেবে যোগ দিন';

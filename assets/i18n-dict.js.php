@@ -14,7 +14,7 @@ window.BA_I18N = {
     "গোপনীয়তা ও নীতিমালা": "Privacy & Policy",
     "আমাদের স্পন্সর": "Our Sponsor",
     "Donate Us (সহযোগিতা করুন)": "Donate Us",
-    "আমাদের সহযোগিতা করুন": "Support Our Mission",
+    "আমাদের সহযোগিতা করুন": "Support us",
     "Support our non-profit mission": "Support our non-profit mission",
     "প্রশ্ন ও উত্তর": "Q&A",
     "রক্তের জন্য আর নয় অস্থিরতা": "No more anxiety over blood",
@@ -44,6 +44,11 @@ window.BA_I18N = {
 
     // ── Call confirmation popup ──────────────────────────────────────
     "আপনার তথ্য সিস্টেমে লগ করা হচ্ছে আইনি নিরাপত্তার স্বার্থে।": "Your information is being logged in the system for legal safety.",
+
+    // ── Support CTA row (registration page) ──────────────────────────
+    "অনুদান দিন": "Donate Us",
+    "সহযোগিতা করুন": "Support us",
+    "যোগাযোগ করুন": "Contact us",
 
     // ── Be a Sponsor card + popup ────────────────────────────────────
     "স্পন্সর হোন": "Be a Sponsor",
@@ -723,6 +728,7 @@ window.BA_I18N = {
     "লগ-আউট হয়েছে।": "Logged out.",
 
     // ════════════════ config.php — splash tagline ════════════════
+    "স্বেচ্ছাসেবী রক্তদান প্ল্যাটফর্ম": "Voluntary Blood Donation Platform",
     "বাংলাদেশের রক্তদান পোর্টাল": "Bangladesh Blood Donation Portal",
 
     // ════════════════ admin.php — admin panel UI ════════════════

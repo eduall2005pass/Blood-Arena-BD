@@ -1729,6 +1729,77 @@ tr.donor-called-outline > td {
     background: rgba(220, 38, 38, 0.06);
 }
 .sponsor-contact-number:active { filter: brightness(0.9); }
+.sponsor-contact-row {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: 10px;
+}
+.sponsor-wa-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    border-radius: var(--radius-md);
+    background: #25D366;
+    color: #fff;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(37, 211, 102, 0.35);
+    transition: transform 0.18s ease, filter 0.18s ease;
+}
+.sponsor-wa-btn svg { width: 26px; height: 26px; }
+.sponsor-wa-btn:active { transform: scale(0.94); filter: brightness(0.95); }
+
+/* ── Support CTA row (Donate Us + Be a Sponsor) ────────────────── */
+.support-cta-row {
+    display: flex;
+    gap: 12px;
+    max-width: 500px;
+    margin: 24px auto 4px;
+    padding: 0 12px;
+}
+.support-cta {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: var(--bg-main);
+    box-shadow: var(--shadow-glass);
+    cursor: pointer;
+    text-align: left;
+    min-height: unset;
+    margin: 0;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.support-cta:active { transform: scale(0.98); }
+.support-cta-ic {
+    font-size: 1.5rem;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+.support-cta-txt { display: flex; flex-direction: column; min-width: 0; }
+.support-cta-title { font-weight: 700; font-size: 0.95rem; color: var(--text-main); white-space: nowrap; }
+.support-cta-sub { font-size: 0.74em; color: var(--text-muted); white-space: nowrap; }
+
+.support-cta--donate:hover { border-color: #ec4899; }
+.support-cta--donate .support-cta-ic { background: rgba(236, 72, 153, 0.12); }
+.support-cta--sponsor:hover { border-color: var(--primary-red); }
+.support-cta--sponsor .support-cta-ic { background: rgba(220, 38, 38, 0.1); }
+
+@media (max-width: 360px) {
+    .support-cta { flex-direction: column; text-align: center; gap: 6px; padding: 12px 8px; }
+    .support-cta-txt { align-items: center; }
+}
 
 /* Scrollbar polish */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
