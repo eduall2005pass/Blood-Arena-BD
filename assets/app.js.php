@@ -106,11 +106,12 @@ function closeOverlay(id) {
 // Watches for any .popup-overlay or .settings-panel-overlay gaining/losing 'active'
 (function() {
     function syncScrollLock() {
-        // NOTE: #donorDetailPopup is intentionally excluded — locking the body
-        // (position:fixed + scrollTo-on-close) made the donor list auto-scroll/jump
-        // when opening a card. It's a fixed/centered overlay, so it needs no lock;
-        // leaving the page unlocked keeps the clicked card exactly in place.
-        const anyOpen = document.querySelector('.popup-overlay.active:not(#donorDetailPopup), .settings-panel-overlay.active');
+        // NOTE: #donorDetailPopup AND #callConfirmPopup are intentionally excluded —
+        // locking the body (position:fixed + scrollTo-on-close) made the donor list
+        // auto-scroll/jump when opening a card or tapping a card's 📞 call button.
+        // Both are fixed/centered overlays, so they need no lock; leaving the page
+        // unlocked keeps the clicked donor card exactly in place — no movement.
+        const anyOpen = document.querySelector('.popup-overlay.active:not(#donorDetailPopup):not(#callConfirmPopup), .settings-panel-overlay.active');
         if (anyOpen) {
             if (document.body.dataset.scrollLocked !== '1') {
                 document.body.dataset.scrollLocked = '1';
@@ -1152,9 +1153,6 @@ function showConfirmPopup(callerName, callerPhone) {
             ld.append('csrf_token', CSRF_TOKEN);
             fetch(_AJAX_URL, {method:'POST', body:ld}).catch(function(){});
 
-            // ── Resolve next donor element BEFORE closing popup ──
-            // (popup close triggers syncScrollLock → window.scrollTo, which would
-            //  overwrite any scrollIntoView done after it)
             var _autoScroll = false; // permanently disabled — annoying autoscroll removed
             var _nextDonorEl = null;
             var _snapSourceEl = tempCallSourceEl; // save before cleanup
@@ -1168,22 +1166,16 @@ function showConfirmPopup(callerName, callerPhone) {
                 } catch(e) {}
             }
 
-            // ── Save current scroll BEFORE popup close for the no-scroll case ──
-            // syncScrollLock restores body.dataset.scrollY on popup close — we
-            // capture it now so we can pin it back if auto-scroll is OFF.
-            var _pinScrollY = parseInt(document.body.dataset.scrollY || '0', 10);
-
             // ── Mark this donor as called (grey button) & blink next available ──
             markDonorCalled(tempDonorId);
             if (_snapSourceEl) blinkNextAvailableDonor(_snapSourceEl);
 
-            // ── Close popup (syncScrollLock fires here → window.scrollTo(_pinScrollY)) ──
+            // ── Close popup ──
+            // callConfirmPopup is excluded from the body scroll-lock (see syncScrollLock),
+            // so closing it does NOT scrollTo/jump — the clicked card stays exactly in place.
             document.getElementById("callConfirmPopup").classList.remove("active");
             tempCallSourceEl = null;
 
-            // ── Double-rAF — only scrolls when auto-scroll is ON ──
-            // When OFF: syncScrollLock already restores the position via window.scrollTo(savedY).
-            // Adding our own scrollTo here caused unwanted scroll even with setting OFF.
             if (_autoScroll && _nextDonorEl) {
                 requestAnimationFrame(function() {
                     requestAnimationFrame(function() {
