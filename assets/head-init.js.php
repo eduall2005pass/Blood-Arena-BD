@@ -173,6 +173,20 @@ function _isStandalonePWA() {
   } catch(e) { return false; }
 }
 
+// শুধু iOS-Safari standalone (হোম-স্ক্রিনে যোগ করা) মোডে popup একেবারেই খোলে না।
+// Android/Desktop-এ installed PWA-তে popup ঠিকঠাক কাজ করে — তাই সেখানে popup-ই ব্যবহার করি।
+// কারণ: Firebase-এর signInWithRedirect modern browser-এ third-party storage partitioning-এর
+// জন্য ভেঙে যায় (auth state authDomain-এ আটকে থাকে, ফিরে এসে getRedirectResult() null দেয়,
+// ফলে PWA-তে লগইন সম্পূর্ণ হয় না)। তাই popup-ই Firebase-এর প্রস্তাবিত নির্ভরযোগ্য পথ।
+function _isIOSStandalone() {
+  try {
+    var ua = navigator.userAgent || '';
+    var isIOS = /iPad|iPhone|iPod/.test(ua)
+             || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
+    return isIOS && window.navigator.standalone === true;
+  } catch(e) { return false; }
+}
+
 // ── Google Sign-in (popup; ব্যর্থ হলে redirect fallback) ──
 function authGoogleSignIn() {
   if (!_fbAuth) { _authToast('Auth এখন উপলব্ধ নয়।', 'error'); return; }
@@ -180,8 +194,9 @@ function authGoogleSignIn() {
   provider.setCustomParameters({ prompt: 'select_account' });
   _googleBtnsBusy(true);
 
-  // PWA standalone mode-এ popup কাজ করে না → সরাসরি redirect
-  if (_isStandalonePWA()) {
+  // শুধু iOS standalone-এ popup খোলে না → সেখানেই বাধ্য হয়ে redirect।
+  // Android/Desktop installed PWA-তে popup ব্যবহার হবে (redirect PWA-তে অনির্ভরযোগ্য)।
+  if (_isIOSStandalone()) {
     _gRedirectFlag(true);
     _authWait(true, 'Google-এ নিয়ে যাওয়া হচ্ছে…', 'অনুগ্রহ করে অপেক্ষা করুন।');
     _fbAuth.signInWithRedirect(provider).catch(function(err){
