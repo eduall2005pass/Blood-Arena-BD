@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>BloodArena — ডিপ্লয়মেন্ট গাইড (কোড-ভেরিফায়েড)</title>
+<style>
+  :root{
+    --red:#c1121f; --red-dark:#9d0208; --red-soft:#fde8ea;
+    --ink:#1a1a1f; --muted:#5b6470; --line:#e6e8ec; --bg:#f6f7f9;
+    --card:#ffffff; --code-bg:#0f1117; --code-ink:#e6edf3;
+    --ok:#1b7f4b; --ok-bg:#e7f6ed; --warn:#b25e00; --warn-bg:#fff3e0;
+    --danger:#a40e26; --danger-bg:#fdecef; --auto:#0a66c2; --auto-bg:#e8f1fb;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+    --sans:'Segoe UI','Hind Siliguri','Noto Sans Bengali',system-ui,-apple-system,Roboto,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:15.5px;line-height:1.72;-webkit-font-smoothing:antialiased}
+  a{color:var(--red);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:#eef0f3;color:#b3123a;
+       padding:1.5px 6px;border-radius:5px;white-space:nowrap}
+  pre{background:var(--code-bg);color:var(--code-ink);padding:14px 16px;border-radius:10px;
+      overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.6;margin:12px 0}
+  pre code{background:none;color:inherit;padding:0;white-space:pre}
+
+  /* layout */
+  .wrap{display:flex;max-width:1280px;margin:0 auto;gap:28px;padding:0 22px}
+  .toc{position:sticky;top:0;align-self:flex-start;width:248px;flex:0 0 248px;
+       height:100vh;overflow-y:auto;padding:26px 6px 40px;font-size:13.5px}
+  .toc h4{margin:18px 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .toc a{display:block;color:var(--muted);padding:4px 10px;border-radius:6px;border-left:2px solid transparent}
+  .toc a:hover{background:#eef0f3;color:var(--ink);text-decoration:none}
+  .toc a.lead{color:var(--ink);font-weight:600}
+  main{flex:1 1 auto;min-width:0;padding:26px 0 90px;max-width:880px}
+
+  header.hero{background:linear-gradient(135deg,var(--red-dark),var(--red));color:#fff;
+       border-radius:16px;padding:30px 32px;margin-bottom:8px;box-shadow:0 10px 30px rgba(157,2,8,.18)}
+  header.hero h1{margin:0 0 6px;font-size:27px;letter-spacing:-.01em}
+  header.hero p{margin:4px 0;opacity:.95;font-size:14.5px}
+  .verbadge{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);
+       border:1px solid rgba(255,255,255,.3);padding:5px 12px;border-radius:999px;font-size:12.5px;margin-top:10px}
+
+  section{background:var(--card);border:1px solid var(--line);border-radius:14px;
+       padding:24px 26px;margin:18px 0;scroll-margin-top:16px}
+  h2{font-size:21px;margin:2px 0 14px;padding-bottom:10px;border-bottom:2px solid var(--red-soft);
+     display:flex;align-items:center;gap:10px}
+  h2 .n{display:inline-flex;width:30px;height:30px;flex:0 0 30px;align-items:center;justify-content:center;
+        background:var(--red);color:#fff;border-radius:8px;font-size:15px;font-weight:700}
+  h3{font-size:16.5px;margin:20px 0 8px;color:var(--red-dark)}
+  p{margin:9px 0}
+  ul,ol{margin:8px 0;padding-left:22px}
+  li{margin:5px 0}
+
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#f1f3f6;font-weight:600;font-size:12.5px;letter-spacing:.02em}
+  td code{white-space:normal}
+  tbody tr:nth-child(even){background:#fafbfc}
+
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;line-height:1.5}
+  .t-manual{background:var(--warn-bg);color:var(--warn)}
+  .t-auto{background:var(--auto-bg);color:var(--auto)}
+  .t-missed{background:var(--danger-bg);color:var(--danger)}
+  .t-sec{background:#2b2b2b;color:#ffd9d9}
+
+  .box{border-radius:12px;padding:14px 18px;margin:16px 0;border:1px solid}
+  .box .bt{font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .box p{margin:6px 0}
+  .box.warn{background:var(--warn-bg);border-color:#f0c48a}
+  .box.danger{background:var(--danger-bg);border-color:#f3b5c1}
+  .box.ok{background:var(--ok-bg);border-color:#b8e3c8}
+  .box.info{background:var(--auto-bg);border-color:#bcd6f4}
+  .box.fix{background:#f3eefb;border-color:#d8c8f0}
+
+  .chk{list-style:none;padding-left:4px}
+  .chk li{position:relative;padding-left:30px;margin:8px 0}
+  .chk li::before{content:"";position:absolute;left:0;top:3px;width:18px;height:18px;
+       border:2px solid var(--red);border-radius:5px}
+  .ord{counter-reset:step;list-style:none;padding-left:0}
+  .ord>li{counter-increment:step;position:relative;padding:10px 0 10px 46px;border-bottom:1px dashed var(--line)}
+  .ord>li:last-child{border-bottom:none}
+  .ord>li::before{content:counter(step);position:absolute;left:0;top:9px;width:30px;height:30px;
+       background:var(--red-soft);color:var(--red-dark);font-weight:700;border-radius:8px;
+       display:flex;align-items:center;justify-content:center;font-size:14px}
+  .ord>li b{color:var(--red-dark)}
+
+  .kbd{font-family:var(--mono);background:#222;color:#fff;border-radius:5px;padding:1px 7px;font-size:12px}
+  .small{font-size:13px;color:var(--muted)}
+  .pillrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  .pill{background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-size:13px}
+  .pill b{color:var(--red-dark)}
+  hr{border:none;border-top:1px solid var(--line);margin:20px 0}
+  .foot{text-align:center;color:var(--muted);font-size:12.5px;padding:26px 0}
+
+  @media (max-width:980px){
+    .toc{display:none}
+    .wrap{padding:0 14px}
+    main{padding-top:16px}
+  }
+  @media print{
+    .toc{display:none}body{background:#fff;font-size:12px}
+    section{break-inside:avoid;box-shadow:none;border-color:#ccc}
+    header.hero{background:#9d0208 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    pre{white-space:pre-wrap}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ SIDEBAR TOC ============ -->
+  <nav class="toc">
+    <h4>সূচি</h4>
+    <a class="lead" href="#overview">কোন ভ্যালু কোথায়</a>
+    <a class="lead" href="#corrections">⚠️ গাইডের সংশোধন</a>
+    <a class="lead" href="#security">🔒 সিকিউরিটি অ্যালার্ট</a>
+    <h4>সিনারিও</h4>
+    <a href="#s1">১. শুধু ডোমেইন</a>
+    <a href="#s2">২. শুধু হোস্টিং</a>
+    <a href="#s3">৩. শুধু VM (বট)</a>
+    <a href="#s4">৪. শুধু Firebase</a>
+    <a href="#s5">৫. ফুল রি-ডিপ্লয়</a>
+    <h4>রেফারেন্স</h4>
+    <a href="#linemap">এক্সাক্ট লাইন ম্যাপ</a>
+    <a href="#verify">ফাইনাল চেকলিস্ট</a>
+  </nav>
+
+  <!-- ============ MAIN ============ -->
+  <main>
+    <header class="hero">
+      <h1>🩸 BloodArena — ডিপ্লয়মেন্ট গাইড</h1>
+      <p>ডোমেইন / হোস্টিং / VM / Firebase — আলাদা বা একসাথে বদলানোর সম্পূর্ণ গাইড।</p>
+      <p>প্রতিটা ফাইল-পাথ, লাইন নম্বর আর "অটো বনাম ম্যানুয়াল" দাবি আসল কোডের সাথে মিলিয়ে যাচাই করা।</p>
+      <span class="verbadge">✅ কোড-ভেরিফায়েড · ১৫টি এজেন্ট · যাচাই তারিখ ২০২৬-০৬-১৮</span>
+    </header>
+
+    <div class="box info">
+      <div class="bt">📌 মূল নীতি (এক লাইনে)</div>
+      <p><b>config.php</b> বেশিরভাগ জিনিসের সোর্স-অফ-ট্রুথ — PHP টেমপ্লেটিং দিয়ে <code>head.php</code>, <code>head-init.js.php</code>, <code>app.js.php</code>, manifest অটো আপডেট হয়। কিন্তু <b>৫টি নন-টেমপ্লেটেড ফাইল</b> হাতে এডিট করতেই হবে: <code>db.php</code>, <code>admin_config.php</code>, <code>firebase-messaging-sw.js</code>, <code>robots.txt</code>, এবং সার্ভার-সাইড FCM ক্রেডেনশিয়াল (<code>includes/backend.php</code> + <code>admin.php</code>)।</p>
+    </div>
+
+    <!-- =================== OVERVIEW =================== -->
+    <section id="overview">
+      <h2>কোন ভ্যালু কোথায় থাকে</h2>
+      <p>চিহ্নগুলো: <span class="tag t-auto">✅ অটো</span> config.php থেকে নিজে আপডেট হয় · <span class="tag t-manual">🔧 ম্যানুয়াল</span> হাতে এডিট করতে হবে · <span class="tag t-missed">⚠️ মিসড</span> পুরনো গাইডে ছিল না · <span class="tag t-sec">🔒 সিক্রেট</span> প্লেইনটেক্সটে কমিট করা।</p>
+      <table>
+        <thead><tr><th>ফাইল</th><th>কী থাকে</th><th>লাইন</th><th>ধরন</th></tr></thead>
+        <tbody>
+          <tr><td><code>config.php</code></td><td>SITE_URL, FIREBASE[] ক্লায়েন্ট কনফিগ, বট URL+secret, TLS ফ্ল্যাগ</td><td>18, 48-57, 76-88</td><td><span class="tag t-manual">🔧</span> সোর্স</td></tr>
+          <tr><td><code>db.php</code></td><td>DB host/user/pass/name</td><td>3-6</td><td><span class="tag t-manual">🔧</span> <span class="tag t-sec">🔒</span></td></tr>
+          <tr><td><code>admin_config.php</code></td><td>অ্যাডমিন পাসওয়ার্ড bcrypt hash (<code>ADMIN_HASH</code>)</td><td>4</td><td><span class="tag t-manual">🔧</span> <span class="tag t-sec">🔒</span></td></tr>
+          <tr><td><code>firebase-messaging-sw.js</code></td><td>Firebase ক্লায়েন্ট কনফিগ + হার্ডকোডেড SITE_URL (স্ট্যাটিক JS)</td><td>8-13, 17</td><td><span class="tag t-manual">🔧</span></td></tr>
+          <tr><td><code>robots.txt</code></td><td>Sitemap ডোমেইন</td><td>6</td><td><span class="tag t-manual">🔧</span></td></tr>
+          <tr><td><code>includes/backend.php</code></td><td>FCM service-account email + private key + projectId এন্ডপয়েন্ট (×২)</td><td>562, 1616-1617, 1647</td><td><span class="tag t-manual">🔧</span> <span class="tag t-sec">🔒</span></td></tr>
+          <tr><td><code>admin.php</code></td><td>একই service-account email+key (ডুপ্লিকেট) + FCM এন্ডপয়েন্ট + SITE_URL fallback</td><td>34, 593-594, 629</td><td><span class="tag t-manual">🔧</span> <span class="tag t-sec">🔒</span></td></tr>
+          <tr><td><code>includes/backend.php</code> (CSP)</td><td>frame-src-এ হার্ডকোডেড <code>shsmc-blood-portal.firebaseapp.com</code></td><td>276</td><td><span class="tag t-missed">⚠️</span></td></tr>
+          <tr><td><code>index.php.bak</code></td><td><b>পুরনো</b> ডোমেইন + <b>পুরনো</b> Firebase প্রজেক্ট (blood-47401) + ৩য় private key</td><td>1313, 1652, 5429…</td><td><span class="tag t-missed">⚠️</span> <span class="tag t-sec">🔒</span></td></tr>
+          <tr><td><code>telegram-bot/.env</code></td><td>TG_BOT_TOKEN, TG_BOT_SECRET, <b>TG_PORT</b>, HOST (VM-এ)</td><td>.env</td><td><span class="tag t-manual">🔧</span></td></tr>
+          <tr><td><code>whatsapp-bot/.env</code></td><td>WA_BOT_SECRET, PORT, HOST, WA_SESSION_DIR (VM-এ)</td><td>.env</td><td><span class="tag t-manual">🔧</span></td></tr>
+          <tr><td colspan="2"><code>head.php</code>, <code>head-init.js.php</code>, <code>app.js.php</code>, manifest (<code>/?manifest=1</code>)</td><td>—</td><td><span class="tag t-auto">✅ অটো</span></td></tr>
+        </tbody>
+      </table>
+      <div class="box warn">
+        <div class="bt">⚠️ সবচেয়ে বড় ফাঁদ</div>
+        <p>FCM service-account <b>private key</b> এক জায়গায় না — <b>৩ জায়গায়</b> হার্ডকোড করা: <code>includes/backend.php:1617</code>, <code>admin.php:594</code> (দুটোই বর্তমান প্রজেক্ট), এবং <code>index.php.bak:1313</code> (পুরনো প্রজেক্ট blood-47401)। Firebase বদলালে প্রথম দুটো হাতে বদলাতে হবে; <code>index.php.bak</code> ডিলিট করে ফেলাই ভালো।</p>
+      </div>
+    </section>
+
+    <!-- =================== CORRECTIONS =================== -->
+    <section id="corrections">
+      <h2>⚠️ পুরনো গাইডে যা ভুল/অসম্পূর্ণ ছিল</h2>
+      <p>যাচাই করতে গিয়ে কোডের সাথে কয়েকটা দাবি মেলেনি — এগুলো সংশোধন করা হলো:</p>
+      <table>
+        <thead><tr><th>পুরনো গাইডে</th><th>আসল কোডে (যাচাইকৃত)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Firebase বদলালে <b>২ জায়গা</b> (config.php + sw)</td>
+            <td><b>কমপক্ষে ৫ জায়গা</b>: config.php FIREBASE[], sw initializeApp, backend.php (email+key+endpoint ×২), admin.php (email+key+endpoint), backend.php CSP লাইন ২৭৬।</td>
+          </tr>
+          <tr>
+            <td>private key <b>২ ফাইলে</b> ডুপ্লিকেট</td>
+            <td><b>৩ ফাইলে</b> — backend.php, admin.php, এবং git-tracked <code>index.php.bak</code> (পুরনো প্রজেক্টের আলাদা key)।</td>
+          </tr>
+          <tr>
+            <td>Telegram বট <code>PORT</code> এনভ পড়ে</td>
+            <td>আসলে <code>TG_PORT</code> পড়ে (default 3002)। <code>PORT</code> সেট করলে উপেক্ষা হবে। <span class="small">(bot.js:17)</span></td>
+          </tr>
+          <tr>
+            <td>PHP কনস্ট্যান্ট <code>TG_BOT_SECRET</code></td>
+            <td>PHP-তে কনস্ট্যান্টের নাম <code>TELEGRAM_BOT_SECRET</code> (config.php:77)। <code>TG_BOT_SECRET</code> শুধু Node .env-এর নাম — <b>ভ্যালু</b> মিলতে হবে, নাম না।</td>
+          </tr>
+          <tr>
+            <td>TG/WA verify "dormant — creds blank"</td>
+            <td>creds <b>পপুলেটেড</b>, ফিচার <b>সক্রিয়</b>। বট URL, secret, username, TLS ফ্ল্যাগ সব সেট। <span class="small">(মেমরি নোট পুরনো — আপডেট করা হলো)</span></td>
+          </tr>
+          <tr>
+            <td>backend.php FCM এন্ডপয়েন্ট ১টা (লাইন ৫৬২)</td>
+            <td>২টা: <code>562</code> এবং <code>1647</code> — দুটোতেই projectId হার্ডকোডেড।</td>
+          </tr>
+          <tr>
+            <td>admin.php-এ <code>$client_email</code>/<code>$private_key</code></td>
+            <td>admin.php-এ ভ্যারিয়েবলের নাম <code>$ce</code>/<code>$pk</code> (backend.php-এ <code>$client_email</code>/<code>$private_key</code>)। PEM বডি বাইট-বাই-বাইট এক।</td>
+          </tr>
+          <tr>
+            <td>whatsapp/telegram বট ৩টা এনভ</td>
+            <td>WhatsApp-এ ৪র্থ এনভ <code>WA_SESSION_DIR</code>, Telegram-এ ৪র্থ এনভ <code>HOST</code> — দুটোই অপশনাল কিন্তু আছে।</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- =================== SECURITY =================== -->
+    <section id="security">
+      <h2>🔒 সিকিউরিটি অ্যালার্ট (যাচাইয়ে নতুন)</h2>
+      <div class="box danger">
+        <div class="bt">🚨 P0 — <code>index.php.bak</code> ডিলিট করো</div>
+        <p>৬৪৬ KB পুরনো মনোলিথের git-tracked ব্যাকআপ। বেশিরভাগ শেয়ার্ড হোস্ট <code>.bak</code> ফাইলকে <b>plaintext হিসেবে সার্ভ করে</b> → <code>https://ডোমেইন/index.php.bak</code> দিয়ে পুরো পুরনো কোড, একটা Firebase API key, এবং পুরনো প্রজেক্টের (blood-47401) সম্পূর্ণ <b>service-account private key (লাইন ১৩১৩)</b> ফাঁস হয়। লাইভ সাইট এটা ব্যবহার করে না।</p>
+        <p><b>করণীয়:</b> সার্ভার থেকে ডিলিট করো, git history থেকে purge করো, এবং blood-47401 service-account key রোটেট করো।</p>
+      </div>
+      <div class="box danger">
+        <div class="bt">🚨 P2 — কমিটেড সিক্রেট রোটেট করো</div>
+        <ul>
+          <li><b>FCM private key</b> — backend.php:1617 + admin.php:594 (plaintext, কমিটেড)।</li>
+          <li><b>DB পাসওয়ার্ড</b> — db.php:5 (plaintext)।</li>
+          <li><b>অ্যাডমিন hash</b> — admin_config.php:4।</li>
+          <li><b>বট secret</b> — telegram-bot/.env.example:5-এ <u>আসল secret</u> বসানো (placeholder নয়); <code>README.md</code>-এ TG+WA দুটো আসল secret + বট IP হার্ডকোডেড।</li>
+        </ul>
+        <p>হ্যান্ডওভার বা হোস্ট বদলানোর সময় এগুলো রোটেট করো; আদর্শভাবে env/secret store-এ সরাও।</p>
+      </div>
+      <div class="box warn">
+        <div class="bt">⚠️ P3 — robots.txt → sitemap 404</div>
+        <p><code>robots.txt:6</code> <code>/sitemap.xml</code>-এ পয়েন্ট করে, কিন্তু রিপোতে কোনো sitemap.xml বা জেনারেটর নেই — লিংকটা ভাঙা। হয় sitemap বানাও, নয় লাইনটা সরাও।</p>
+      </div>
+      <p class="small">নোট: এই ডকে কোনো আসল API key / private key / পাসওয়ার্ড লেখা নেই — সব রিড্যাক্টেড। শুধু অবস্থান নিশ্চিত করা হয়েছে।</p>
+    </section>
+
+    <!-- =================== SCENARIO 1 =================== -->
+    <section id="s1">
+      <h2><span class="n">১</span> শুধু ডোমেইন বদলালে</h2>
+      <p>ডোমেইন রানটাইমে <code>SITE_URL</code> দিয়ে চলে, তাই বেশিরভাগ ফাইল অটো আপডেট হয়। শুধু এই ৪টা স্ট্যাটিক/fallback জায়গা হাতে বদলাও:</p>
+      <ol class="ord">
+        <li><b>config.php:18</b> → <code>const SITE_URL = 'https://নতুন-ডোমেইন';</code> <span class="small">(সোর্স-অফ-ট্রুথ, আগে এটাই বদলাও)</span></li>
+        <li><b>firebase-messaging-sw.js:17</b> → <code>const SITE_URL = 'https://নতুন-ডোমেইন';</code> <span class="small">(স্ট্যাটিক JS — টেমপ্লেটেড না। লাইন 37/63/64/78/82 এই কনস্ট্যান্ট থেকেই আসে, তাই শুধু লাইন ১৭ যথেষ্ট)</span></li>
+        <li><b>robots.txt:6</b> → <code>Sitemap: https://নতুন-ডোমেইন/sitemap.xml</code></li>
+        <li><b>admin.php:34</b> → fallback define <code>define('SITE_URL', 'https://নতুন-ডোমেইন')</code> <span class="small">(config.php না লোড হলে এটাই ব্যবহার হয় — সিঙ্কে রাখো)</span></li>
+        <li><b>Firebase Console</b> → Authentication → Settings → Authorized domains-এ নতুন ডোমেইন add <span class="small">(না করলে Google login ভাঙবে)</span></li>
+      </ol>
+      <div class="box ok">
+        <div class="bt">✅ অটো — কিছু করতে হবে না</div>
+        <p><code>head.php</code> (og:image, JSON-LD url/logo), <code>head-init.js.php</code> (push fallback URL), <code>app.js.php</code> (সব <code>window.location.origin</code> থেকে), এবং manifest endpoint (root-relative path) — সব SITE_URL/runtime থেকে চলে।</p>
+      </div>
+      <p class="small">বটের URL সাবডোমেইন-ভিত্তিক হলে (যেমন <code>wabot.নতুন-ডোমেইন</code>) তবে <a href="#s3">সিনারিও ৩</a>-এর WA_BOT_URL/TELEGRAM_BOT_URL + DNS A-record আপডেট লাগবে।</p>
+    </section>
+
+    <!-- =================== SCENARIO 2 =================== -->
+    <section id="s2">
+      <h2><span class="n">২</span> শুধু হোস্টিং বদলালে</h2>
+      <ol class="ord">
+        <li>সব ফাইল নতুন হোস্টে আপলোড করো। <b>PHP 8.x</b> লাগবে (লাইভ হোস্ট এখন PHP 8.4; mysqli এক্সসেপশন মোড — backend.php:56-এ গ্লোবালি সেট হয়)।</li>
+        <li><b>db.php:3-6</b> → নতুন <code>$servername</code> / <code>$username</code> / <code>$password</code> / <code>$dbname</code> <span class="small">(প্লেইন PHP ভ্যারিয়েবল, procedural <code>mysqli_connect</code>)</span></li>
+        <li>DB dump ইমপোর্ট করো (donor/request টেবিল, <code>fcm_tokens</code> ইত্যাদি)। charset <code>utf8mb4</code>।</li>
+        <li><b>HTTPS বাধ্যতামূলক</b> — Firebase messaging + service worker HTTPS ছাড়া চলবে না।</li>
+        <li><b>.fcm_token_cache</b> — প্রজেক্ট রুটে অটো তৈরি হয় (<code>backend.php:1609</code> → <code>dirname(__DIR__).'/.fcm_token_cache'</code>)। রুট ডিরেক্টরি <b>writable</b> হতে হবে। ফাইলটা ডিলিট করা নিরাপদ (~৫৫ মিনিট TTL, রিজেনারেট হয়)।</li>
+        <li><b>index.php.bak</b> নতুন হোস্টে আপলোড <u>করো না</u> (সিকিউরিটি — <a href="#security">উপরে দেখো</a>)।</li>
+      </ol>
+      <div class="box info"><div class="bt">ℹ️ ডোমেইন একই থাকলে</div><p>Firebase-এ কিছু লাগবে না। IP/temp-ডোমেইন হলে সেটাকে Authorized domains-এ add করো।</p></div>
+    </section>
+
+    <!-- =================== SCENARIO 3 =================== -->
+    <section id="s3">
+      <h2><span class="n">৩</span> শুধু VM বদলালে (বটের জন্য)</h2>
+      <p>গাইড: <code>whatsapp-bot/DEPLOY-azure.md</code>। বর্তমান VM <code>52.184.98.228</code> (NSG শুধু 22/80/443 খোলা)।</p>
+      <ol class="ord">
+        <li>নতুন VM-এ Node ≥18 + (WA-এর জন্য) <code>chromium-browser</code> বসাও, <code>npm install</code>।</li>
+        <li><b>telegram-bot/.env</b> বানাও: <code>TG_BOT_TOKEN</code>, <code>TG_BOT_SECRET</code>, <code>TG_PORT=3002</code>, <code>HOST=127.0.0.1</code>। <span class="small">(⚠️ <code>TG_PORT</code>, <code>PORT</code> না)</span></li>
+        <li><b>whatsapp-bot/.env</b> বানাও: <code>WA_BOT_SECRET</code>, <code>PORT=3001</code>, <code>HOST=127.0.0.1</code>, <code>WA_SESSION_DIR=./.wwebjs_auth</code>।</li>
+        <li><b>secret মিলাও (ভ্যালু):</b><br>
+          <span class="pillrow">
+          <span class="pill">Node <b>TG_BOT_SECRET</b> &nbsp;=&nbsp; PHP <b>TELEGRAM_BOT_SECRET</b> (config.php:77)</span>
+          <span class="pill">Node <b>WA_BOT_SECRET</b> &nbsp;=&nbsp; PHP <b>WA_BOT_SECRET</b> (config.php:81)</span>
+          </span>
+          <span class="small">নাম আলাদা হলেও ভ্যালু হুবহু এক হতে হবে; না মিললে বট 403 দেবে।</span>
+        </li>
+        <li>WhatsApp বট প্রথমবার <code>npm start</code> → টার্মিনালে QR scan (Linked devices)। সেশন <code>.wwebjs_auth</code>-এ থাকে (gitignored)। নতুন VM = নতুন QR।</li>
+        <li><b>pm2</b>: <code>pm2 start index.js --name wa-bot</code> → <code>pm2 save</code> → <code>pm2 startup</code>। <span class="small">(রিপোতে pm2 কনফিগ কমিট করা নেই — হাতে সেট করো)</span></li>
+        <li>৪৪৩-এ reverse proxy (Caddy) → <code>127.0.0.1:3001</code> (WA) / <code>:3002</code> (TG)। পোর্ট সরাসরি খোলো না।</li>
+        <li><b>config.php:76,80</b> → <code>WA_BOT_URL</code> / <code>TELEGRAM_BOT_URL</code> = নতুন VM IP বা সাবডোমেইন।</li>
+        <li><b>config.php:79,84</b> → ভ্যালিড cert (Let's Encrypt/সাবডোমেইন) হলে <code>WA_BOT_INSECURE_TLS = false</code> + <code>TELEGRAM_BOT_INSECURE_TLS = false</code>; self-signed/bare-IP হলে <code>true</code>।</li>
+      </ol>
+      <div class="box ok"><div class="bt">✅ ভেরিফাই</div><p><code>curl -k https://বট-url/health</code> → <code>{"ok":true,"ready":true}</code></p></div>
+      <p class="small">বট secret DB বা ডোমেইনের সাথে যুক্ত না — শুধু config.php ↔ .env মিললেই চলবে।</p>
+    </section>
+
+    <!-- =================== SCENARIO 4 =================== -->
+    <section id="s4">
+      <h2><span class="n">৪</span> শুধু Firebase বদলালে (নতুন প্রজেক্ট)</h2>
+      <p>সবচেয়ে বেশি কাজ — পুরনো গাইড এটাকে অবমূল্যায়ন করেছিল। নিচের <b>সব</b> জায়গা বদলাতে হবে:</p>
+      <ol class="ord">
+        <li><b>config.php:48-57</b> → পুরো <code>FIREBASE[]</code> অ্যারে (apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId, measurementId, <b>vapidKey</b>)। <span class="small">vapidKey: Firebase → Project Settings → Cloud Messaging → Web Push certificates।</span></li>
+        <li><b>firebase-messaging-sw.js:8-13</b> → নতুন <code>initializeApp</code> ক্লায়েন্ট কনফিগ (৬ কী)। <span class="small">(স্ট্যাটিক JS — PHP না; কনফিগ মিসম্যাচ হলে background push নীরবে ভাঙবে)</span></li>
+        <li><b>includes/backend.php</b> → এন্ডপয়েন্ট <code>562</code> <u>এবং</u> <code>1647</code>: <code>projects/নতুন-PROJECT-ID/messages:send</code></li>
+        <li><b>includes/backend.php:1616-1617</b> → নতুন service-account <code>$client_email</code> + <code>$private_key</code></li>
+        <li><b>admin.php:629</b> → একই FCM এন্ডপয়েন্ট; <b>admin.php:593-594</b> → নতুন <code>$ce</code> + <code>$pk</code> (ডুপ্লিকেট — ভুলো না!)</li>
+        <li><b>includes/backend.php:276</b> → CSP <code>frame-src</code>-এ <code>shsmc-blood-portal.firebaseapp.com</code> → নতুন প্রজেক্ট হোস্ট।</li>
+        <li><b>Firebase Console</b> → Authorized domains-এ ডোমেইন add; Cloud Messaging API (V1) enable; Authentication → Google sign-in enable।</li>
+        <li><b>.fcm_token_cache</b> ডিলিট করো (পুরনো OAuth টোকেন cache)।</li>
+      </ol>
+      <div class="box fix">
+        <div class="bt">🔑 Service account JSON কীভাবে</div>
+        <p>Firebase → Project Settings → Service accounts → <b>Generate new private key</b> → JSON ডাউনলোড। ওই JSON থেকে <code>client_email</code> আর <code>private_key</code> উপরের ধাপ ৪ ও ৫-এ বসাও (private_key-এর <code>\n</code> গুলো অক্ষুণ্ণ রাখো)।</p>
+      </div>
+      <div class="box info"><div class="bt">✅ অটো</div><p><code>head-init.js.php</code> (ক্লায়েন্ট কনফিগ + vapidKey config থেকে) আর <code>backend.php:1948</code> (<code>$FB_API_KEY = FIREBASE['apiKey']</code>) — config.php বদলালেই ঠিক হয়।</p></div>
+    </section>
+
+    <!-- =================== SCENARIO 5 =================== -->
+    <section id="s5">
+      <h2><span class="n">৫</span> সব একসাথে বদলালে (ফুল রি-ডিপ্লয়)</h2>
+      <p>এই অর্ডারে করো — একটা আরেকটার উপর নির্ভর করে:</p>
+      <pre><code>ক) হোস্টিং      → db.php:3-6 (নতুন DB creds) + DB import + HTTPS
+                 + .fcm_token_cache writable; index.php.bak আপলোড করো না
+
+খ) ডোমেইন       → config.php:18 SITE_URL
+                 + firebase-messaging-sw.js:17
+                 + robots.txt:6 sitemap
+                 + admin.php:34 fallback define
+                 + Firebase Console: Authorized domains
+
+গ) Firebase নতুন → config.php:48-57 FIREBASE[] (+ vapidKey)
+                 + firebase-messaging-sw.js:8-13 initializeApp
+                 + backend.php: endpoint 562 ও 1647, email+key 1616-1617
+                 + admin.php: $ce/$pk 593-594, endpoint 629
+                 + backend.php:276 CSP frame-src host
+                 + Firebase Console: Google auth, FCM V1 API enable
+                 + .fcm_token_cache ডিলিট
+
+ঘ) VM (বট)      → telegram-bot/.env  (TG_BOT_TOKEN, TG_BOT_SECRET, TG_PORT, HOST)
+                 + whatsapp-bot/.env (WA_BOT_SECRET, PORT, HOST, WA_SESSION_DIR)
+                 + config.php:76,80 URL + :79,84 *_INSECURE_TLS
+                 + Caddy reverse proxy + pm2 + WA QR scan
+
+ঙ) অ্যাডমিন      → admin_config.php:4 নতুন bcrypt hash
+                 php -r "echo password_hash('pass', PASSWORD_BCRYPT, ['cost'=>12]);"
+
+চ) ক্যাশ/ক্লিনআপ → .fcm_token_cache ডিলিট; sw.js:6 APP_VERSION বাম্প
+                 + ব্রাউজারে পুরনো SW থাকলে hard-refresh
+                 + index.php.bak ডিলিট + git history purge (সিকিউরিটি)
+                 + কমিটেড সিক্রেট রোটেট</code></pre>
+    </section>
+
+    <!-- =================== LINE MAP =================== -->
+    <section id="linemap">
+      <h2>📍 এক্সাক্ট লাইন ম্যাপ (যাচাইকৃত)</h2>
+
+      <h3>config.php — সোর্স অফ ট্রুথ</h3>
+      <table>
+        <thead><tr><th>কনস্ট্যান্ট</th><th>লাইন</th><th>বর্তমান ভ্যালু</th></tr></thead>
+        <tbody>
+          <tr><td><code>SITE_URL</code></td><td>18</td><td>https://bloodarenabd.tech</td></tr>
+          <tr><td><code>FIREBASE[]</code></td><td>48-57</td><td>projectId: shsmc-blood-portal <span class="small">(apiKey 49, authDomain 50, projectId 51, storageBucket 52, senderId 53, appId 54, measurementId 55, vapidKey 56)</span></td></tr>
+          <tr><td><code>TELEGRAM_BOT_URL</code></td><td>76</td><td>https://52.184.98.228/tg</td></tr>
+          <tr><td><code>TELEGRAM_BOT_SECRET</code></td><td>77</td><td><span class="small">সেট (রিড্যাক্টেড)</span></td></tr>
+          <tr><td><code>TELEGRAM_BOT_USERNAME</code></td><td>78</td><td>BloodArenaOTP_bot</td></tr>
+          <tr><td><code>TELEGRAM_BOT_INSECURE_TLS</code></td><td>79</td><td>true</td></tr>
+          <tr><td><code>WA_BOT_URL</code></td><td>80</td><td>https://52.184.98.228</td></tr>
+          <tr><td><code>WA_BOT_SECRET</code></td><td>81</td><td><span class="small">সেট (রিড্যাক্টেড)</span></td></tr>
+          <tr><td><code>WA_BOT_INSECURE_TLS</code></td><td>84</td><td>true</td></tr>
+          <tr><td><code>VERIFY_OTP_TTL</code></td><td>85</td><td>300 <span class="small">(সেকেন্ড)</span></td></tr>
+          <tr><td><code>PHONE_OTP_COUNTS_VERIFIED</code></td><td>88</td><td>true</td></tr>
+        </tbody>
+      </table>
+
+      <h3>নন-টেমপ্লেটেড ফাইল (হাতে এডিট)</h3>
+      <table>
+        <thead><tr><th>ফাইল</th><th>আইটেম</th><th>লাইন</th></tr></thead>
+        <tbody>
+          <tr><td><code>db.php</code></td><td>$servername / $username / $password / $dbname</td><td>3 / 4 / 5 / 6</td></tr>
+          <tr><td><code>admin_config.php</code></td><td><code>define('ADMIN_HASH', …)</code> — bcrypt $2y$ cost 12</td><td>4</td></tr>
+          <tr><td><code>firebase-messaging-sw.js</code></td><td>initializeApp কনফিগ (apiKey 8 … appId 13)</td><td>8-13</td></tr>
+          <tr><td><code>firebase-messaging-sw.js</code></td><td><code>const SITE_URL</code></td><td>17</td></tr>
+          <tr><td><code>robots.txt</code></td><td><code>Sitemap:</code></td><td>6</td></tr>
+          <tr><td><code>includes/backend.php</code></td><td>FCM endpoint #1 (projectId)</td><td>562</td></tr>
+          <tr><td><code>includes/backend.php</code></td><td>$client_email / $private_key <span class="small">(_fcm_get_oauth_token)</span></td><td>1616 / 1617</td></tr>
+          <tr><td><code>includes/backend.php</code></td><td>FCM endpoint #2</td><td>1647</td></tr>
+          <tr><td><code>includes/backend.php</code></td><td>.fcm_token_cache path / read / write</td><td>1609 / 1610-1614 / 1634</td></tr>
+          <tr><td><code>includes/backend.php</code></td><td>CSP frame-src host (project-specific)</td><td>276</td></tr>
+          <tr><td><code>admin.php</code></td><td>SITE_URL fallback define</td><td>34</td></tr>
+          <tr><td><code>admin.php</code></td><td>$ce / $pk <span class="small">(_adm_get_oauth)</span></td><td>593 / 594</td></tr>
+          <tr><td><code>admin.php</code></td><td>FCM endpoint</td><td>629</td></tr>
+        </tbody>
+      </table>
+
+      <h3>বট এনভ ভ্যারিয়েবল (VM-এ .env)</h3>
+      <table>
+        <thead><tr><th>বট</th><th>এনভ</th><th>কোড লাইন</th><th>ডিফল্ট / নোট</th></tr></thead>
+        <tbody>
+          <tr><td>Telegram</td><td><code>TG_BOT_TOKEN</code></td><td>bot.js:15</td><td>required (BotFather)</td></tr>
+          <tr><td>Telegram</td><td><code>TG_BOT_SECRET</code></td><td>bot.js:16</td><td>= PHP TELEGRAM_BOT_SECRET</td></tr>
+          <tr><td>Telegram</td><td><code>TG_PORT</code></td><td>bot.js:17</td><td>3002 <span class="small">(⚠️ PORT না)</span></td></tr>
+          <tr><td>Telegram</td><td><code>HOST</code></td><td>bot.js:18</td><td>127.0.0.1</td></tr>
+          <tr><td>WhatsApp</td><td><code>WA_BOT_SECRET</code></td><td>index.js:20</td><td>required, = PHP WA_BOT_SECRET</td></tr>
+          <tr><td>WhatsApp</td><td><code>PORT</code></td><td>index.js:16</td><td>3001</td></tr>
+          <tr><td>WhatsApp</td><td><code>HOST</code></td><td>index.js:19</td><td>127.0.0.1</td></tr>
+          <tr><td>WhatsApp</td><td><code>WA_SESSION_DIR</code></td><td>index.js:29</td><td>./.wwebjs_auth</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- =================== VERIFY =================== -->
+    <section id="verify">
+      <h2>✅ ফাইনাল ভেরিফাই চেকলিস্ট</h2>
+      <ul class="chk">
+        <li>সাইট HTTPS-এ খোলে, Google login কাজ করে → Firebase authorized domain ঠিক</li>
+        <li>Blood request দিলে donor-এর ডিভাইসে push আসে → FCM key + projectId (562 ও 1647) ঠিক</li>
+        <li>WA/TG verify-তে OTP আসে → বট URL + secret ভ্যালু মিলে</li>
+        <li>অ্যাডমিন প্যানেল login হয় → admin_config.php hash ঠিক</li>
+        <li><code>curl -k https://বট-url/health</code> → <code>{"ok":true,"ready":true}</code></li>
+        <li><code>https://ডোমেইন/index.php.bak</code> ৪০৪/ব্লকড (ফাঁস হচ্ছে না) — আদর্শভাবে ফাইলটাই নেই</li>
+        <li>service worker রি-রেজিস্টার হয়েছে (sw.js APP_VERSION বাম্প + hard-refresh)</li>
+        <li>DB কানেক্ট হয় (donor/request লোড হয়), <code>.fcm_token_cache</code> রুটে লেখা যায়</li>
+      </ul>
+      <div class="box ok">
+        <div class="bt">এক বাক্যে</div>
+        <p>Domain বদলালে → <code>config.php</code>, <code>firebase-messaging-sw.js</code>, <code>robots.txt</code>, <code>admin.php:34</code>। Firebase বদলালে → এই ৩টা নন-টেমপ্লেটেড সার্ভার ফাইল মনে রাখো: <code>firebase-messaging-sw.js</code>, <code>includes/backend.php</code>, <code>admin.php</code> (private key ৩ জায়গায়, <code>index.php.bak</code>সহ)। config.php সবটা করে না।</p>
+      </div>
+    </section>
+
+    <p class="foot">BloodArena ডিপ্লয়মেন্ট গাইড · কোডবেসের সাথে যাচাইকৃত (২০২৬-০৬-১৮) · প্রিন্ট/PDF-এর জন্য Ctrl+P</p>
+  </main>
+</div>
+</body>
+</html>
