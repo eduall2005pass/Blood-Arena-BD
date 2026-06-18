@@ -1153,22 +1153,11 @@ function showConfirmPopup(callerName, callerPhone) {
             ld.append('csrf_token', CSRF_TOKEN);
             fetch(_AJAX_URL, {method:'POST', body:ld}).catch(function(){});
 
-            var _autoScroll = false; // permanently disabled — annoying autoscroll removed
-            var _nextDonorEl = null;
-            var _snapSourceEl = tempCallSourceEl; // save before cleanup
-            if (_autoScroll && _snapSourceEl) {
-                try {
-                    var _nx = _snapSourceEl.nextElementSibling;
-                    while (_nx && (_nx.style.display === 'none' || _nx.offsetParent === null)) {
-                        _nx = _nx.nextElementSibling;
-                    }
-                    if (_nx) _nextDonorEl = _nx;
-                } catch(e) {}
-            }
-
-            // ── Mark this donor as called (grey button) & blink next available ──
+            // ── Mark this donor as called (green button) & blink next available ──
+            //  NOTE: no auto-scroll here — clicking Call must NOT move the page.
+            var _sourceEl = tempCallSourceEl; // save before cleanup
             markDonorCalled(tempDonorId);
-            if (_snapSourceEl) blinkNextAvailableDonor(_snapSourceEl);
+            if (_sourceEl) blinkNextAvailableDonor(_sourceEl);
 
             // ── Close popup ──
             // callConfirmPopup is excluded from the body scroll-lock (see syncScrollLock),
@@ -1176,18 +1165,7 @@ function showConfirmPopup(callerName, callerPhone) {
             document.getElementById("callConfirmPopup").classList.remove("active");
             tempCallSourceEl = null;
 
-            if (_autoScroll && _nextDonorEl) {
-                requestAnimationFrame(function() {
-                    requestAnimationFrame(function() {
-                        _nextDonorEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        _nextDonorEl = null;
-                    });
-                });
-            } else {
-                _nextDonorEl = null;
-            }
-
-            // ── Dial LAST — after rAF is queued, mobile suspension won't cancel it ──
+            // ── Dial LAST — after popup close so mobile suspension won't cancel it ──
             if (type === 'wa') {
                 window.open("https://wa.me/" + phone.replace('+',''), "_blank");
             } else {
