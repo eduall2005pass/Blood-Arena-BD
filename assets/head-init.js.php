@@ -275,8 +275,79 @@ function _completeGoogleRedirect() {
 }
 try { _completeGoogleRedirect(); } catch(e){ console.warn('[Auth] redirect init', e); }
 
+// ════════════════════════════════════════════════════════════════════
+// 🔁 SILENT SESSION RESTORE — একবার সাইন-ইন করলে চিরকাল signed-in
+//   সমস্যা: "logged-in" অবস্থা আসলে server-এর PHP session ($_SESSION)।
+//   PHP idle session কিছুক্ষণ (gc_maxlifetime) পর মুছে দেয় / cookie মেয়াদ
+//   শেষ হয় → reload-এ BA_AUTH null → "logged out" দেখায়, সার্ভার অ্যাকশন
+//   ব্যর্থ হয় → বারবার সাইন-ইন করতে হয়।
+//   সমাধান: Firebase ব্যবহারকারীকে ব্রাউজারে স্থায়ীভাবে (LOCAL persistence)
+//   মনে রাখে — manually logout/clear না করা পর্যন্ত। তাই server session না
+//   থাকলে Firebase-এর persisted user দিয়ে নীরবে token পাঠিয়ে session আবার
+//   বানিয়ে ফেলি। ব্যবহারকারী কিছুই টের পায় না।
+// ════════════════════════════════════════════════════════════════════
+
+// persistence স্পষ্টভাবে LOCAL — ব্রাউজার/PWA বন্ধ করলেও Firebase user থাকে
+try {
+  if (_fbAuth && _fbAuth.setPersistence && firebase.auth && firebase.auth.Auth) {
+    _fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(){});
+  }
+} catch(e) { console.warn('[Auth] setPersistence', e); }
+
+// server session জীবিত কিনা — BA_AUTH (PHP থেকে inject) বা সদ্য-তৈরি flag
+function _serverSessionAlive() {
+  try { if (typeof BA_AUTH !== 'undefined' && BA_AUTH) return true; } catch(e){}
+  return !!window._baServerSession;
+}
+
+// app.js (BA_AUTH + CSRF_TOKEN) লোড হওয়া পর্যন্ত অপেক্ষা — head-init আগে চলে
+function _whenAppReady(cb, tries) {
+  tries = tries || 0;
+  if (typeof BA_AUTH !== 'undefined' && typeof CSRF_TOKEN !== 'undefined') { cb(); return; }
+  if (tries > 40) { cb(); return; } // ~6s ceiling — তবু একবার চেষ্টা করি
+  setTimeout(function(){ _whenAppReady(cb, tries + 1); }, 150);
+}
+
+var _baSilentReauthDone = false;
+function _silentRestoreSession(user) {
+  if (_baSilentReauthDone) return;        // প্রতি page-load-এ একবারই
+  if (window._baLoggingOut) return;       // logout চলছে — হাত দিও না
+  if (!user) return;                      // Firebase-এ কেউ নেই → কিছু করার নেই
+  // interactive sign-in (popup/redirect) চলমান থাকলে সেটাই session বানাবে
+  try { if (sessionStorage.getItem('ba_g_redirect') === '1') return; } catch(e){}
+  if (_serverSessionAlive()) return;      // session আছে → দরকার নেই
+  _baSilentReauthDone = true;
+  user.getIdToken()
+    .then(function(idToken){ return _postAuthToServer(idToken); })
+    .then(function(res){
+      if (res && res.status === 'success') {
+        window._baServerSession = true;
+        try { localStorage.setItem('ba_auth', JSON.stringify({
+          provider: res.provider, email: res.email, phone: res.phone, name: res.name, photo: res.photo,
+          verified: !!res.verified, verify_channel: res.verify_channel || null,
+          verify_phone: res.verify_phone || res.phone || null, has_donor: !!res.has_donor
+        })); } catch(e){}
+        // BA_AUTH const — runtime-এ বদলানো যায় না; _renderAuthState localStorage থেকেও নেয়
+        if (typeof _renderAuthState === 'function') _renderAuthState();
+      } else {
+        // token invalid/expired হলে আবার চেষ্টার সুযোগ রাখি
+        _baSilentReauthDone = false;
+      }
+    })
+    .catch(function(err){ _baSilentReauthDone = false; console.warn('[Auth] silent restore', err); });
+}
+
+try {
+  if (_fbAuth && _fbAuth.onAuthStateChanged) {
+    _fbAuth.onAuthStateChanged(function(user){
+      _whenAppReady(function(){ _silentRestoreSession(user); });
+    });
+  }
+} catch(e) { console.warn('[Auth] onAuthStateChanged init', e); }
+
 // ── সফল login হলে ──
 function _onAuthSuccess(res) {
+  window._baServerSession = true; // session তৈরি হয়েছে — silent restore-কে duplicate করতে দিও না
   _authWait(false); _gRedirectFlag(false);
   try { localStorage.setItem('ba_auth', JSON.stringify({
     provider: res.provider, email: res.email, phone: res.phone, name: res.name, photo: res.photo,
@@ -323,7 +394,11 @@ function authLogout() {
     if (pl) pl.classList.add('loader-show');
   } catch(e){}
 
-  try { if (_fbAuth) _fbAuth.signOut(); } catch(e){}
+  // Firebase persisted user মুছে ফেলা reload-এর আগে শেষ হওয়া আবশ্যক —
+  // নইলে নতুন silent-restore লজিক persisted user দিয়ে session আবার বানিয়ে
+  // ফেলবে আর logout "উল্টে" যাবে। তাই signOut promise টা await করি।
+  var fbSignOut = Promise.resolve();
+  try { if (_fbAuth) fbSignOut = _fbAuth.signOut().catch(function(){}); } catch(e){}
 
   var url = window.location.origin + window.location.pathname;
 
@@ -354,7 +429,7 @@ function authLogout() {
   } catch(e){}
 
   // সব শেষ হলে cache-busting param দিয়ে hard reload
-  Promise.all([serverLogout, clearCaches]).catch(function(){}).then(function(){
+  Promise.all([fbSignOut, serverLogout, clearCaches]).catch(function(){}).then(function(){
     var bust = window.location.origin + window.location.pathname + '?_cache_bust=' + Date.now();
     window.location.replace(bust);
   });

@@ -2,3 +2,4 @@
 "*.json" 
 .claude/settings.local.json
 .claude/settings.json
+.claude/_ogimg.py

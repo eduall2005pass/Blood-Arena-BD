@@ -293,8 +293,18 @@ $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
 // Strip port from HTTP_HOST for cookie domain (e.g. "localhost:8080" → "localhost")
 $cookieDomain = strtok($_SERVER['HTTP_HOST'] ?? '', ':');
 
+// ── Long-lived login session ──
+// আগে cookie 1 দিন ও সার্ভার default gc_maxlifetime (~24 মিনিট idle) ছিল →
+// একটু পরেই session মুছে যেত, ফলে ব্যবহারকারী auto "logged out" দেখত ও
+// বারবার Google সাইন-ইন করতে হত। এখন 1 বছর — একবার সাইন-ইন করলে manually
+// logout না করা পর্যন্ত signed-in থাকে। (client-side silent restore-ও এর
+// বাইরে গেলে Firebase persisted user দিয়ে session আবার বানিয়ে নেয়।)
+$SESSION_LIFETIME = 60 * 60 * 24 * 365; // 1 বছর = 31536000 সেকেন্ড
+@ini_set('session.gc_maxlifetime', (string)$SESSION_LIFETIME);
+@ini_set('session.cookie_lifetime', (string)$SESSION_LIFETIME);
+
 session_set_cookie_params([
-    'lifetime' => 86400,
+    'lifetime' => $SESSION_LIFETIME,
     'path' => '/',
     'domain' => $cookieDomain,
     'secure' => $isHttps, // true on HTTPS production, false on HTTP localhost
