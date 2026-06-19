@@ -4852,7 +4852,39 @@ body.fx-on .settings-item:hover .settings-item-icon {
 
   /* hamburger back, bottom nav back */
   .ba-hamburger { display: flex !important; }
-  .mobile-bottom-nav { display: flex !important; }
+  /* Bottom nav must be the horizontal BOTTOM bar here — NOT the desktop 230px
+     left rail. The ≥651px rules above convert it to a vertical rail; in mobile
+     "Desktop site" mode (portrait + touch) that rail's fixed top/bottom anchor
+     collapses to a half-height panel in the bottom-left. Revert it fully so it
+     renders exactly like the real-mobile bottom bar. */
+  .mobile-bottom-nav {
+    display: flex !important;
+    flex-direction: row !important;
+    top: auto !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
+    width: auto !important; height: auto !important;
+    overflow: visible !important;
+    border-right: none !important;
+    border-top: 1px solid rgba(255,255,255,0.06) !important;
+    box-shadow: 0 -8px 32px rgba(0,0,0,0.5), 0 -1px 0 rgba(255,255,255,0.04) !important;
+    padding: 0 4px !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    z-index: 9999 !important;
+  }
+  .mobile-bottom-nav::before { display: none !important; }   /* drop the rail "Blood Arena" header */
+  .mobile-bottom-nav-inner {
+    flex-direction: row !important;
+    height: 64px !important; gap: 2px !important; padding: 0 4px !important; flex: 0 0 auto !important;
+  }
+  .mbn-item {
+    flex: 1 1 0 !important; width: auto !important;
+    flex-direction: column !important; justify-content: center !important;
+    gap: 3px !important; padding: 5px 2px !important; margin: 4px 0 !important;
+    font-size: 0.68rem !important; text-align: center !important;
+  }
+  .mbn-item .mbn-badge { margin-left: 0 !important; }
+  .mbn-item span:last-child { font-size: 0.68rem !important; }
+  .mbn-pill { width: 44px !important; height: 26px !important; border-radius: 13px !important; }
+  .mbn-item .mbn-icon { width: 20px !important; height: 20px !important; }
 
   /* drawer brand isn't visible until opened → keep "Blood Arena" in the header */
   header .header-logo-left { display: inline-block !important; height: 34px !important; width: 34px !important; border-radius: 9px !important; }
