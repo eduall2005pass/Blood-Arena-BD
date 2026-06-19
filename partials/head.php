@@ -19,9 +19,17 @@
 <title><?= BRAND_NAME ?></title>
 <meta name="description" content="Blood Arena - বাংলাদেশের একটি অনলাইন রক্তদান প্ল্যাটফর্ম। জরুরি প্রয়োজনে রক্তদাতা খুঁজে পেতে বা রক্তদাতা হিসেবে নাম লেখাতে আজই ভিজিট করুন।">
 <meta name="keywords" content="Blood donation, Bangladesh, Blood donor, বাংলাদেশ, রক্তদান, রক্তদাতা, Blood Arena, Siam, Rafi">
-<meta property="og:title" content="<?= BRAND_NAME ?> | বাংলাদেশের রক্তদান কেন্দ্র">
-<meta property="og:description" content="রক্তের জন্য আর নয় অস্থিরতা। আমাদের অনলাইন ডাটাবেজে যুক্ত হোন।">
+<meta property="og:title" content="<?= BRAND_NAME ?> 🩸 | রক্তদাতা খুঁজুন, রক্তের অনুরোধ করুন এবং জীবন বাঁচাতে এগিয়ে আসুন">
+<meta property="og:description" content="রক্তদাতা ও রক্তগ্রহীতাকে সংযুক্ত করার একটি আধুনিক প্ল্যাটফর্ম—দ্রুত ডোনর খুঁজুন, জরুরি অনুরোধ জানান এবং মানবিক সেবায় যুক্ত হন।">
 <meta property="og:image" content="<?= SITE_URL ?>/logo.png">
+<meta property="og:image:alt" content="<?= BRAND_NAME ?> logo">
+<meta property="og:url" content="<?= SITE_URL ?>/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="<?= BRAND_NAME ?>">
+<meta property="og:locale" content="bn_BD">
+<!-- Twitter / X card (title + description fall back to og: tags) -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="<?= SITE_URL ?>/logo.png">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",

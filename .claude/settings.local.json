@@ -68,7 +68,9 @@
       "Bash(sed -n '1689,1694p' admin.php)",
       "Bash(python -)",
       "Bash(sed -n '600,665p' assets/app.js.php)",
-      "Bash(sed -n '4060,4245p' assets/app.js.php)"
+      "Bash(sed -n '4060,4245p' assets/app.js.php)",
+      "Bash(python .claude/_ogfix.py)",
+      "Bash(rm .claude/_ogfix.py)"
     ]
   }
 }
