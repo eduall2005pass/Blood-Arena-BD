@@ -1803,34 +1803,43 @@ const BADGE_COLORS = { 'New':'#10b981','Active':'#3b82f6','Hero':'#8b5cf6','Lege
 // Called when user navigates back to Home tab — avoids showing stale 0 counts.
 // Does NOT redraw charts (that's loadAnalytics). Just updates numbers.
 function refreshHomeCounts() {
+    const loadEls = _homeNumEls();
+    _setNumsLoading(loadEls, true); // shimmer while refreshing (slow network)
     const fd = new FormData();
     fd.append('get_analytics','1');
     fd.append('csrf_token', CSRF_TOKEN);
     fetch(_AJAX_URL, {method:'POST', body:fd})
     .then(safeJSON)
     .then(d => {
+        // Bad/incomplete payload → drop shimmer, keep prior values, never write NaN
+        if (!d || !isFinite(Number(d.total))) { _setNumsLoading(loadEls, false); return; }
         const hTotal = document.getElementById('heroTotalDonors');
         const hAvail = document.getElementById('heroAvailDonors');
-        if (hTotal) hTotal.textContent = d.total || 0;
-        if (hAvail) hAvail.textContent = d.available || 0;
+        if (hTotal) { hTotal.classList.remove('num-loading'); hTotal.textContent = d.total || 0; }
+        if (hAvail) { hAvail.classList.remove('num-loading'); hAvail.textContent = d.available || 0; }
         if (d.by_group_avail) {
             const gm = {'A+':'Aplus','A-':'Aminus','B+':'Bplus','B-':'Bminus',
                         'AB+':'ABplus','AB-':'ABminus','O+':'Oplus','O-':'Ominus'};
             for (const [g, id] of Object.entries(gm)) {
                 const el = document.getElementById('count-' + id);
-                if (el) el.textContent = '🩸 ' + (d.by_group_avail[g] || 0) + ' Available';
+                if (el) { el.classList.remove('num-loading'); el.textContent = '🩸 ' + (d.by_group_avail[g] || 0) + ' Available'; }
             }
         }
-    }).catch(function(){});
+        _setNumsLoading(loadEls, false); // safety net
+    }).catch(function(){ _setNumsLoading(loadEls, false); });
 }
 
 function loadAnalytics() {
+    const loadEls = _kpiNumEls().concat(_homeNumEls());
+    _setNumsLoading(loadEls, true); // show shimmer while fetching (slow network)
     const fd = new FormData();
     fd.append('get_analytics','1');
     fd.append('csrf_token', CSRF_TOKEN);
     fetch(_AJAX_URL,{method:'POST',body:fd})
     .then(safeJSON)
     .then(d => {
+        // Bad/incomplete payload (slow net, truncated JSON) → drop shimmer, never write NaN
+        if (!d || !isFinite(Number(d.total))) { _setNumsLoading(loadEls, false); return; }
         // KPIs — updates every .analytics-section instance (home embed + standalone page)
         animateAn('kpiTotal', d.total);
         animateAn('kpiAvail', d.available);
@@ -1850,6 +1859,7 @@ function loadAnalytics() {
                 const el = document.getElementById('count-' + id);
                 if (el) {
                     const cnt = d.by_group_avail[g] || 0;
+                    el.classList.remove('num-loading');
                     el.textContent = '🩸 ' + cnt + ' Available';
                 }
             }
@@ -1860,7 +1870,9 @@ function loadAnalytics() {
         renderBadgeDonut(d.by_badge);
         // Location chart
         renderLocChart(d.by_loc);
+        _setNumsLoading(loadEls, false); // safety net — clear any remaining shimmer
     }).catch((err)=>{
+        _setNumsLoading(loadEls, false); // network/parse error → restore, no NaN
         console.error('Analytics error:', err);
     });
 }
@@ -1886,9 +1898,28 @@ function animateNum(id, target) {
     animateNumEl(document.getElementById(id), target);
 }
 
+// ── Count shimmer helpers ──
+// KPI / hero / stat-card number elements that should show a loading shimmer
+// while analytics data is in flight (instead of flashing "NaN"/stale on slow net).
+function _kpiNumEls() {
+    return Array.prototype.slice.call(document.querySelectorAll('.analytics-section [data-an^="kpi"]'));
+}
+function _homeNumEls() {
+    var els = [];
+    ['heroTotalDonors','heroAvailDonors'].forEach(function(id){ var e = document.getElementById(id); if (e) els.push(e); });
+    document.querySelectorAll('.stat-card .count[id^="count-"]').forEach(function(e){ els.push(e); });
+    return els;
+}
+function _setNumsLoading(els, on) {
+    els.forEach(function(e){ if (e) e.classList.toggle('num-loading', !!on); });
+}
+
 // Animate a specific element's number (used for the data-an analytics instances).
 function animateNumEl(el, target) {
     if(!el) return;
+    target = Number(target);
+    if(!isFinite(target)) return; // invalid/slow data — keep shimmer, never write "NaN"
+    el.classList.remove('num-loading');
     let startTime = null, duration = 900;
     function step(ts) {
         if(!startTime) startTime = ts;

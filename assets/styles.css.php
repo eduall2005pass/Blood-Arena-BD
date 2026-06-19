@@ -629,6 +629,22 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
 @keyframes skeleton-blink { to { background-position-x: -200%; } }
 .skeleton-row td { padding: 18px 16px !important; }
 
+/* Count shimmer — KPI / hero / stat-card numbers show this loading effect
+   while analytics data is fetching (slow network), so a count never flashes
+   "NaN" or a stale value. Same shimmer language as the donor-card .skeleton. */
+.num-loading {
+  color: transparent !important;
+  background: linear-gradient(90deg, rgba(128,128,128,0.12) 25%, rgba(128,128,128,0.22) 50%, rgba(128,128,128,0.12) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-blink 1.5s infinite;
+  border-radius: 6px;
+  min-width: 2ch;
+  display: inline-block;
+  vertical-align: middle;
+}
+.num-loading * { color: transparent !important; }
+.stat-card .count.num-loading { min-width: 84px; min-height: 1.1em; }
+
 /* ============================================================
    MOBILE CARD STYLES
    ============================================================ */
