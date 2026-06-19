@@ -29,6 +29,7 @@ const client = new Client({
   authStrategy: new LocalAuth({ dataPath: process.env.WA_SESSION_DIR || './.wwebjs_auth' }),
   puppeteer: {
     headless: true,
+    protocolTimeout: 120000,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
   }
 });
@@ -41,7 +42,18 @@ client.on('qr', (qr) => {
 });
 client.on('authenticated', () => console.log('🔐 WhatsApp authenticated।'));
 client.on('ready', () => { isReady = true; console.log('✅ WhatsApp bot ready — কোড পাঠাতে প্রস্তুত।'); });
-client.on('disconnected', (r) => { isReady = false; console.warn('⚠️ WhatsApp disconnected:', r); });
+// disconnect/logout হলে session আর valid নয় → process exit, pm2 fresh তুলবে
+// (এতে detached-frame loop আর double-init `onQRChangedEvent already exists` crash এড়ানো যায়)
+client.on('disconnected', (r) => {
+  isReady = false;
+  console.warn('⚠️ WhatsApp disconnected:', r);
+  setTimeout(() => process.exit(1), 1000);
+});
+client.on('auth_failure', (m) => {
+  isReady = false;
+  console.error('❌ auth_failure:', m);
+  setTimeout(() => process.exit(1), 1000);
+});
 client.initialize();
 
 // ── HTTP API ──
@@ -83,7 +95,13 @@ app.post('/send', async (req, res) => {
     await client.sendMessage(chatId, String(message));
     return res.json({ ok: true });
   } catch (e) {
-    console.error('send error:', e && e.message);
+    const msg = (e && e.message) || '';
+    console.error('send error:', msg);
+    // frame/session মরে গেলে isReady false করে process exit → pm2 fresh restart
+    if (/detached Frame|Session closed|Target closed|callFunctionOn timed out|Protocol error/i.test(msg)) {
+      isReady = false;
+      setTimeout(() => process.exit(1), 500);
+    }
     return res.status(500).json({ ok: false, error: 'send_failed' });
   }
 });
