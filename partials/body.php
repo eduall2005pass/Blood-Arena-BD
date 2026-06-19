@@ -426,7 +426,7 @@ HTML;
         <p class="side-drawer-group">অ্যাকাউন্ট</p>
         <button class="sd-item sd-logout" onclick="closeSideDrawer(); authLogout();">
           <span class="sd-ic">🚪</span>
-          <span>লগ-আউট</span>
+          <span>লগ-আউট ও ডেটা মুছুন</span>
         </button>
       </div>
     </nav>
@@ -573,7 +573,7 @@ HTML;
     </button>
     <button class="acct-pop-item acct-pop-danger" role="menuitem" onclick="closeAcctPop(); authLogout()">
       <span class="acct-pop-ic">🚪</span>
-      <span>Logout</span>
+      <span>Logout &amp; Clear Data</span>
     </button>
   </div>
 </div>
@@ -1912,7 +1912,7 @@ HTML;
 
         <!-- Footer: logout -->
         <div style="padding:12px 20px;border-top:1px solid var(--border-color);flex-shrink:0;">
-            <button onclick="authLogout(); closeAccountModal();" style="width:100%;background:rgba(220,38,38,0.1);color:var(--danger);border:1px solid rgba(220,38,38,0.3);border-radius:12px;padding:12px;font-weight:700;font-size:0.9em;box-shadow:none;margin:0;">🚪 লগ-আউট</button>
+            <button onclick="authLogout(); closeAccountModal();" style="width:100%;background:rgba(220,38,38,0.1);color:var(--danger);border:1px solid rgba(220,38,38,0.3);border-radius:12px;padding:12px;font-weight:700;font-size:0.9em;box-shadow:none;margin:0;">🚪 লগ-আউট ও ডেটা মুছুন</button>
         </div>
     </div>
 </div>

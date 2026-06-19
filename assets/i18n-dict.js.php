@@ -292,6 +292,8 @@ window.BA_I18N = {
     "✚ নতুন": "✚ New",
     "আপনার নাম, ফোন নম্বর, রক্তের গ্রুপ, location সহ donor তথ্য database থেকে": "All your donor information — name, phone number, blood group and location — will be",
     "🚪 লগ-আউট": "🚪 Log out",
+    "🚪 লগ-আউট ও ডেটা মুছুন": "🚪 Log out & Clear Data",
+    "লগ-আউট ও ডেটা মুছুন": "Log out & Clear Data",
 
     // ── FAQ modal: header & category labels ──────────────────────────
     "❓ প্রশ্ন ও উত্তর": "❓ Questions & Answers",
