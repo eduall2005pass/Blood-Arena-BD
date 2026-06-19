@@ -309,16 +309,55 @@ function _setLocalVerified(channel, phone) {
 }
 
 // ── Logout ──
+// লগ-আউট মানেই full clean: Firebase sign-out → server session শেষ →
+// সব localStorage/sessionStorage মুছে → Service Worker unregister + caches clear →
+// cache-busting param দিয়ে hard reload। যাতে কোনো cached/stale data থেকে না যায়।
 function authLogout() {
+  // একাধিকবার ক্লিক হলে duplicate চালাবে না
+  if (window._baLoggingOut) return;
+  window._baLoggingOut = true;
+
+  // loader দেখাও (থাকলে)
+  try {
+    var pl = document.getElementById('pageLoader');
+    if (pl) pl.classList.add('loader-show');
+  } catch(e){}
+
   try { if (_fbAuth) _fbAuth.signOut(); } catch(e){}
-  try { localStorage.removeItem('ba_auth'); } catch(e){}
+
   var url = window.location.origin + window.location.pathname;
+
+  // server session শেষ করার POST — reload-এর আগে শেষ হওয়া জরুরি
   var fd = new FormData();
   fd.append('firebase_logout', '1');
   fd.append('csrf_token', (typeof CSRF_TOKEN !== 'undefined') ? CSRF_TOKEN : '');
-  fetch(url, { method:'POST', body:fd }).catch(function(){});
-  _authToast('লগ-আউট হয়েছে।', 'info');
-  if (typeof _renderAuthState === 'function') _renderAuthState();
+  var serverLogout = fetch(url, { method:'POST', body:fd }).catch(function(){});
+
+  // সব client-side storage মুছে দাও
+  try { localStorage.clear(); } catch(e){}
+  try { sessionStorage.clear(); } catch(e){}
+
+  // Service Worker unregister + সব Cache API caches মুছে দাও
+  var clearCaches = Promise.resolve();
+  try {
+    if ('serviceWorker' in navigator) {
+      clearCaches = navigator.serviceWorker.getRegistrations()
+        .then(function(regs){ return Promise.all(regs.map(function(r){ return r.unregister(); })); })
+        .catch(function(){});
+    }
+    if ('caches' in window) {
+      var c = caches.keys()
+        .then(function(keys){ return Promise.all(keys.map(function(k){ return caches.delete(k); })); })
+        .catch(function(){});
+      clearCaches = Promise.all([clearCaches, c]);
+    }
+  } catch(e){}
+
+  // সব শেষ হলে cache-busting param দিয়ে hard reload
+  Promise.all([serverLogout, clearCaches]).catch(function(){}).then(function(){
+    var bust = window.location.origin + window.location.pathname + '?_cache_bust=' + Date.now();
+    window.location.replace(bust);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════
