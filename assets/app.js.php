@@ -1809,13 +1809,13 @@ function loadAnalytics() {
     fetch(_AJAX_URL,{method:'POST',body:fd})
     .then(safeJSON)
     .then(d => {
-        // KPIs
-        animateNum('kpiTotal', d.total);
-        animateNum('kpiAvail', d.available);
-        animateNum('kpiUnav',  d.unavailable);
-        animateNum('kpiCalls', d.total_calls || 0);
-        animateNum('kpiReq',       d.active_requests   || 0);
-        animateNum('kpiFulfilled', d.fulfilled_requests || 0);
+        // KPIs — updates every .analytics-section instance (home embed + standalone page)
+        animateAn('kpiTotal', d.total);
+        animateAn('kpiAvail', d.available);
+        animateAn('kpiUnav',  d.unavailable);
+        animateAn('kpiCalls', d.total_calls || 0);
+        animateAn('kpiReq',       d.active_requests   || 0);
+        animateAn('kpiFulfilled', d.fulfilled_requests || 0);
         // Update home hero bar
         const hTotal = document.getElementById('heroTotalDonors');
         const hAvail = document.getElementById('heroAvailDonors');
@@ -1861,10 +1861,13 @@ document.addEventListener('visibilitychange', function() {
 });
 
 function animateNum(id, target) {
-    const el = document.getElementById(id);
+    animateNumEl(document.getElementById(id), target);
+}
+
+// Animate a specific element's number (used for the data-an analytics instances).
+function animateNumEl(el, target) {
     if(!el) return;
-    let start = 0, duration = 900;
-    let startTime = null;
+    let startTime = null, duration = 900;
     function step(ts) {
         if(!startTime) startTime = ts;
         let progress = Math.min((ts-startTime)/duration, 1);
@@ -1875,12 +1878,19 @@ function animateNum(id, target) {
     requestAnimationFrame(step);
 }
 
+// Animate the same KPI across every analytics instance (home embed + standalone page).
+function animateAn(name, target) {
+    document.querySelectorAll('.analytics-section [data-an="'+name+'"]').forEach(function(el){
+        animateNumEl(el, target);
+    });
+}
+
 function renderBarChart(byGroup) {
-    const wrap = document.getElementById('bgChartWrap');
-    if(!wrap) return;
+    const wraps = document.querySelectorAll('.analytics-section [data-an="bgChart"]');
+    if(!wraps.length) return;
     const max = Math.max(...Object.values(byGroup), 1);
     const groups = ['A+','A-','B+','B-','AB+','AB-','O+','O-'];
-    wrap.innerHTML = groups.map(g => {
+    const html = groups.map(g => {
         const cnt = byGroup[g] || 0;
         const pct = Math.round((cnt/max)*100);
         const col = BLOOD_COLORS[g] || '#6b7280';
@@ -1893,20 +1903,27 @@ function renderBarChart(byGroup) {
             </div>
         </div>`;
     }).join('');
+    wraps.forEach(w => { w.innerHTML = html; });
 }
 
 function renderBadgeDonut(byBadge) {
     window._lastBadgeData = byBadge; // cache for theme-switch redraw
-    const canvas = document.getElementById('badgeDonut');
-    const legend = document.getElementById('badgeLegend');
-    if(!canvas || !legend) return;
+    document.querySelectorAll('.analytics-section').forEach(function(root){
+        const canvas = root.querySelector('[data-an="badgeDonut"]');
+        const legend = root.querySelector('[data-an="badgeLegend"]');
+        if(!canvas || !legend) return;
+        _drawBadgeDonut(canvas, legend, byBadge);
+    });
+}
+
+function _drawBadgeDonut(canvas, legend, byBadge) {
     const ctx = canvas.getContext('2d');
     const levels = ['New','Active','Hero','Legend'];
     const vals = levels.map(l => byBadge[l] || 0);
     const total = vals.reduce((a,b)=>a+b,0) || 1;
     const colors = levels.map(l => BADGE_COLORS[l]);
     const icons  = {'New':'🌱','Active':'⭐','Hero':'🦸','Legend':'👑'};
-    
+
     // Draw donut
     let startAngle = -Math.PI/2;
     const cx=90, cy=90, outerR=80, innerR=50;
@@ -1933,16 +1950,16 @@ function renderBadgeDonut(byBadge) {
     ctx.textBaseline = 'middle';
     ctx.fillText(total, cx, cy);
 
-    legend.innerHTML = levels.map((l,i) => 
+    legend.innerHTML = levels.map((l,i) =>
         `<div class="badge-legend-item"><div class="badge-legend-dot" style="background:${colors[i]};"></div>${icons[l]} ${l} (${vals[i]})</div>`
     ).join('');
 }
 
 function renderLocChart(byLoc) {
-    const wrap = document.getElementById('locChartWrap');
-    if(!wrap || !byLoc.length) return;
+    const wraps = document.querySelectorAll('.analytics-section [data-an="locChart"]');
+    if(!wraps.length || !byLoc.length) return;
     const max = byLoc[0].cnt || 1;
-    wrap.innerHTML = byLoc.map(r => {
+    const html = byLoc.map(r => {
         const pct = Math.round((r.cnt/max)*100);
         return `<div class="loc-row">
             <span class="loc-name" title="${r.area}">${r.area}</span>
@@ -1953,6 +1970,7 @@ function renderLocChart(byLoc) {
             </div>
         </div>`;
     }).join('');
+    wraps.forEach(w => { w.innerHTML = html; });
 }
 
 // ============================================================
@@ -3441,24 +3459,7 @@ function appSwitchPage(pageKey) {
         setTimeout(function() { appSwitchPage(pageKey); }, 320);
         return;
     }
-    // On desktop — just scroll to section
-    if (window.innerWidth > 650) {
-        const sectionMap = {
-            'home':     'statsSection',
-            'donors':   'donorListSection',
-            'register': 'regSection',
-            'more':     'analyticsSection',
-            'nearby':   'nearbySection',
-            'requests': 'page-requests'
-        };
-        if (sectionMap[pageKey]) navGo(sectionMap[pageKey]);
-        if (pageKey === 'donors') fetchFilteredData(1);
-        if (pageKey === 'requests') loadBloodRequests();
-        if (pageKey === 'more') loadAnalytics();
-        if (pageKey === 'home') refreshHomeCounts();   // FIX: refresh hero bar + stat cards on home return
-        // NOTE: nearby NOT auto-loaded on desktop — user clicks the search button manually
-        return;
-    }
+    // Desktop/tablet and mobile share one true SPA page-switch (one view at a time).
     if (_switchLock) return;
     const prevKey = _currentPage;
     if (prevKey === pageKey) return;
@@ -3480,7 +3481,11 @@ function appSwitchPage(pageKey) {
         if (pageKey === 'donors')  fetchFilteredData(1);
         if (pageKey === 'requests') loadBloodRequests();
         if (pageKey === 'more')    loadAnalytics();
-        if (pageKey === 'home')    refreshHomeCounts();   // FIX: refresh hero bar + stat cards on home return
+        if (pageKey === 'home')    {
+            refreshHomeCounts();   // FIX: refresh hero bar + stat cards on home return
+            // Desktop/tablet: home embeds the analytics block — redraw its charts too.
+            if (document.querySelector('#page-home .analytics-section')) loadAnalytics();
+        }
         if (pageKey === 'nearby')  {
             // Only auto-search if GPS already granted (don't disrupt user)
             if (navigator.permissions) {
@@ -3501,9 +3506,11 @@ function appSwitchPage(pageKey) {
 }
 
 function updateBottomNav(activeKey) {
-    ['home','donors','register','nearby','more','settings'].forEach(function(k) {
+    ['home','donors','register','nearby','more','settings','requests'].forEach(function(k) {
         var btn = document.getElementById('mbn-' + k);
         if (btn) btn.classList.toggle('mbn-active', k === activeKey);
+        var sd = document.getElementById('sd-' + k);
+        if (sd) sd.classList.toggle('sd-active', k === activeKey);
     });
 }
 
@@ -3521,14 +3528,41 @@ function openSettingsPanel() {
     document.getElementById('settingsPanelOverlay').classList.add('active');
     // Mark settings button active without changing page
     document.querySelectorAll('.mbn-item').forEach(function(b){ b.classList.remove('mbn-active'); });
+    document.querySelectorAll('.sd-item').forEach(function(b){ b.classList.remove('sd-active'); });
     var sb = document.getElementById('mbn-settings');
     if (sb) sb.classList.add('mbn-active');
+    var sb2 = document.getElementById('sd-settings');
+    if (sb2) sb2.classList.add('sd-active');
 }
 function closeSettingsPanel() {
     document.getElementById('settingsPanelOverlay').classList.remove('active');
     // Restore current page active state
     updateBottomNav(_currentPage);
 }
+
+// ── Header Quick Links dropdown (desktop/tablet) ──
+function toggleHeaderQuick(e) {
+    if (e) e.stopPropagation();
+    var w = document.getElementById('headerQuickWrap');
+    if (!w) return;
+    var open = w.classList.toggle('open');
+    var b = document.getElementById('headerQuickBtn');
+    if (b) b.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function closeHeaderQuick() {
+    var w = document.getElementById('headerQuickWrap');
+    if (w) w.classList.remove('open');
+    var b = document.getElementById('headerQuickBtn');
+    if (b) b.setAttribute('aria-expanded', 'false');
+}
+// close on outside click / Escape
+document.addEventListener('click', function (ev) {
+    var w = document.getElementById('headerQuickWrap');
+    if (w && w.classList.contains('open') && !w.contains(ev.target)) closeHeaderQuick();
+});
+document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') closeHeaderQuick();
+});
 
 function clearAppData() {
     if (!confirm(t('⚠️ সব App Data মুছে যাবে এবং page reload হবে।\n\nনিশ্চিত?'))) return;
@@ -4528,15 +4562,19 @@ function sidebarInstallApp() {
         var isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
                         || window.navigator.standalone === true;
         if (isStandalone) {
-            var it = document.getElementById('sdInstallItem');
-            if (it) it.style.display = 'none';
+            ['sdInstallItem','headerInstallBtn'].forEach(function(id){
+                var it = document.getElementById(id);
+                if (it) it.style.display = 'none';
+            });
         }
     }
     if (document.readyState !== 'loading') _hideInstallIfStandalone();
     else document.addEventListener('DOMContentLoaded', _hideInstallIfStandalone);
     window.addEventListener('appinstalled', function() {
-        var it = document.getElementById('sdInstallItem');
-        if (it) it.style.display = 'none';
+        ['sdInstallItem','headerInstallBtn'].forEach(function(id){
+            var it = document.getElementById(id);
+            if (it) it.style.display = 'none';
+        });
     });
 })();
 
@@ -4675,3 +4713,76 @@ document.documentElement.style.scrollPaddingTop = '80px';
 })();
 
 
+
+// ── Real-time Visitors card (Register page) ───────────────────
+// Pings visitors_api.php every 30s: logs this visit + reads {live, total}.
+// Runs site-wide so the all-time total counts every visitor; the card itself
+// is only updated when present (Register page).
+(function() {
+    // visitors_api.php sits next to the app entry point (works in sub-dir installs too)
+    var VIS_URL = (window.location.pathname.replace(/[^/]*$/, '') || '/') + 'visitors_api.php';
+
+    var _lvShown = 0;          // currently displayed live number
+    var _lvRAF   = null;       // running count-up animation frame
+    var _lvSpark = [];         // recent live samples for the sparkline
+
+    function animateCount(el, to) {
+        if (!el) return;
+        var from = _lvShown;
+        to = Math.max(0, to | 0);
+        if (from === to) { el.textContent = to; return; }
+        if (_lvRAF) cancelAnimationFrame(_lvRAF);
+        var start = null, dur = 800;
+        function step(ts) {
+            if (start === null) start = ts;
+            var p = Math.min(1, (ts - start) / dur);
+            var eased = 1 - Math.pow(1 - p, 3);          // easeOutCubic
+            el.textContent = Math.round(from + (to - from) * eased);
+            if (p < 1) { _lvRAF = requestAnimationFrame(step); }
+            else { _lvShown = to; el.textContent = to; _lvRAF = null; }
+        }
+        _lvRAF = requestAnimationFrame(step);
+    }
+
+    function renderSpark(live) {
+        var wrap = document.getElementById('lvSpark');
+        if (!wrap) return;
+        _lvSpark.push(Math.max(0, live | 0));
+        if (_lvSpark.length > 14) _lvSpark.shift();
+        var max = Math.max.apply(null, _lvSpark.concat([1]));
+        var html = '';
+        for (var i = 0; i < _lvSpark.length; i++) {
+            var h = Math.round(4 + (_lvSpark[i] / max) * 22);   // 4–26px
+            html += '<span class="lv-bar" style="height:' + h + 'px"></span>';
+        }
+        wrap.innerHTML = html;
+    }
+
+    function updateCard(live, total) {
+        var countEl = document.getElementById('lvCount');
+        var totalEl = document.getElementById('lvTotal');
+        var dotEl   = document.getElementById('lvDot');
+        if (countEl) animateCount(countEl, live);
+        if (totalEl) totalEl.textContent = (total | 0).toLocaleString('en-US');
+        if (dotEl) dotEl.classList.toggle('is-live', (live | 0) > 0);
+        renderSpark(live);
+    }
+
+    function pingVisitors() {
+        var fd = new FormData();
+        fd.append('session_id', (typeof getDeviceId === 'function') ? getDeviceId() : 'anon');
+        fd.append('page', (window.location.pathname || '/'));
+        fetch(VIS_URL, { method: 'POST', body: fd, cache: 'no-store' })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                if (!d) return;
+                updateCard(d.live || 0, d.total || 0);
+            })
+            .catch(function(){ /* offline / endpoint missing → silent */ });
+    }
+
+    window.addEventListener('load', function() {
+        setTimeout(pingVisitors, 1200);
+        setInterval(pingVisitors, 30000);
+    });
+})();

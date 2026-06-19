@@ -1,9 +1,9 @@
 /**
- * Blood Solution — Service Worker v5.6
+ * Blood Solution — Service Worker v5.7
  * Cache/PWA handler — FCM push handled by firebase-messaging-sw.js
  */
 
-const APP_VERSION = 'blood-solution-v5.6';
+const APP_VERSION = 'blood-solution-v5.7';
 const STATIC_CACHE = APP_VERSION + '-static';
 const IMG_CACHE = APP_VERSION + '-img';
 const PAGE_CACHE = APP_VERSION + '-pages';

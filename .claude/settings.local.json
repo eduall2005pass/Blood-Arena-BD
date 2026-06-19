@@ -54,7 +54,14 @@
       "Bash(echo \"node not available; php render exit: $?\")",
       "Read(//tmp/**)",
       "Read(//Users/dev/**)",
-      "Bash(php -l admin.php)"
+      "Bash(php -l admin.php)",
+      "Bash(command -v convert magick sips python3)",
+      "Bash(python3 *)",
+      "Read(//Users/dev/workspace-931c9264/assets/**)",
+      "Read(//c//**)",
+      "Bash(awk 'NR>=4400 && NR<=4570 && /@media/{print NR\": \"$0}' assets/styles.css.php)",
+      "Bash(awk 'NR<=4552 && /@media/{last=NR\": \"$0} END{print last}' assets/styles.css.php)",
+      "Bash(php -l visitors_api.php)"
     ]
   }
 }

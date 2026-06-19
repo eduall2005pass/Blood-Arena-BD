@@ -1,19 +1,79 @@
 
 <?php
-// ── Social "Connect us on" bar — rendered above every page footer ──
-if (!function_exists('render_social_bar')) {
-    function render_social_bar() {
-        $items = [
+// ── Shared social link list — single source of truth for the footer bar + desktop FAB ──
+if (!function_exists('social_links_array')) {
+    function social_links_array() {
+        return [
             ['url'=>SOCIAL_FACEBOOK,'cls'=>'sc-fb','label'=>'Facebook','svg'=>'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 21v-7h2.4l.4-2.8h-2.8V9.4c0-.8.2-1.4 1.4-1.4h1.5V5.5c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8v2H8.2V14h2.7v7h2.6z"/></svg>'],
             ['url'=>SOCIAL_TELEGRAM,'cls'=>'sc-tg','label'=>'Telegram','svg'=>'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.9 4.3l-3.3 15.5c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.2 13.5l-4.9-1.5c-1-.3-1-1 .2-1.5L20.6 2.8c.9-.3 1.6.2 1.3 1.5z"/></svg>'],
             ['url'=>SOCIAL_YOUTUBE,'cls'=>'sc-yt','label'=>'YouTube','svg'=>'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M23 7.5s-.2-1.6-.9-2.3c-.8-.9-1.8-.9-2.2-.9C16.8 4 12 4 12 4s-4.8 0-7.9.3c-.4 0-1.4.1-2.2.9C1.2 5.9 1 7.5 1 7.5S.8 9.4.8 11.3v1.3c0 1.9.2 3.8.2 3.8s.2 1.6.9 2.3c.8.9 1.9.8 2.4.9 1.7.2 7.7.3 7.7.3s4.8 0 7.9-.3c.4 0 1.4-.1 2.2-.9.7-.7.9-2.3.9-2.3s.2-1.9.2-3.8v-1.3c0-1.9-.2-3.8-.2-3.8zM9.8 15.1V8.9l5.4 3.1-5.4 3.1z"/></svg>'],
             ['url'=>SOCIAL_WHATSAPP,'cls'=>'sc-wa','label'=>'WhatsApp','svg'=>'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.885-9.885 9.885m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>'],
         ];
+    }
+}
+// ── Social "Connect us on" bar — rendered above every page footer (mobile) ──
+if (!function_exists('render_social_bar')) {
+    function render_social_bar() {
         echo '<div class="social-connect"><p class="social-connect-label">আমাদের সাথে যুক্ত থাকুন</p><div class="social-connect-row">';
-        foreach ($items as $s) {
+        foreach (social_links_array() as $s) {
             echo '<a href="'.htmlspecialchars($s['url']).'" target="_blank" rel="noopener noreferrer" class="social-btn '.$s['cls'].'" aria-label="'.$s['label'].'" title="'.$s['label'].'">'.$s['svg'].'</a>';
         }
         echo '</div></div>';
+    }
+}
+// ── Developer card (Siam & Rafi) — reused on home (mobile) + site footer (desktop) ──
+if (!function_exists('render_dev_card')) {
+    function render_dev_card() {
+        echo '<div class="dev-card dev-card-horizontal dev-card-min">'
+           . '<div class="dev-half"><img src="siam.jpg" alt="Siam" class="dev-avatar">'
+           . '<div class="dev-half-info"><p class="dev-name">Siam<span class="dev-batch">(Sh-20)</span></p>'
+           . '<span class="dev-role">Dev &amp; Planner</span></div></div>'
+           . '<div class="dev-divider"></div>'
+           . '<div class="dev-half"><img src="rafi.jpg" alt="Rafi" class="dev-avatar">'
+           . '<div class="dev-half-info"><p class="dev-name">Rafi<span class="dev-batch">(Sh-20)</span></p>'
+           . '<span class="dev-role">Planner</span></div></div>'
+           . '</div>';
+    }
+}
+// ── Analytics inner block — reused in the standalone page (mobile) + home (desktop).
+//    Dynamic targets use data-an hooks + classes (NOT unique ids) so two instances
+//    can coexist; loadAnalytics() iterates each .analytics-section container. ──
+if (!function_exists('render_analytics_inner')) {
+    function render_analytics_inner() {
+        echo <<<HTML
+<div class="section-header-row">
+    <div>
+        <h3 class="section-title">📊 Data Analytics</h3>
+        <p class="section-sub">Blood Arena-র সার্বিক পরিসংখ্যান</p>
+    </div>
+    <button class="analytics-refresh-btn" onclick="loadAnalytics()">🔄 Refresh</button>
+</div>
+<div class="kpi-grid">
+    <div class="kpi-card kpi-total" onclick="kpiGoto('total')"><div class="kpi-icon">👥</div><div class="kpi-val" data-an="kpiTotal">—</div><div class="kpi-label">মোট Donors</div></div>
+    <div class="kpi-card kpi-avail" onclick="kpiGoto('available')"><div class="kpi-icon">✅</div><div class="kpi-val" data-an="kpiAvail">—</div><div class="kpi-label">Available</div></div>
+    <div class="kpi-card kpi-unav" onclick="kpiGoto('unavailable')"> <div class="kpi-icon">⛔</div><div class="kpi-val" data-an="kpiUnav">—</div><div class="kpi-label">Not Willing</div></div>
+    <div class="kpi-card kpi-calls kpi-static"><div class="kpi-icon">📞</div><div class="kpi-val" data-an="kpiCalls">—</div><div class="kpi-label">মোট Calls</div></div>
+    <div class="kpi-card kpi-req" onclick="kpiGoto('requests')">  <div class="kpi-icon">🆘</div><div class="kpi-val" data-an="kpiReq">—</div><div class="kpi-label">Active Requests</div></div>
+    <div class="kpi-card kpi-donated" onclick="kpiGoto('donated')"><div class="kpi-icon">🩸</div><div class="kpi-val" data-an="kpiFulfilled">—</div><div class="kpi-label">Successfully Donated</div></div>
+</div>
+<div class="charts-grid">
+    <div class="chart-card">
+        <h4 class="chart-title">🩸 Blood Group Distribution</h4>
+        <div class="bar-chart-wrap" data-an="bgChart"></div>
+    </div>
+    <div class="chart-card">
+        <h4 class="chart-title">🏅 Donor Badge Levels</h4>
+        <div class="badge-donut-wrap">
+            <canvas class="badge-donut" data-an="badgeDonut" width="180" height="180"></canvas>
+            <div class="badge-legend" data-an="badgeLegend"></div>
+        </div>
+    </div>
+</div>
+<div class="chart-card" style="margin-top:16px;">
+    <h4 class="chart-title">📍 Top Donor Areas</h4>
+    <div class="loc-chart-wrap" data-an="locChart"></div>
+</div>
+HTML;
     }
 }
 ?>
@@ -215,6 +275,54 @@ if (!function_exists('render_social_bar')) {
   <img src="<?= htmlspecialchars(LOGO_PATH) ?>" alt="<?= htmlspecialchars(BRAND_SHORT) ?>" class="header-logo-left" loading="eager" decoding="sync" fetchpriority="high" onclick="appSwitchPage('home')" style="cursor:pointer;">
   <h1 onclick="appSwitchPage('home')" style="cursor:pointer;"><?= htmlspecialchars(BRAND_NAME) ?></h1>
   <div class="header-actions">
+    <button class="header-install-btn desk-only" id="headerInstallBtn" onclick="sidebarInstallApp()" title="Install App" aria-label="Install App">
+      <svg class="hi-icon hi-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <path d="M8 21h8"/><path d="M12 17v4"/>
+        <path d="M12 6.5v5"/><path d="M9.5 9l2.5 2.5L14.5 9"/>
+      </svg>
+      <svg class="hi-icon hi-tablet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="5" y="2" width="14" height="20" rx="2"/>
+        <path d="M12 6v6"/><path d="M9.5 9.5L12 12l2.5-2.5"/>
+        <line x1="11" y1="18.5" x2="13" y2="18.5"/>
+      </svg>
+    </button>
+    <button class="header-settings-btn desk-only" id="headerSettingsBtn" onclick="openSettingsPanel()" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+    <!-- Emergency Request — desktop/tablet only, descriptive red CTA beside settings -->
+    <button class="header-emergency-btn desk-only" id="headerEmergencyBtn" onclick="openBloodRequestModal()" title="Emergency Request" aria-label="Emergency blood request">
+      <span class="he-ic">🆘</span><span class="he-tx">Emergency Request</span>
+    </button>
+    <!-- Quick Links dropdown — desktop/tablet only, beside the emergency button -->
+    <div class="header-quick-wrap desk-only" id="headerQuickWrap">
+      <button class="header-quick-btn" id="headerQuickBtn" type="button" onclick="toggleHeaderQuick(event)" title="Quick Links" aria-label="Quick Links" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="3" y1="11" x2="19" y2="11"/>
+          <ellipse cx="11" cy="11" rx="3.6" ry="8"/>
+          <path d="M13.5 13.5l7 2.7-3 1.1-1.1 3z" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
+      <div class="header-quick-menu" id="headerQuickMenu" role="menu" aria-label="Quick links">
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); appSwitchPage('home')"><span>🏠</span> Home</button>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); appSwitchPage('requests')"><span>🆘</span> Active Requests</button>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); appSwitchPage('donors')"><span>🩸</span> Donors</button>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); appSwitchPage('register')"><span>📝</span> Register</button>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); appSwitchPage('nearby')"><span>📍</span> Nearby &amp; Map</button>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); appSwitchPage('more')"><span>📊</span> Analytics</button>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); openAccountDashboard()"><span>📋</span> Account Dashboard</button>
+        <div class="header-quick-sep"></div>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); openInfoPage('about')"><span>ⓘ</span> About</button>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); openInfoPage('privacy')"><span>🔒</span> Privacy</button>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); openInfoPage('faq')"><span>❓</span> FAQ</button>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); openInfoPage('sponsor')"><span>⭐</span> Sponsors</button>
+        <button role="menuitem" type="button" onclick="closeHeaderQuick(); openInfoPage('donate')"><span>❤️</span> Donate Us</button>
+      </div>
+    </div>
     <div class="notif-bell-wrap" id="nBellWrap">
       <button class="notif-bell" id="nBell" onclick="toggleNPanel()" title="Live Requests">
         🔔<span class="notif-badge" id="nBadge"></span>
@@ -240,6 +348,15 @@ if (!function_exists('render_social_bar')) {
 
     <nav class="side-drawer-nav">
 
+      <!-- Persistent Emergency CTA — desktop/tablet only, shown on every view -->
+      <button class="rail-emergency desk-only" onclick="openBloodRequestModal()" type="button" aria-label="Emergency blood request">
+        <span class="rail-emergency-ic">🆘</span>
+        <span class="rail-emergency-txt">
+          <strong>Emergency Request</strong>
+          <small>জরুরি রক্ত প্রয়োজন?</small>
+        </span>
+      </button>
+
       <!-- Install as App — সবার ১ম, ইতিমধ্যে install থাকলে JS hide করে দেয় -->
       <button class="sd-item sd-install" id="sdInstallItem" onclick="closeSideDrawer(); sidebarInstallApp();">
         <span class="sd-ic">📲</span>
@@ -248,35 +365,35 @@ if (!function_exists('render_social_bar')) {
 
       <p class="side-drawer-group">নেভিগেশন</p>
 
-      <button class="sd-item" onclick="closeSideDrawer(); appSwitchPage('home')">
+      <button class="sd-item sd-active" id="sd-home" onclick="closeSideDrawer(); appSwitchPage('home')">
         <span class="sd-ic"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5z"/><polyline points="9 21 9 13 15 13 15 21"/></svg></span>
         <span>Home</span>
       </button>
-      <button class="sd-item" onclick="closeSideDrawer(); appSwitchPage('requests')">
+      <button class="sd-item" id="sd-requests" onclick="closeSideDrawer(); appSwitchPage('requests')">
         <span class="sd-ic">🆘</span>
         <span>Active Requests</span>
       </button>
-      <button class="sd-item" onclick="closeSideDrawer(); appSwitchPage('donors')">
+      <button class="sd-item" id="sd-donors" onclick="closeSideDrawer(); appSwitchPage('donors')">
         <span class="sd-ic"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg></span>
         <span>Donors</span>
       </button>
-      <button class="sd-item" onclick="closeSideDrawer(); appSwitchPage('register')">
+      <button class="sd-item" id="sd-register" onclick="closeSideDrawer(); appSwitchPage('register')">
         <span class="sd-ic"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg></span>
         <span>Register</span>
       </button>
-      <button class="sd-item" onclick="closeSideDrawer(); appSwitchPage('nearby')">
+      <button class="sd-item" id="sd-nearby" onclick="closeSideDrawer(); appSwitchPage('nearby')">
         <span class="sd-ic"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
         <span>Nearby & Map</span>
       </button>
-      <button class="sd-item" onclick="closeSideDrawer(); appSwitchPage('more')">
+      <button class="sd-item" id="sd-more" onclick="closeSideDrawer(); appSwitchPage('more')">
         <span class="sd-ic"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
         <span>Analytics</span>
       </button>
-      <button class="sd-item" onclick="closeSideDrawer(); openAccountDashboard()">
+      <button class="sd-item" id="sd-account" onclick="closeSideDrawer(); openAccountDashboard()">
         <span class="sd-ic"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></span>
         <span>Account Dashboard</span>
       </button>
-      <button class="sd-item" onclick="closeSideDrawer(); openSettingsPanel()">
+      <button class="sd-item" id="sd-settings" onclick="closeSideDrawer(); openSettingsPanel()">
         <span class="sd-ic"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
         <span>Settings</span>
       </button>
@@ -314,7 +431,20 @@ if (!function_exists('render_social_bar')) {
       </div>
     </nav>
 
-    <div class="side-drawer-foot">&copy; <?php echo date("Y"); ?> <?= htmlspecialchars(BRAND_NAME) ?></div>
+    <div class="side-drawer-foot">
+      <!-- Persistent Support + Developer credit + Connect — desktop/tablet only -->
+      <div class="rail-foot-desk desk-only">
+        <button class="rail-support" onclick="openInfoPage('donate')" type="button">
+          <span aria-hidden="true">❤️</span> Support Us
+        </button>
+        <div class="rail-credit" onclick="openInfoPage('about')" role="button" tabindex="0" title="About the developers">
+          <span class="rail-credit-label">Developed by</span>
+          <span class="rail-credit-names">Siam &amp; Rafi <span class="rail-credit-batch">(Sh-20)</span></span>
+        </div>
+        <div class="rail-social"><?php render_social_bar(); ?></div>
+      </div>
+      <div class="rail-copyright">&copy; <?php echo date("Y"); ?> <?= htmlspecialchars(BRAND_NAME) ?></div>
+    </div>
   </aside>
 </div>
 
@@ -456,6 +586,7 @@ if (!function_exists('render_social_bar')) {
     <img src="bd-map.svg" alt="" class="hero-map-bg" loading="lazy" decoding="async">
     <canvas id="heroCanvas"></canvas>
     <div class="hero-fx-fallback">🩸</div>
+    <div class="hero-fx-caption desk-only">রক্তের জন্য আর নয় অস্থিরতা</div>
 </div>
 
 <!-- HOME HERO: Total Summary -->
@@ -469,10 +600,21 @@ if (!function_exists('render_social_bar')) {
         <span class="home-hero-num" id="heroAvailDonors" style="color:var(--success);"><?php echo array_sum($avail_counts); ?></span>
         <span class="home-hero-lbl">Available Now</span>
     </div>
-    <div class="home-hero-divider"></div>
-    <div class="home-hero-stat" onclick="appSwitchPage('register')" style="cursor:pointer;">
+    <div class="home-hero-divider hero-reg-div"></div>
+    <div class="home-hero-stat home-hero-reg" onclick="appSwitchPage('register')" style="cursor:pointer;">
         <span class="home-hero-num" style="font-size:1.4rem;">📝</span>
         <span class="home-hero-lbl">Register</span>
+    </div>
+    <!-- Desktop/tablet: professional Register + Emergency action cards (image-6 look) -->
+    <div class="home-hero-actions desk-only">
+        <button class="hero-act hero-act-reg" type="button" onclick="appSwitchPage('register')">
+            <span class="hero-act-ic">📝</span>
+            <span class="hero-act-tx"><strong>Register</strong><small>ডোনার হিসেবে যুক্ত হোন</small></span>
+        </button>
+        <button class="hero-act hero-act-emg" type="button" onclick="openBloodRequestModal()">
+            <span class="hero-act-ic">🆘</span>
+            <span class="hero-act-tx"><strong>Emergency Request</strong><small>জরুরি রক্ত প্রয়োজন?</small></span>
+        </button>
     </div>
 </div>
 <div class="emergency-banner" id="requestSection">
@@ -499,16 +641,23 @@ if (!function_exists('render_social_bar')) {
         $bg_id = $__id_map[$g];
         $color_class = "blood-" . $bg_id;
         echo "<div class='stat-card $color_class' role='button' tabindex='0' onclick=\"appSwitchPage('donors'); quickFilter('$g');\">
+                <span class='sc-drop' aria-hidden='true'>🩸</span>
+                <span class='sc-dot' aria-hidden='true'></span>
                 <h4>$g</h4>
                 <div class='count' id='count-$bg_id'>🩸 ".$avail_counts[$g]." Available</div>
                 <span class='stat-tap-hint'>👆 তালিকা দেখুন</span>
+                <span class='sc-go' aria-hidden='true'>তালিকা দেখুন →</span>
               </div>";
-    } 
+    }
     ?>
 </div>
 
+<!-- ===== HOME × ANALYTICS (desktop/tablet only — merged below quick filter) ===== -->
+<div class="container analytics-section home-analytics desk-only">
+    <?php render_analytics_inner(); ?>
+</div>
 
-<!-- ===== DEVELOPER CARD (Home only — single horizontal card, divided) ===== -->
+<!-- ===== DEVELOPER CARD (Home — mobile only; desktop shows it in the site footer) ===== -->
 <div class="dev-section">
     <!-- Donate Us — interactive CTA opens the Donate Us page in the side drawer -->
     <button type="button" class="dev-donate-btn" onclick="openInfoPage('donate')" aria-label="Support us">
@@ -519,28 +668,7 @@ if (!function_exists('render_social_bar')) {
 
     <p class="dev-section-label">Developed By</p>
 
-    <div class="dev-card dev-card-horizontal dev-card-min">
-
-        <!-- Siam half -->
-        <div class="dev-half">
-            <img src="siam.jpg" alt="Siam" class="dev-avatar">
-            <div class="dev-half-info">
-                <p class="dev-name">Siam<span class="dev-batch">(Sh-20)</span></p>
-                <span class="dev-role">Dev &amp; Planner</span>
-            </div>
-        </div>
-
-        <div class="dev-divider"></div>
-
-        <!-- Rafi half -->
-        <div class="dev-half">
-            <img src="rafi.jpg" alt="Rafi" class="dev-avatar">
-            <div class="dev-half-info">
-                <p class="dev-name">Rafi<span class="dev-batch">(Sh-20)</span></p>
-                <span class="dev-role">Planner</span>
-            </div>
-        </div>
-    </div>
+    <?php render_dev_card(); ?>
 </div>
 <?php render_social_bar(); ?>
 <div class="page-footer-bar"><span>🩸 © 2026 <?= htmlspecialchars(BRAND_NAME) ?> — All Rights Reserved.</span></div>
@@ -827,6 +955,19 @@ if (!function_exists('render_social_bar')) {
 </div>
 </div>
 
+<!-- Real-time Visitors Count card — fed by visitors_api.php (live + all-time total) -->
+<div class="live-visitors-wrap">
+    <div class="live-visitors-card" id="liveVisitorsCard">
+        <div class="lv-head">
+            <span class="lv-live-badge"><span class="lv-dot" id="lvDot"></span> Live Visitors</span>
+            <span class="lv-bn">এখন সাইটে আছেন</span>
+        </div>
+        <div class="lv-count" id="lvCount" aria-live="polite">0</div>
+        <div class="lv-sub">মোট ভিজিটর: <strong id="lvTotal">—</strong></div>
+        <div class="lv-spark" id="lvSpark" aria-hidden="true"></div>
+    </div>
+</div>
+
 <!-- Support row: Donate Us + Be a Sponsor (reuses donate page & sponsor popup) -->
 <div class="support-cta-row">
     <button type="button" class="support-cta support-cta--donate" onclick="openInfoPage('donate')">
@@ -1076,42 +1217,64 @@ if (!function_exists('render_social_bar')) {
 
 <!-- ==================== ANALYTICS SECTION ==================== -->
 <div class="container analytics-section" id="analyticsSection">
-    <div class="section-header-row">
-        <div>
-            <h3 class="section-title">📊 Data Analytics</h3>
-            <p class="section-sub">Blood Arena-র সার্বিক পরিসংখ্যান</p>
-        </div>
-        <button class="analytics-refresh-btn" onclick="loadAnalytics()">🔄 Refresh</button>
-    </div>
-    <div class="kpi-grid" id="kpiGrid">
-        <div class="kpi-card kpi-total" onclick="kpiGoto('total')"><div class="kpi-icon">👥</div><div class="kpi-val" id="kpiTotal">—</div><div class="kpi-label">মোট Donors</div></div>
-        <div class="kpi-card kpi-avail" onclick="kpiGoto('available')"><div class="kpi-icon">✅</div><div class="kpi-val" id="kpiAvail">—</div><div class="kpi-label">Available</div></div>
-        <div class="kpi-card kpi-unav" onclick="kpiGoto('unavailable')"> <div class="kpi-icon">⛔</div><div class="kpi-val" id="kpiUnav">—</div><div class="kpi-label">Not Willing</div></div>
-        <div class="kpi-card kpi-calls kpi-static"><div class="kpi-icon">📞</div><div class="kpi-val" id="kpiCalls">—</div><div class="kpi-label">মোট Calls</div></div>
-        <div class="kpi-card kpi-req" onclick="kpiGoto('requests')">  <div class="kpi-icon">🆘</div><div class="kpi-val" id="kpiReq">—</div><div class="kpi-label">Active Requests</div></div>
-        <div class="kpi-card kpi-donated" onclick="kpiGoto('donated')"><div class="kpi-icon">🩸</div><div class="kpi-val" id="kpiFulfilled">—</div><div class="kpi-label">Successfully Donated</div></div>
-    </div>
-    <div class="charts-grid">
-        <div class="chart-card">
-            <h4 class="chart-title">🩸 Blood Group Distribution</h4>
-            <div id="bgChartWrap" class="bar-chart-wrap"></div>
-        </div>
-        <div class="chart-card">
-            <h4 class="chart-title">🏅 Donor Badge Levels</h4>
-            <div class="badge-donut-wrap">
-                <canvas id="badgeDonut" width="180" height="180"></canvas>
-                <div id="badgeLegend" class="badge-legend"></div>
-            </div>
-        </div>
-    </div>
-    <div class="chart-card" style="margin-top:16px;">
-        <h4 class="chart-title">📍 Top Donor Areas</h4>
-        <div id="locChartWrap" class="loc-chart-wrap"></div>
-    </div>
+    <?php render_analytics_inner(); ?>
 </div>
 <?php render_social_bar(); ?>
 <div class="page-footer-bar"><span>🩸 © 2026 <?= htmlspecialchars(BRAND_NAME) ?> — All Rights Reserved.</span></div>
 </div><!-- end page-more -->
+
+<!-- ===== CONNECT-US FLOATING FAB (desktop/tablet only) ===== -->
+<!-- Bottom-right: 5 social icons stacked vertically, with the LIVE pill below -->
+<div class="social-fab desk-only" id="socialFab">
+  <div class="social-fab-items">
+    <?php foreach (social_links_array() as $s): ?>
+      <a href="<?= htmlspecialchars($s['url']) ?>" target="_blank" rel="noopener noreferrer" class="social-btn <?= $s['cls'] ?>" aria-label="<?= $s['label'] ?>" title="<?= $s['label'] ?>"><?= $s['svg'] ?></a>
+    <?php endforeach; ?>
+  </div>
+  <span class="fab-live" title="Live"><span class="fab-live-dot"></span>LIVE</span>
+</div>
+
+<!-- ===== PROFESSIONAL SITE FOOTER (desktop/tablet only) ===== -->
+<footer class="site-footer desk-only" id="siteFooter">
+  <div class="site-footer-inner">
+    <div class="sf-top">
+      <!-- Quick links -->
+      <div class="sf-col sf-links-col">
+        <p class="sf-heading">Quick Links</p>
+        <div class="sf-links-grid">
+          <button class="sf-link" type="button" onclick="openInfoPage('about')"><span class="sf-link-ic">ⓘ</span> About</button>
+          <button class="sf-link" type="button" onclick="openInfoPage('privacy')"><span class="sf-link-ic">🔒</span> Privacy</button>
+          <button class="sf-link" type="button" onclick="openInfoPage('faq')"><span class="sf-link-ic">❓</span> FAQ</button>
+          <button class="sf-link" type="button" onclick="openInfoPage('sponsor')"><span class="sf-link-ic">⭐</span> Sponsors</button>
+        </div>
+        <button class="sf-link sf-link-wide" type="button" onclick="openInfoPage('donate')"><span class="sf-link-ic">❤️</span> Donate Us</button>
+      </div>
+      <!-- Developed by -->
+      <div class="sf-col sf-dev-col">
+        <p class="sf-heading">Developed By</p>
+        <div class="sf-dev-cards">
+          <div class="sf-dev-card" role="button" tabindex="0" onclick="openInfoPage('about')">
+            <img src="siam.jpg" alt="Siam" class="sf-dev-ava sf-dev-ava-img">
+            <span class="sf-dev-name">Siam <span class="sf-dev-batch">(Sh-20)</span></span>
+            <span class="sf-dev-role">Dev &amp; Planner</span>
+          </div>
+          <div class="sf-dev-card" role="button" tabindex="0" onclick="openInfoPage('about')">
+            <img src="rafi.jpg" alt="Rafi" class="sf-dev-ava sf-dev-ava-img">
+            <span class="sf-dev-name">Rafi <span class="sf-dev-batch">(Sh-20)</span></span>
+            <span class="sf-dev-role">Planner</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Wide CTAs -->
+    <div class="sf-cta-row">
+      <button class="sf-cta" type="button" onclick="openInfoPage('privacy')">📄 শর্তাবলী ও নীতিমালা</button>
+      <button class="sf-cta" type="button" onclick="openInfoPage('about')">ⓘ আমাদের কথা (About Us)</button>
+    </div>
+    <div class="site-footer-copy">&copy; <?php echo date("Y"); ?> <?= htmlspecialchars(BRAND_NAME) ?> — All Rights Reserved. <span class="sf-ver">v2.5.8</span></div>
+    <div class="site-footer-powered">Powered by Siam Innovations</div>
+  </div>
+</footer>
 
 <!-- PWA INSTALL PROMPT -->
 <div id="pwaInstallOverlay" role="dialog" aria-modal="true" aria-label="App Install Prompt">
@@ -2087,7 +2250,7 @@ if (!function_exists('render_social_bar')) {
     </div>
 </div>
 
-<footer class="site-footer">
+<footer class="site-footer legacy-footer">
 
 <!-- ==================== SMART INTERACTIVE LINKS ==================== -->
 <div class="footer-links">

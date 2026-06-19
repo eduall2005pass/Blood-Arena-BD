@@ -370,6 +370,12 @@ button:active { transform: translateY(0); box-shadow: 0 2px 8px var(--primary-re
 .blood-Oplus::before { background: linear-gradient(90deg,#f39c12,#f7b541); box-shadow: 0 0 8px rgba(243,156,18,0.5); } .blood-Oplus h4 { color: #f39c12; }
 .blood-Ominus::before { background: linear-gradient(90deg,#e67e22,#f0974a); box-shadow: 0 0 8px rgba(230,126,34,0.5); } .blood-Ominus h4 { color: #e67e22; }
 
+/* per-group accent var — used by the desktop/tablet redesigned quick-filter cards */
+.blood-Aplus{--gc:#e74c3c;} .blood-Aminus{--gc:#c0392b;} .blood-Bplus{--gc:#3498db;} .blood-Bminus{--gc:#2980b9;}
+.blood-ABplus{--gc:#9b59b6;} .blood-ABminus{--gc:#8e44ad;} .blood-Oplus{--gc:#f39c12;} .blood-Ominus{--gc:#e67e22;}
+/* new card sub-elements are desktop/tablet-only — hidden on mobile (untouched) */
+.sc-drop, .sc-dot, .sc-go { display: none; }
+
 .pagination{text-align:center; margin-top:30px; display: flex; justify-content: center; flex-wrap:wrap; gap: 8px; margin-bottom: 40px;}  
 .pagination a{display:inline-flex; align-items:center; justify-content:center; min-width: 40px; height: 40px; padding: 0 12px; background: var(--input-bg); color: var(--text-main); border-radius: var(--radius-sm); text-decoration:none; font-size:0.95em; transition: background 0.2s ease, transform 0.2s ease; border: 1px solid var(--border-color); font-weight: 500;}  
 .pagination a:hover{ background: rgba(128,128,128,0.2); transform: translateY(-3px); box-shadow: 0 5px 10px rgba(0,0,0,0.1); }
@@ -1804,6 +1810,83 @@ tr.donor-called-outline > td {
     .support-cta-txt { align-items: center; }
 }
 
+/* ── Real-time Visitors card (Register page) ─────────────────────────────
+   Width-matched to the Donate + Sponsor row (same 500px max + padding) so it
+   lines up identically on mobile, tablet and desktop. */
+.live-visitors-wrap {
+    max-width: 500px;
+    margin: 18px auto 4px;
+    padding: 0 12px;
+}
+.live-visitors-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    padding: 18px 20px 16px;
+    background:
+        linear-gradient(135deg, var(--primary-red-soft) 0%, transparent 55%),
+        var(--bg-card);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-glass, 0 8px 24px rgba(0,0,0,0.18));
+    text-align: center;
+}
+.live-visitors-card::before {
+    /* subtle red accent strip on the left edge */
+    content: "";
+    position: absolute; top: 0; left: 0; bottom: 0; width: 4px;
+    background: linear-gradient(180deg, var(--primary-red), #9f1239);
+}
+.lv-head {
+    display: flex; align-items: center; justify-content: center;
+    flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px;
+}
+.lv-live-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 0.78rem; font-weight: 700; letter-spacing: 0.3px;
+    color: var(--text-main);
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 4px 11px; border-radius: 30px;
+}
+.lv-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--success); flex-shrink: 0;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55);
+}
+.lv-dot.is-live { animation: lvPulse 1.6s ease-out infinite; }
+@keyframes lvPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); }
+    70%  { box-shadow: 0 0 0 9px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+.lv-bn { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
+.lv-count {
+    font-family: var(--font-heading);
+    font-weight: 900; line-height: 1;
+    font-size: clamp(2.6rem, 9vw, 3.4rem);
+    background: linear-gradient(90deg, var(--primary-red), #fb7185);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 8px var(--primary-red-soft));
+    margin: 2px 0 4px;
+}
+.lv-sub { font-size: 0.84rem; color: var(--text-muted); }
+.lv-sub strong { color: var(--text-main); font-weight: 700; }
+.lv-spark {
+    display: flex; align-items: flex-end; justify-content: center;
+    gap: 3px; height: 26px; margin-top: 12px;
+}
+.lv-spark .lv-bar {
+    width: 6px; min-height: 3px; border-radius: 3px;
+    background: linear-gradient(180deg, var(--primary-red), var(--primary-red-soft));
+    opacity: 0.85;
+    transition: height 0.4s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+    .lv-dot.is-live { animation: none; }
+    .lv-spark .lv-bar { transition: none; }
+}
+
 /* Scrollbar polish */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -2287,8 +2370,31 @@ html { scroll-padding-top: 92px; }
 
 /* On desktop: left sidebar navigation */
 @media(min-width: 651px) {
-    .app-page { display: block !important; opacity: 1 !important; animation: none !important; }
-    .app-page-header { display: none !important; }
+    /* Desktop/tablet: ONE active view at a time (true dashboard SPA),
+       centered in a comfortable content column — not one endless scroll. */
+    .app-page.page-active {
+        display: flex !important;
+        flex-direction: column;
+        opacity: 1 !important;
+        width: 100%;
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 24px 30px 56px;
+        animation: pageFadeIn 0.24s ease both !important;
+    }
+    /* Professional page title for each view (home keeps its hero instead) */
+    .app-page-header {
+        display: flex !important; align-items: center; gap: 11px;
+        font-family: var(--font-heading); font-weight: 800;
+        font-size: 1.5rem; color: var(--text-main);
+        padding: 2px 2px 15px; margin: 0 0 22px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .app-page-header .ph-icon { font-size: 1.45rem; line-height: 1; flex-shrink: 0; }
+    @keyframes pageFadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: none; }
+    }
 
     /* ── Sidebar base ── */
     .mobile-bottom-nav {
@@ -4056,8 +4162,106 @@ body.fx-on .settings-item:hover .settings-item-icon {
     padding: 12px 16px; border-top: 1px solid var(--border-color);
     font-size: 0.72rem; color: var(--text-muted); text-align: center; flex-shrink: 0;
 }
-/* Desktop already has the persistent left sidebar — drawer is mobile-only */
-@media (min-width: 651px) { .side-drawer-overlay { display: none !important; } }
+/* ============================================================
+   DESKTOP / TABLET (≥651px): the full side-drawer becomes the
+   persistent left navigation rail — same options as the mobile
+   hamburger drawer. The old compact 6-item rail is retired here.
+   Mobile (≤650px) keeps the bottom-nav + hamburger drawer as-is.
+   ============================================================ */
+@media (min-width: 651px) {
+    /* retire the old limited desktop rail */
+    .mobile-bottom-nav { display: none !important; }
+
+    /* the overlay no longer dims/blocks — it only hosts the fixed rail */
+    .side-drawer-overlay {
+        display: block !important;
+        position: fixed !important;
+        top: 0 !important; bottom: 0 !important; left: 0 !important; right: auto !important;
+        width: 230px !important;
+        background: transparent !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        z-index: 900 !important;
+        transition: none !important;
+    }
+    /* the drawer panel is a static, always-visible rail.
+       Anchored with position:fixed (NOT absolute-in-fixed) so it stays pinned
+       to the left even when a mobile browser forces "Desktop site" mode — the
+       old absolute-inside-fixed setup collapsed to the bottom-left there. */
+    .side-drawer,
+    .side-drawer-overlay.active .side-drawer {
+        position: fixed !important;
+        top: 0 !important; left: 0 !important; bottom: auto !important;
+        height: 100vh !important;
+        height: 100dvh !important;
+        z-index: 900 !important;
+        width: 230px !important; max-width: 230px !important;
+        transform: none !important;
+        padding-top: 0 !important;
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 92%, var(--primary-red) 8%) 0%, var(--bg-card) 120px) !important;
+        border-right: 1px solid var(--border-color) !important;
+        box-shadow: 1px 0 0 rgba(220,38,38,0.10), 6px 0 26px rgba(0,0,0,0.30) !important;
+        transition: none !important;
+    }
+    /* no close button on a permanent rail */
+    .side-drawer-close { display: none !important; }
+
+    /* brand header */
+    .side-drawer-head {
+        padding: 20px 16px 16px !important;
+        gap: 11px !important;
+        border-bottom: 1px solid var(--border-color) !important;
+    }
+    .side-drawer-logo { box-shadow: 0 4px 12px rgba(220,38,38,0.28); }
+
+    /* scroll area + thin custom scrollbar */
+    .side-drawer-nav { padding: 12px 12px 18px !important; }
+    .side-drawer-nav::-webkit-scrollbar { width: 7px; }
+    .side-drawer-nav::-webkit-scrollbar-track { background: transparent; }
+    .side-drawer-nav::-webkit-scrollbar-thumb {
+        background: rgba(220,38,38,0.22); border-radius: 10px;
+        border: 2px solid transparent; background-clip: padding-box;
+    }
+    .side-drawer-nav:hover::-webkit-scrollbar-thumb { background: rgba(220,38,38,0.38); background-clip: padding-box; }
+
+    /* section labels */
+    .side-drawer-group {
+        font-size: 0.62rem !important; letter-spacing: 1.6px !important;
+        margin: 16px 10px 7px !important; opacity: 0.85;
+    }
+
+    /* nav items — comfortable, with accent bar + lift on interaction */
+    .sd-item {
+        position: relative;
+        padding: 10px 12px !important;
+        margin: 2px 0 !important;
+        font-size: 0.875rem !important;
+        line-height: 1.25 !important;
+        border-radius: 11px !important;
+        transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+    }
+    .sd-item:hover {
+        background: rgba(220,38,38,0.09);
+        transform: translateX(2px);
+    }
+    .sd-item:hover .sd-ic { background: rgba(220,38,38,0.16); }
+    .sd-item.sd-active {
+        background: rgba(220,38,38,0.13);
+        color: var(--primary-red);
+        box-shadow: inset 3px 0 0 var(--primary-red);
+        font-weight: 700 !important;
+    }
+    .sd-item.sd-active .sd-ic { background: rgba(220,38,38,0.20); }
+    .sd-item.sd-active .sd-ic svg { stroke: var(--primary-red); }
+    .sd-ic { transition: background 0.16s ease; }
+
+    /* footer */
+    .side-drawer-foot { opacity: 0.8; }
+}
+/* NOTE: desktop rail active/shadow/scrollbar styling lives in the ≥651px
+   GitHub-theme block below. These are intentionally NOT defined globally so
+   the mobile hamburger drawer renders exactly as before (untouched). */
 
 /* ── Info pages (About / Privacy / FAQ / Sponsor) ── */
 .info-page-overlay {
@@ -4091,4 +4295,605 @@ body.fx-on .settings-item:hover .settings-item-icon {
 .info-panel .scroll-content { max-height: none !important; overflow: visible !important; padding: 0 !important; }
 /* Desktop: open to the right of the 230px sidebar */
 @media (min-width: 651px) { .info-page-overlay { left: 230px; } }
+
+/* ════════════════════════════════════════════════════════════════════
+   GITHUB-STYLE DESKTOP / TABLET THEME  ·  ≥651px ONLY (mobile untouched)
+   Neutral GitHub/Primer scaffold (canvas/surface/border/text) layered via
+   CSS-variable overrides; brand RED kept as the single accent. Repeated
+   per-page chrome is removed; Emergency / Support / Developer credit live
+   once in the persistent left rail (shown on every view).
+   ════════════════════════════════════════════════════════════════════ */
+
+/* shell chrome that must NEVER appear on mobile */
+.desk-only { display: none !important; }
+
+@media (min-width: 651px) {
+  /* ── 1 · Recolor desktop surfaces to GitHub neutrals (DARK default) ── */
+  body {
+    --bg-main:#0d1117; --bg-card:#161b22; --bg-card-solid:#161b22; --bg-glass:#161b22;
+    --border-color:#30363d; --glass-border:#30363d; --glass-highlight:rgba(255,255,255,0.04);
+    --input-bg:#0d1117; --text-main:#e6edf3; --text-muted:#9198a1;
+    --radius-sm:6px; --radius-md:6px; --radius-lg:8px;
+    --shadow-glass:0 1px 3px rgba(1,4,9,0.4);
+    --glow-red:0 1px 2px rgba(1,4,9,0.3);
+    --gh-muted:#21262d;
+  }
+  [data-theme="light"] body {
+    --bg-main:#f6f8fa; --bg-card:#ffffff; --bg-card-solid:#ffffff; --bg-glass:#ffffff;
+    --border-color:#d0d7de; --glass-border:#d0d7de; --glass-highlight:rgba(255,255,255,0.9);
+    --input-bg:#ffffff; --text-main:#1f2328; --text-muted:#59636e;
+    --shadow-glass:0 1px 0 rgba(27,31,36,0.04);
+    --glow-red:0 1px 0 rgba(27,31,36,0.04);
+    --gh-muted:#f6f8fa;
+  }
+  /* flat canvas — drop the radial mesh glow */
+  body::before { display: none !important; }
+
+  /* ── 2 · Header → RED brand banner (matches the mobile header, both themes) ── */
+  header {
+    background: linear-gradient(135deg, #b71d38 0%, #dc2743 50%, #9f1239 100%) !important;
+    border-image: none !important;
+    border-bottom: none !important;
+    box-shadow: 0 4px 22px rgba(220, 39, 67, 0.38), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+  }
+  header h1 {
+    font-size: 1.4rem !important; letter-spacing: 0.2px !important;
+    background: linear-gradient(90deg, #fff, #fecdd3) !important;
+    -webkit-background-clip: text !important; background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    filter: none !important;
+  }
+  .header-account-btn, .theme-toggle, .notif-bell {
+    background: rgba(255,255,255,0.18) !important;
+    border-color: rgba(255,255,255,0.4) !important;
+  }
+
+  /* ── 3 · Content column + GitHub underline page title ── */
+  .app-page.page-active { padding-top: 22px; }
+  .app-page-header {
+    font-family: var(--font-body) !important;
+    font-weight: 600 !important; font-size: 1.35rem !important;
+    color: var(--text-main) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+  }
+
+  /* ── 4 · "Box" surfaces — 1px border, 6–8px radius, no glassy glow ── */
+  form, .donor-table-wrapper, .stat-card, .req-card, .dc-card,
+  .analytics-card, .nearby-section, .info-card, .glass-card { box-shadow: none !important; }
+  form { border: 1px solid var(--border-color) !important; border-radius: 8px !important; }
+
+  /* ── 5 · Inputs (GitHub field) ── */
+  input, select, textarea {
+    border: 1px solid var(--border-color) !important;
+    border-radius: 6px !important; background: var(--input-bg) !important;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--primary-red) !important;
+    box-shadow: 0 0 0 3px var(--primary-red-soft) !important;
+    background: var(--input-bg) !important;
+  }
+
+  /* ── 6 · Buttons: flatter, 6px radius (brand red stays primary) ── */
+  button { border-radius: 6px !important; }
+
+  /* ── 7 · Tables → GitHub table ── */
+  .donor-table-wrapper { border: 1px solid var(--border-color) !important; border-radius: 8px !important; }
+  .donor-table th {
+    background: var(--gh-muted) !important; color: var(--text-muted) !important;
+    font-family: var(--font-body) !important; font-weight: 600 !important;
+    border-bottom: 1px solid var(--border-color) !important;
+  }
+  .donor-table td { border-bottom: 1px solid var(--border-color) !important; }
+  .donor-table tr:hover { background: var(--gh-muted) !important; }
+
+  /* ── 8 · Left rail → clean GitHub sidebar ── */
+  .side-drawer, .side-drawer-overlay.active .side-drawer {
+    background: var(--bg-card) !important; box-shadow: none !important;
+    border-right: 1px solid var(--border-color) !important;
+  }
+  .side-drawer-head { background: var(--bg-card) !important; }
+  .sd-item { border-radius: 6px !important; }
+  .sd-item:hover { background: var(--gh-muted) !important; transform: none !important; }
+  .sd-item.sd-active {
+    background: var(--primary-red-soft) !important;
+    box-shadow: inset 2px 0 0 var(--primary-red) !important;
+  }
+  /* keep the red accent on desktop in light theme too (mobile drawer unchanged) */
+  [data-theme="light"] .sd-item.sd-active { color: var(--primary-red) !important; background: var(--primary-red-soft) !important; box-shadow: inset 2px 0 0 var(--primary-red) !important; }
+  [data-theme="light"] .sd-item.sd-active .sd-ic { background: var(--primary-red-soft) !important; }
+  [data-theme="light"] .sd-item.sd-active .sd-ic svg { stroke: var(--primary-red) !important; }
+
+  /* ── 9 · DEDUPE: remove per-page repeated chrome (social/footer ×5, dev card) ── */
+  .app-page .social-connect,
+  .app-page .page-footer-bar,
+  .app-page .dev-section { display: none !important; }
+
+  /* ── 10 · Persistent rail CTAs (every view, one instance) ── */
+  .rail-emergency {
+    display: flex !important; align-items: center; gap: 10px;
+    width: 100%; text-align: left; cursor: pointer;
+    margin: 2px 0 12px; padding: 10px 12px;
+    border: 1px solid var(--primary-red) !important; border-radius: 8px !important;
+    background: var(--primary-red) !important; color: #fff !important;
+    font-family: var(--font-body); box-shadow: none !important;
+    transition: filter 0.15s ease, transform 0.15s ease;
+  }
+  .rail-emergency:hover { filter: brightness(1.07); transform: translateY(-1px); }
+  .rail-emergency-ic { font-size: 1.25rem; line-height: 1; flex-shrink: 0; }
+  .rail-emergency-txt { display: flex; flex-direction: column; line-height: 1.2; }
+  .rail-emergency-txt strong { font-size: 0.9rem; font-weight: 700; }
+  .rail-emergency-txt small { font-size: 0.7rem; opacity: 0.9; }
+
+  .side-drawer-foot { text-align: left !important; }
+  .rail-foot-desk { display: flex !important; flex-direction: column; gap: 9px; margin-bottom: 11px; }
+  .rail-support {
+    width: 100%; margin: 0; padding: 8px 12px;
+    border: 1px solid var(--border-color) !important; border-radius: 6px !important;
+    background: var(--bg-card) !important; color: var(--primary-red) !important;
+    font-weight: 600; font-size: 0.85rem; cursor: pointer; box-shadow: none !important;
+    transition: background 0.15s ease;
+  }
+  .rail-support:hover { background: var(--primary-red-soft) !important; transform: none !important; }
+  .rail-credit { display: flex; flex-direction: column; gap: 1px; cursor: pointer; padding: 6px 4px; border-radius: 6px; }
+  .rail-credit:hover { background: var(--gh-muted); }
+  .rail-credit-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+  .rail-credit-names { font-size: 0.82rem; font-weight: 600; color: var(--text-main); }
+  .rail-credit-batch { color: var(--text-muted); font-weight: 500; font-size: 0.72rem; }
+
+  .rail-social .social-connect { margin: 0 !important; padding: 0 !important; background: none !important; box-shadow: none !important; border: none !important; }
+  .rail-social .social-connect-label { display: none !important; }
+  .rail-social .social-connect-row { gap: 8px !important; justify-content: flex-start !important; }
+  .rail-social .social-btn { width: 30px !important; height: 30px !important; }
+
+  .rail-copyright { font-size: 0.7rem; color: var(--text-muted); border-top: 1px solid var(--border-color); padding-top: 10px; }
+
+  /* ── 11 · Light-theme header is the SAME red brand banner (beat L646) ── */
+  [data-theme="light"] header {
+    background: linear-gradient(135deg, #b71d38 0%, #dc2743 50%, #9f1239 100%) !important;
+    border-image: none !important;
+    border-bottom: none !important;
+    box-shadow: 0 4px 22px rgba(220, 39, 67, 0.38), inset 0 1px 0 rgba(255,255,255,0.18) !important;
+  }
+  [data-theme="light"] header h1 {
+    background: linear-gradient(90deg, #fff, #fecdd3) !important;
+    -webkit-background-clip: text !important; background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    filter: none !important;
+  }
+
+  /* ── 12 · Professional home hero + Register/Emergency action cards (image 6) ── */
+  .app-page .emergency-banner { display: none !important; }  /* replaced by hero action cards */
+  /* show the BD-map silhouette + animated blood drop like mobile (not a tiny circle).
+     Match the .container width (same as the Top Donor Areas card) so the whole
+     home top column lines up. */
+  .hero-fx {
+    height: clamp(190px, 28vh, 300px) !important; margin: 8px auto 14px !important;
+    width: 95% !important; max-width: 1200px !important;
+  }
+  .hero-fx-caption { display: block !important; }
+  .home-hero-bar {
+    position: relative;
+    background: var(--bg-card) !important; border: 1px solid var(--border-color) !important;
+    border-radius: 10px !important; box-shadow: none !important;
+    gap: 10px; padding: 16px 18px !important; flex-wrap: wrap;
+    width: 95% !important; max-width: 1200px !important; margin: 8px auto 0 !important;
+  }
+  .home-hero-num { text-shadow: none !important; }
+  /* hide the compact mobile "Register" stat + its divider; desktop uses action cards */
+  .home-hero-reg, .hero-reg-div { display: none !important; }
+  .home-hero-actions { display: flex !important; gap: 10px; flex: 2 1 360px; margin-left: auto; }
+  .hero-act {
+    flex: 1; display: flex; align-items: center; gap: 10px; cursor: pointer;
+    padding: 10px 14px; border-radius: 8px; text-align: left;
+    border: 1px solid var(--border-color); background: var(--gh-muted);
+    color: var(--text-main); font-family: var(--font-body);
+    transition: transform 0.15s ease, filter 0.15s ease, border-color 0.15s ease;
+  }
+  .hero-act:hover { transform: translateY(-1px); }
+  .hero-act-ic { font-size: 1.4rem; line-height: 1; flex-shrink: 0; }
+  .hero-act-tx { display: flex; flex-direction: column; line-height: 1.2; }
+  .hero-act-tx strong { font-size: 0.9rem; font-weight: 700; }
+  .hero-act-tx small { font-size: 0.7rem; color: var(--text-muted); }
+  .hero-act-reg { border-color: rgba(34,197,94,0.4); }
+  .hero-act-reg:hover { border-color: #22c55e; filter: brightness(1.05); }
+  .hero-act-emg { border-color: rgba(220,38,38,0.4); }
+  .hero-act-emg:hover { border-color: var(--primary-red); filter: brightness(1.05); }
+  /* LIVE badge relocated to the header, beside the install icon */
+  .header-live {
+    display: inline-flex !important; align-items: center; gap: 5px;
+    font-size: 0.62rem; font-weight: 800; letter-spacing: 0.5px; color: #22c55e;
+    background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.32);
+    padding: 5px 10px; border-radius: 20px; white-space: nowrap;
+  }
+  .header-live-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0;
+    animation: netPing 2s ease-in-out infinite;
+  }
+
+  /* ── 13 · Quick-Filter cards → 4-col tinted, full border, icon + button (image 5) ── */
+  .stats-container {
+    grid-template-columns: repeat(4, 1fr) !important;
+    max-width: none !important; gap: 14px !important; padding: 0 !important;
+    margin: 18px auto 30px !important;
+  }
+  .stat-card {
+    background: color-mix(in srgb, var(--gc, var(--primary-red)) 9%, var(--bg-card)) !important;
+    border: 1.5px solid color-mix(in srgb, var(--gc, var(--primary-red)) 45%, transparent) !important;
+    border-radius: 12px !important; box-shadow: none !important;
+    padding: 16px 14px 14px !important; align-items: stretch !important; text-align: left !important;
+    min-height: 150px; justify-content: flex-start !important;
+  }
+  .stat-card:hover { transform: translateY(-3px) !important; box-shadow: 0 8px 20px rgba(0,0,0,0.18) !important; }
+  .stat-card::before { display: none !important; }   /* drop the top accent bar */
+  .stat-card .sc-drop {
+    display: inline-flex !important; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 8px; font-size: 0.95rem;
+    background: color-mix(in srgb, var(--gc) 18%, transparent);
+  }
+  .stat-card .sc-dot {
+    display: block !important; position: absolute; top: 16px; right: 16px;
+    width: 9px; height: 9px; border-radius: 50%; background: var(--gc);
+  }
+  .stat-card h4 {
+    font-size: 1.9rem !important; margin: 10px 0 2px !important; color: var(--gc) !important;
+    text-align: left !important;
+  }
+  .stat-card .count {
+    font-size: 0.82rem !important; color: var(--text-muted) !important;
+    justify-content: flex-start !important; margin-bottom: 12px;
+  }
+  .stat-card .stat-tap-hint { display: none !important; }   /* mobile-only cue */
+  .stat-card .sc-go {
+    display: block !important; margin-top: auto; text-align: center;
+    padding: 8px 10px; border-radius: 8px; font-size: 0.78rem; font-weight: 700;
+    color: var(--gc); background: color-mix(in srgb, var(--gc) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--gc) 35%, transparent);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .stat-card:hover .sc-go { background: var(--gc); color: #fff; }
+  .app-page-header.home-banner, [data-theme="light"] .app-page-header.home-banner {
+    background: transparent !important; box-shadow: none !important;
+    border-bottom: 1px solid var(--border-color) !important;
+  }
+  /* calmer report/admin buttons */
+  .report-btn-footer { border-width: 1px !important; box-shadow: none !important; }
+  .report-btn-footer:hover { transform: none !important; box-shadow: none !important; }
+  /* drop now-useless blur behind opaque GitHub surfaces (perf) */
+  .popup, .settings-panel, .home-hero-bar, .notif-panel { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+
+  /* ════════════════════════════════════════════════════════════════════
+     DESKTOP/TABLET RESTRUCTURE  ·  install→header · slim banner · FAB ·
+     analytics-on-home · pro footer  (mobile ≤650px untouched)
+     ════════════════════════════════════════════════════════════════════ */
+
+  /* ── A · Header: brand lives in the persistent sidebar head on desktop, so the
+     header shows ONLY the action buttons — avoids the duplicate "Blood Arena".
+     Tablet portrait (drawer closed) + landscape (icon rail) re-show it below. ── */
+  header { gap: 10px; }
+  header .header-logo-left { display: none !important; }
+  header h1 { display: none !important; }
+  .header-actions { margin-left: auto !important; }
+
+  /* compact header for a smarter look + remap the fixed-header offsets to 60px */
+  header { height: 60px !important; padding: 6px 18px !important; }
+  body { padding-top: 60px !important; }
+  .notif-panel-anchor, .notif-panel-anchor .notif-panel { top: 60px !important; }
+  .app-page-header { top: 60px !important; }
+  .settings-panel { top: 60px !important; }
+
+  /* refine the chrome lines: keep ONE clean horizontal line under the top bar,
+     drop the sidebar's vertical divider so the two no longer cross/overlap */
+  header { border-image: none !important; border-bottom: 1px solid #30363d !important; }
+  .side-drawer, .side-drawer-overlay.active .side-drawer { border-right: none !important; box-shadow: none !important; }
+
+  /* LIVE status pill sits in the bottom-right corner, just below the connect FAB
+     (positioned bottom:18/right:18 by the base ≥651px rule; FAB raised to clear it) */
+  #netStatusDot { display: flex !important; }
+  /* sidebar copyright removed (kept in the site footer) */
+  .rail-copyright { display: none !important; }
+  /* install button lives in the header beside the bell — must match the other
+     42px chips EXACTLY so it stays vertically centered on the same baseline */
+  .header-install-btn {
+    display: inline-flex !important; align-items: center !important; justify-content: center;
+    width: 42px; height: 42px; line-height: 1; padding: 0; margin: 0;
+    min-height: unset; flex-shrink: 0; vertical-align: middle;
+    border-radius: 8px; cursor: pointer;
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.16) !important; color: inherit;
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+  .header-install-btn .hi-icon { display: block; }
+  .header-install-btn:hover { background: var(--primary-red) !important; transform: translateY(-1px); }
+  .header-install-btn .hi-icon { width: 20px; height: 20px; }
+  .header-install-btn .hi-tablet { display: none; }   /* desktop shows the monitor icon */
+
+  /* ── Header action chips: settings (beside install), emergency + quick-links
+     (beside settings). All share the install button's 42px chip so the row of
+     icons stays on ONE perfectly-aligned line. desk-only → shown here only. ── */
+  .header-settings-btn,
+  .header-emergency-btn,
+  .header-quick-btn {
+    display: inline-flex !important; align-items: center; justify-content: center;
+    width: 42px; height: 42px; line-height: 1; padding: 0; margin: 0;
+    border-radius: 8px; cursor: pointer; min-height: unset; flex-shrink: 0;
+    background: rgba(255,255,255,0.06) !important;
+    border: 1px solid rgba(255,255,255,0.16) !important; color: inherit;
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+  .header-settings-btn:hover,
+  .header-quick-btn:hover { background: var(--primary-red) !important; transform: translateY(-1px); }
+  .header-settings-btn svg,
+  .header-quick-btn svg { width: 20px; height: 20px; }
+  /* keep the whole action row on one perfectly-aligned line */
+  .header-actions { display: inline-flex !important; align-items: center !important; gap: 8px; flex-wrap: nowrap; }
+
+  /* emergency = descriptive, prominent red CTA (still 42px tall → stays aligned) */
+  .header-emergency-btn {
+    width: auto !important; padding: 0 14px !important; gap: 7px;
+    font-family: var(--font-body); font-weight: 700; font-size: 0.85rem; color: #fff !important;
+    background: var(--primary-red) !important; border-color: var(--primary-red) !important;
+    box-shadow: 0 2px 10px rgba(220,38,38,0.35);
+  }
+  .header-emergency-btn .he-ic { font-size: 1.05rem; line-height: 1; }
+  .header-emergency-btn .he-tx { white-space: nowrap; }
+  .header-emergency-btn:hover { filter: brightness(1.08); transform: translateY(-1px); background: var(--primary-red) !important; }
+
+  /* quick-links menu separator */
+  .header-quick-sep { height: 1px; background: var(--border-color); margin: 5px 4px; }
+
+  /* quick-links dropdown */
+  .header-quick-wrap { display: inline-flex !important; position: relative; align-items: center; flex-shrink: 0; }
+  .header-quick-menu {
+    position: absolute; top: calc(100% + 8px); right: 0;
+    min-width: 190px; padding: 6px; margin: 0;
+    background: var(--bg-card); border: 1px solid var(--border-color);
+    border-radius: 10px; box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    display: none; flex-direction: column; gap: 2px; z-index: 1200;
+    /* scrollable list — never runs past the viewport, even with many items */
+    max-height: min(70vh, 420px); overflow-y: auto; overscroll-behavior: contain;
+  }
+  .header-quick-menu::-webkit-scrollbar { width: 7px; }
+  .header-quick-menu::-webkit-scrollbar-thumb {
+    background: var(--border-color); border-radius: 10px;
+  }
+  .header-quick-menu::-webkit-scrollbar-track { background: transparent; }
+  .header-quick-wrap.open .header-quick-menu { display: flex; }
+  .header-quick-menu button {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 9px 12px; border: none; background: transparent; cursor: pointer;
+    border-radius: 8px; font-size: 0.9rem; font-weight: 600; min-height: unset;
+    color: var(--text-main); font-family: var(--font-body); text-align: left;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .header-quick-menu button:hover { background: var(--gh-muted); color: var(--primary-red); }
+  .header-quick-menu button > span { width: 20px; text-align: center; flex-shrink: 0; }
+
+  /* ── B · Sidebar: remove items that moved out (install, analytics, social, dev credit) ── */
+  .side-drawer .sd-install { display: none !important; }
+  .side-drawer #sd-more    { display: none !important; }
+  .rail-social, .rail-credit { display: none !important; }
+
+  /* ── C · Analytics merged into home (below quick filter) ── */
+  .home-analytics { display: block !important; margin-top: 26px; }
+  .home-analytics .section-header-row { margin-top: 0; }
+
+  /* ── D · Connect-Us — 5 social icons stacked vertically bottom-right, LIVE below ── */
+  .social-fab {
+    display: flex !important; flex-direction: column; align-items: center; gap: 10px;
+    position: fixed; right: 18px; bottom: 18px; z-index: 60;
+  }
+  .social-fab-items { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .social-fab .social-btn { width: 42px !important; height: 42px !important; opacity: 1; }
+  .social-fab .social-btn svg { width: 20px; height: 20px; }
+  .fab-live {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 0.6rem; font-weight: 800; letter-spacing: 0.5px; color: #22c55e;
+    background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.32);
+    padding: 4px 9px; border-radius: 20px; white-space: nowrap;
+  }
+  .fab-live-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0;
+    animation: netPing 2s ease-in-out infinite;
+  }
+
+  /* ── E · Professional site footer — Quick Links + Developed By (image 8) ── */
+  .site-footer {
+    display: block !important; margin-top: 40px;
+    border-top: 1px solid var(--border-color); background: var(--bg-card);
+  }
+  .site-footer-inner { max-width: 1000px; margin: 0 auto; padding: 26px 22px 18px; }
+  .sf-top { display: grid; grid-template-columns: 1.25fr 1fr; gap: 44px; align-items: start; }
+  .sf-heading {
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--text-muted); font-weight: 700; margin: 0 0 14px;
+  }
+  /* quick links */
+  .sf-links-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .sf-link, .sf-cta {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    padding: 12px 16px; border-radius: 10px; font-size: 0.9rem; font-weight: 600;
+    color: var(--text-main); background: var(--gh-muted);
+    border: 1px solid var(--border-color); font-family: var(--font-body);
+    transition: transform 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .sf-link:hover, .sf-cta:hover { transform: translateY(-2px); border-color: var(--primary-red); color: var(--primary-red); }
+  .sf-link-ic { color: var(--primary-red); display: inline-flex; }
+  .sf-link-wide { width: 100%; margin-top: 12px; }
+  .sf-cta-row { display: flex; gap: 16px; margin-top: 20px; }
+  .sf-cta { flex: 1; justify-content: center; }
+  /* developer cards (initial-avatar style) */
+  .sf-dev-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .sf-dev-card {
+    display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer;
+    padding: 18px 12px; border-radius: 14px; text-align: center;
+    background: color-mix(in srgb, var(--primary-red) 10%, var(--bg-card));
+    border: 1px solid color-mix(in srgb, var(--primary-red) 35%, transparent);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .sf-dev-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(220,38,38,0.18); }
+  .sf-dev-ava {
+    width: 50px; height: 50px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-heading); font-weight: 800; font-size: 1.3rem; color: #fff;
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    box-shadow: 0 4px 12px rgba(220,38,38,0.4);
+  }
+  .sf-dev-ava-img { object-fit: cover; }
+  .sf-dev-name { font-family: var(--font-heading); font-weight: 800; font-size: 0.95rem; color: var(--text-main); }
+  .sf-dev-batch { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
+  .sf-dev-role {
+    margin-top: 2px; font-size: 0.66rem; font-weight: 700; color: var(--primary-red);
+    background: color-mix(in srgb, var(--primary-red) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--primary-red) 30%, transparent);
+    padding: 3px 10px; border-radius: 20px;
+  }
+  /* copyright */
+  .site-footer-copy {
+    text-align: center; margin-top: 18px; padding-top: 14px;
+    border-top: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-muted);
+  }
+  .sf-ver { opacity: 0.7; margin-left: 6px; }
+  .site-footer-powered {
+    text-align: center; margin-top: 6px;
+    font-size: 0.72rem; font-weight: 600; color: var(--text-muted);
+  }
+
+  /* remove the legacy duplicate footer (© … v2.5.8) on desktop/tablet */
+  .site-footer.legacy-footer { display: none !important; }
+
+  /* ── Merge the sidebar brand head with the header into one continuous top bar ── */
+  .side-drawer-head {
+    height: 60px !important; box-sizing: border-box !important;
+    padding: 0 16px !important; align-items: center !important;
+    background: #161b22 !important; border-bottom: 1px solid #30363d !important;
+  }
+  [data-theme="light"] .side-drawer-head { background: #161b22 !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   TABLET · LANDSCAPE  →  narrow icon rail that expands to full sidebar on hover
+   (pad held sideways; touch devices only, ≤1366px landscape — desktop keeps the
+   full 230px rail).  Inherits all desktop styles above; only narrows the rail
+   + remaps the 230px content offsets to 64px.
+   ════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 651px) and (max-width: 1366px) and (orientation: landscape) and (pointer: coarse) {
+  /* content + chrome offsets: 230px → 64px */
+  body { padding-left: 64px !important; }
+  header, .site-header { left: 64px !important; }
+  .notif-panel-anchor { left: 64px !important; }
+  .info-page-overlay { left: 64px !important; }
+  .popup-overlay { left: 64px !important; width: calc(100% - 64px) !important; }
+  #toastWrap { left: calc(64px + 12px) !important; }
+  #notifPrompt { left: calc(64px + 16px) !important; }
+  #offlineAlert { left: 64px !important; }
+  #pwaInstallOverlay { left: 64px !important; }
+
+  /* collapse the rail to an icon strip */
+  .side-drawer-overlay, .side-drawer,
+  .side-drawer-overlay.active .side-drawer {
+    width: 64px !important; max-width: 64px !important;
+    overflow: visible !important;
+  }
+  .side-drawer { transition: width 0.18s ease !important; }
+  .side-drawer-brand, .side-drawer-group,
+  .sd-item > span:not(.sd-ic),
+  .rail-emergency-txt, .rail-support, .rail-copyright,
+  .side-drawer-foot { display: none !important; }
+  .sd-item { justify-content: center !important; padding: 10px 0 !important; }
+  .rail-emergency { justify-content: center !important; padding: 10px 0 !important; }
+  .side-drawer-head { justify-content: center !important; padding: 16px 0 !important; }
+
+  /* expand to the full labelled sidebar on hover (floats above content) */
+  .side-drawer-overlay:hover, .side-drawer-overlay:hover .side-drawer,
+  .side-drawer:hover {
+    width: 230px !important; max-width: 230px !important; z-index: 1200 !important;
+  }
+  .side-drawer:hover .side-drawer-brand,
+  .side-drawer:hover .side-drawer-group,
+  .side-drawer:hover .sd-item > span:not(.sd-ic),
+  .side-drawer:hover .rail-emergency-txt,
+  .side-drawer:hover .rail-support,
+  .side-drawer:hover .rail-copyright,
+  .side-drawer:hover .side-drawer-foot { display: block !important; }
+  .side-drawer:hover .sd-item,
+  .side-drawer:hover .rail-emergency { justify-content: flex-start !important; padding: 10px 12px !important; }
+  .side-drawer:hover .side-drawer-head { justify-content: flex-start !important; padding: 16px 14px !important; }
+
+  /* icon rail hides the sidebar brand text → keep "Blood Arena" in the header */
+  header .header-logo-left { display: inline-block !important; height: 34px !important; width: 34px !important; border-radius: 9px !important; }
+  header h1 { display: block !important; font-size: 1.2rem !important; text-align: left !important; margin: 0 !important; flex: 1 1 auto; }
+  /* install icon → tablet/pad variant */
+  .header-install-btn .hi-desktop { display: none !important; }
+  .header-install-btn .hi-tablet { display: inline-block !important; }
+  /* emergency → compact icon-only on tablets (saves header width) */
+  .header-emergency-btn { width: 42px !important; padding: 0 !important; }
+  .header-emergency-btn .he-tx { display: none !important; }
+
+  /* footer aligns to the 64px rail */
+  .site-footer { margin-left: 0 !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   TABLET · PORTRAIT  →  mobile-style chrome (hamburger drawer + bottom nav)
+   with the merged analytics on home.  (pad held vertically; touch only.)
+   Reverts the desktop persistent-rail treatment back to the overlay drawer.
+   ════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 651px) and (orientation: portrait) and (pointer: coarse) {
+  /* no left offset — full-width content */
+  body { padding-left: 0 !important; padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)) !important; }
+  header, .site-header { left: 0 !important; }
+  .notif-panel-anchor { left: 0 !important; }
+  .info-page-overlay { left: 0 !important; }
+  .popup-overlay { left: 0 !important; width: 100% !important; }
+  #toastWrap { left: 12px !important; }
+  #notifPrompt { left: 16px !important; }
+  #offlineAlert { left: 0 !important; }
+  #pwaInstallOverlay { left: 0 !important; }
+
+  /* hamburger back, bottom nav back */
+  .ba-hamburger { display: flex !important; }
+  .mobile-bottom-nav { display: flex !important; }
+
+  /* drawer brand isn't visible until opened → keep "Blood Arena" in the header */
+  header .header-logo-left { display: inline-block !important; height: 34px !important; width: 34px !important; border-radius: 9px !important; }
+  header h1 { display: block !important; font-size: 1.2rem !important; text-align: left !important; margin: 0 !important; flex: 1 1 auto; }
+  /* install icon → tablet/pad variant */
+  .header-install-btn .hi-desktop { display: none !important; }
+  .header-install-btn .hi-tablet { display: inline-block !important; }
+  /* emergency → compact icon-only on tablets (saves header width) */
+  .header-emergency-btn { width: 42px !important; padding: 0 !important; }
+  .header-emergency-btn .he-tx { display: none !important; }
+
+  /* drawer reverts to a hidden overlay that slides in on open */
+  .side-drawer-overlay {
+    position: fixed !important; inset: 0 !important; width: auto !important;
+    background: rgba(0,0,0,0.55) !important; z-index: 10000 !important;
+    opacity: 0 !important; visibility: hidden !important; pointer-events: auto !important;
+  }
+  .side-drawer-overlay.active { opacity: 1 !important; visibility: visible !important; }
+  .side-drawer, .side-drawer-overlay.active .side-drawer {
+    position: absolute !important; top: 0 !important; left: 0 !important; bottom: 0 !important;
+    width: 82% !important; max-width: 320px !important;
+    transform: translateX(-100%) !important;
+    box-shadow: 4px 0 32px rgba(0,0,0,0.45) !important;
+    transition: transform 0.3s cubic-bezier(0.34,1.05,0.64,1) !important;
+  }
+  .side-drawer-overlay.active .side-drawer { transform: translateX(0) !important; }
+  .side-drawer-close { display: flex !important; }
+  /* drawer holds ALL content on tablet: re-show dev credit + social inside it */
+  .rail-credit, .rail-social { display: block !important; }
+
+  /* bottom nav replaces the floating FAB; footer stays (stacks vertically) */
+  .social-fab { display: none !important; }
+  /* lift the LIVE pill above the bottom nav (FAB is gone here) */
+  #netStatusDot { bottom: 76px !important; right: 12px !important; }
+  .sf-top { grid-template-columns: 1fr !important; gap: 26px !important; }
+  .sf-cta-row { flex-direction: column !important; }
+
+  /* quick-filter: 4 columns is too tight in portrait → 2 */
+  .stats-container { grid-template-columns: repeat(2, 1fr) !important; }
+  .home-hero-actions { flex-basis: 100% !important; margin-left: 0 !important; }
+}
+
+
 
