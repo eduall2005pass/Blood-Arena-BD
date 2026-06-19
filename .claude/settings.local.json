@@ -61,7 +61,14 @@
       "Read(//c//**)",
       "Bash(awk 'NR>=4400 && NR<=4570 && /@media/{print NR\": \"$0}' assets/styles.css.php)",
       "Bash(awk 'NR<=4552 && /@media/{last=NR\": \"$0} END{print last}' assets/styles.css.php)",
-      "Bash(php -l visitors_api.php)"
+      "Bash(php -l visitors_api.php)",
+      "Bash(php -i)",
+      "Bash(sed -n '1036,1043p' admin.php)",
+      "Bash(sed -n '1193,1197p' admin.php)",
+      "Bash(sed -n '1689,1694p' admin.php)",
+      "Bash(python -)",
+      "Bash(sed -n '600,665p' assets/app.js.php)",
+      "Bash(sed -n '4060,4245p' assets/app.js.php)"
     ]
   }
 }

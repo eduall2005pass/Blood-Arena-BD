@@ -1038,6 +1038,7 @@ if($logged_in && $conn){
     if($res2) while($row=$res2->fetch_assoc()) $requests[]=$row;
     $stats['active_req']=count(array_filter($requests,function($r){return $r['status']==='Active';}));
 
+    $pending_secret_reqs=0;
     $inbox_unread=(int)_cnt(dbq($conn,"SELECT COUNT(*) c FROM admin_messages WHERE is_read=0 AND admin_reply IS NULL"));
 
     $res3=dbq($conn,"SELECT * FROM reports ORDER BY id DESC LIMIT 100");
@@ -1191,13 +1192,13 @@ tr:last-child td{border-bottom:none;}
 .bulk-del-btn:hover{background:#b91c1c;}
 .bulk-cancel-btn{padding:5px 12px;background:rgba(255,255,255,.07);color:var(--muted);border:1px solid var(--bdr);border-radius:8px;font-size:.8em;cursor:pointer;}
 input[type=checkbox].row-cb{width:15px;height:15px;cursor:pointer;accent-color:var(--red);}
-input[type=checkbox]#cb-all-donors,input[type=checkbox]#cb-all-requests,input[type=checkbox]#cb-all-reports,input[type=checkbox]#cb-all-calls{width:15px;height:15px;cursor:pointer;accent-color:var(--red);}
+input[type=checkbox]#cb-all-donors,input[type=checkbox]#cb-all-requests,input[type=checkbox]#cb-all-reports,input[type=checkbox]#cb-all-calls,input[type=checkbox]#cb-all-secretreqs{width:15px;height:15px;cursor:pointer;accent-color:var(--red);}
 
 /* ── DEVICE / LOCATION CELL ── */
 .dev-cell{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.74em;color:var(--muted);cursor:default;}
 .loc-cell{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.74em;color:var(--cyan);}
 
-/* ── donor list cells ── */
+/* ── SECRET CODE TAB ── */
 .sc-search-bar{display:flex;flex-wrap:wrap;gap:8px;padding:14px 16px;border-bottom:1px solid var(--bdr);background:var(--card2);}
 .sc-search-bar input,.sc-search-bar select{background:var(--inp);border:1px solid var(--bdr);border-radius:8px;padding:7px 11px;color:var(--text);font-size:.84em;outline:none;min-width:130px;}
 .sc-search-bar input:focus,.sc-search-bar select:focus{border-color:var(--purple);}
@@ -1362,6 +1363,19 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
 <!-- ══════════════ ADMIN PANEL ══════════════ -->
 <div class="idle-warn" id="idleWarn">⚠️ <span id="idleSecs"></span>s এ auto-logout!</div>
 
+<!-- MODAL (Secret Code reveal/reset result) -->
+<div class="modal-overlay" id="codeModal" style="display:none;" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h3 id="modalTitle">🔑 Secret Code</h3>
+    <div class="code-box" id="modalCode">—</div>
+    <div style="font-size:.78em;color:var(--muted);text-align:center;margin-bottom:4px;" id="modalDonor"></div>
+    <div class="modal-btns">
+      <button onclick="copyModalCode()" style="background:rgba(6,182,212,.2);color:var(--cyan);border:1px solid rgba(6,182,212,.3);" id="copyModalBtn">📋 Copy</button>
+      <button onclick="closeModal()" style="background:rgba(255,255,255,.07);color:var(--muted);border:1px solid var(--bdr);">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="hdr">
   <div><h1>🩸 BloodArena Admin</h1><small>Bangladesh</small></div>
   <div class="hdr-right">
@@ -1382,6 +1396,8 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
   <div class="mt"     onclick="go('requests',this)">🆘 Requests</div>
   <div class="mt"     onclick="go('reports',this)">⚠️ Reports</div>
   <div class="mt"     onclick="go('calls',this)">📞 Calls</div>
+  <div class="mt"     onclick="go('secrets',this)">🔑 Secrets</div>
+  <div class="mt"     onclick="go('secretreqs',this)">📩 Requests<?php if(!empty($pending_secret_reqs)&&$pending_secret_reqs>0):?> (<?=$pending_secret_reqs?>)<?php endif;?></div>
   <div class="mt"     onclick="go('notifications',this)">🔔 Notif</div>
   <?php if($is_super):?><div class="mt" onclick="go('inbox',this)">📬 Inbox<?php if(!empty($inbox_unread)&&$inbox_unread>0):?> (<?=$inbox_unread?>)<?php endif;?></div><?php endif;?>
   <?php if($is_super):?><div class="mt" onclick="go('moderators',this)">👥 Mods</div><?php endif;?>
@@ -1401,6 +1417,8 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
     <div class="ni"    onclick="go('calls',this)">📞 Call Logs</div>
     <div class="ni-sep"></div>
     <div class="ni-label">Tools</div>
+    <div class="ni"    onclick="go('secrets',this)">🔑 Secret Codes</div>
+    <div class="ni"    onclick="go('secretreqs',this)">📩 Secret Requests <?php if(!empty($pending_secret_reqs)&&$pending_secret_reqs>0):?><span class="cnt"><?=$pending_secret_reqs?></span><?php endif;?></div>
     <div class="ni"    onclick="go('notifications',this)">🔔 Notifications</div>
     <?php if($is_super):?><div class="ni" onclick="go('inbox',this)">📬 Inbox <?php if(!empty($inbox_unread)&&$inbox_unread>0):?><span class="cnt"><?=$inbox_unread?></span><?php endif;?></div><?php endif;?>
     <div class="ni"    onclick="go('tokens',this)">🪙 Token Manager</div>
@@ -1435,6 +1453,12 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
         <div class="sc b" onclick="go('inbox',document.querySelector('.ni[onclick*=inbox]'))" style="cursor:pointer;border-color:rgba(59,130,246,.4);position:relative;">
           <div class="v" style="color:var(--blue);"><?=$inbox_unread?></div>
           <div class="l">📬 Unread Inbox</div>
+        </div>
+        <?php endif;?>
+        <?php if(!empty($pending_secret_reqs) && $pending_secret_reqs>0):?>
+        <div class="sc o" onclick="go('secretreqs',document.querySelector('.ni[onclick*=secretreqs]'))" style="cursor:pointer;border-color:rgba(245,158,11,.4);position:relative;">
+          <div class="v" style="color:var(--orange);"><?=$pending_secret_reqs?></div>
+          <div class="l">📩 Pending Requests</div>
         </div>
         <?php endif;?>
       </div>
@@ -1664,6 +1688,95 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
       </div>
     </div>
 
+    <!-- ══ SECRET CODE MANAGER ══ -->
+    <div class="tab" id="tab-secrets">
+      <div class="stitle" style="display:flex;align-items:center;justify-content:space-between;">🔑 Secret Code Manager<button class="tab-refresh-btn" onclick="location.reload()" title="Page reload করুন">🔄</button></div>
+      <div class="tbox">
+        <div class="sc-search-bar">
+          <input type="text" id="scName"  placeholder="🔍 নাম..." oninput="filterSecrets()">
+          <input type="text" id="scPhone" placeholder="📞 ফোন..." oninput="filterSecrets()">
+          <select id="scGroup" onchange="filterSecrets()">
+            <option value="">All Groups</option>
+            <?php foreach(["A+","A-","B+","B-","AB+","AB-","O+","O-"] as $g) echo "<option>$g</option>"; ?>
+          </select>
+          <select id="scBadge" onchange="filterSecrets()">
+            <option value="">All Badges</option>
+            <option>New</option><option>Active</option><option>Hero</option><option>Legend</option>
+          </select>
+          <button onclick="resetSecretFilters()">↺ Reset</button>
+          <span id="scCount" style="font-size:.8em;color:var(--muted);align-self:center;margin-left:4px;"></span>
+        </div>
+        <div class="ow"><table>
+          <thead><tr><th>#</th><th>Name</th><th>Group</th><th>Phone</th><th>Badge</th><th>Donations</th><th>Secret Code</th><th>Actions</th></tr></thead>
+          <tbody id="scTable">
+          <?php
+          $badge_icons_sc=['Legend'=>'👑','Hero'=>'🦸','Active'=>'⭐','New'=>'🌱'];
+          $sc_donors=[];
+          if($conn){
+            $scr=dbq($conn,"SELECT id,name,blood_group,phone,badge_level,total_donations,secret_code FROM donors ORDER BY id DESC LIMIT 500");
+            if($scr) while($row=$scr->fetch_assoc()) $sc_donors[]=$row;
+          }
+          foreach($sc_donors as $i=>$d):
+            $bp='bp-'.strtolower($d['badge_level']??'new');
+            $bicon=$badge_icons_sc[$d['badge_level']??'New']??'🌱';
+          ?><tr class="sc-row"
+               data-name="<?=strtolower(esc($d['name']))?>"
+               data-phone="<?=esc($d['phone']??'')?>"
+               data-group="<?=esc($d['blood_group']??'')?>"
+               data-badge="<?=esc($d['badge_level']??'New')?>">
+            <td style="color:var(--muted);"><?=$i+1?></td>
+            <td style="font-weight:600;"><?=esc($d['name'])?></td>
+            <td><span class="bg"><?=esc($d['blood_group'])?></span></td>
+            <td style="font-family:monospace;font-size:.79em;"><?=esc($d['phone']??'')?></td>
+            <td><span class="badge-pill <?=$bp?>"><?=$bicon?> <?=esc($d['badge_level']??'New')?></span></td>
+            <td style="text-align:center;"><?=(int)($d['total_donations']??0)?></td>
+            <td>
+              <?php if(!empty($d['secret_code'])):?>
+                <span class="code-hidden" id="code-<?=$d['id']?>">●●●●●●●●●●●●●●●●●●</span>
+              <?php else:?>
+                <span style="color:var(--muted);font-size:.78em;font-style:italic;">No code</span>
+              <?php endif;?>
+            </td>
+            <td style="display:flex;gap:5px;flex-wrap:wrap;">
+              <?php if(!empty($d['secret_code'])):?>
+                <button class="btn bc" onclick="revealSecret(<?=$d['id']?>,this)" title="Show code">👁 Reveal</button>
+              <?php endif;?>
+              <button class="btn bpu" onclick="resetSecret(<?=$d['id']?>,this,<?=json_encode($d['name'])?>)" title="Generate new code">🔄 Reset</button>
+            </td>
+          </tr><?php endforeach; if(empty($sc_donors)):?><tr><td colspan="8" class="empty">কোনো donor নেই</td></tr><?php endif;?>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- ══ SECRET CODE REQUESTS ══ -->
+    <div class="tab" id="tab-secretreqs">
+      <div class="stitle" style="display:flex;align-items:center;justify-content:space-between;">📩 Secret Code Requests <span style="font-size:.65em;color:var(--muted);font-weight:400;" id="scReqCountBadge"><?php if($pending_secret_reqs>0) echo "($pending_secret_reqs pending)"; ?></span><button class="tab-refresh-btn" onclick="location.reload()" title="Page reload করুন">🔄</button></div>
+      <div class="tbox">
+        <div class="tbar">
+          <h3>Donor-Requested Code Resets</h3>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <button onclick="loadSecretReqs()" style="padding:5px 14px;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);color:var(--blue);border-radius:8px;font-size:.8em;cursor:pointer;">🔄 Refresh</button>
+            <?php if($is_super):?>
+            <button onclick="clearSecretReqs('all')" style="padding:5px 14px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);border-radius:8px;font-size:.78em;font-weight:700;cursor:pointer;">🗑 সব মুছুন</button>
+            <button onclick="clearSecretReqs('processed')" style="padding:5px 14px;background:rgba(107,114,128,.1);color:var(--muted);border:1px solid var(--bdr);border-radius:8px;font-size:.78em;cursor:pointer;">🗑 Processed মুছুন</button>
+            <?php endif;?>
+          </div>
+        </div>
+        <div class="bulk-bar" id="bulk-bar-secretreqs" <?php if($is_moderator) echo 'style="display:none!important;"'; ?>>
+          <span>✅ <strong id="secretreqs-sel-count">0</strong> টি selected</span>
+          <button class="bulk-del-btn" onclick="bulkDelete('secretreqs')">🗑 Delete Selected</button>
+          <button class="bulk-cancel-btn" onclick="clearSelection('secretreqs')">✕ Cancel</button>
+        </div>
+        <div class="ow"><table>
+          <thead><tr>
+            <th class="cb-th"><input type="checkbox" id="cb-all-secretreqs" onchange="toggleAll('secretreqs',this.checked)"></th>
+            <th>#</th><th>Donor Name</th><th>Phone</th><th>Ref Code</th><th>Device ID</th><th>IP</th><th>Status</th><th>Requested</th><th>Actions</th></tr></thead>
+          <tbody id="scReqTable"><tr><td colspan="10" class="empty">⏳ Load করুন...</td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+
     <!-- ══ NOTIFICATIONS ══ -->
     <div class="tab" id="tab-notifications">
       <div class="stitle" style="display:flex;align-items:center;justify-content:space-between;">🔔 Notifications<button class="tab-refresh-btn" onclick="location.reload()" title="Page reload করুন">🔄</button></div>
@@ -1734,6 +1847,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
               <option value="warning">⚠️ Warning</option>
               <option value="location_on">📍 Location চালু করুন</option>
               <option value="notif_on">🔔 Notification চালু করুন</option>
+              <option value="secret_reset">🔑 Secret Code Reset</option>
             </select>
           </div>
           <div>
@@ -1759,7 +1873,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
       <!-- Specific Donor Notification -->
       <div class="settings-section">
         <h4>👤 Specific Donor — একজন Donor কে Notification</h4>
-        <p style="font-size:.82em;color:var(--muted);margin-bottom:10px;">Donor এর phone number দিন (device ID আগে থেকে capture থাকতে হবে)।</p>
+        <p style="font-size:.82em;color:var(--muted);margin-bottom:10px;">Donor এর phone number দিন। তাকে আগে কোনো Secret Code Request করতে হবে যাতে device ID পাওয়া যায়।</p>
         <div style="display:grid;gap:8px;max-width:560px;">
           <div>
             <label style="font-size:.78em;color:var(--muted);display:block;margin-bottom:4px;">Donor Phone Number</label>
@@ -1772,6 +1886,8 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
               <option value="warning">⚠️ Warning</option>
               <option value="location_on">📍 Location চালু করুন</option>
               <option value="notif_on">🔔 Notification চালু করুন</option>
+              <option value="secret_code_ready">✅ Secret Code Ready</option>
+              <option value="secret_reset">🔑 Secret Code Reset</option>
             </select>
           </div>
           <div>
@@ -1817,7 +1933,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
       <!-- Add Moderator -->
       <div class="settings-section">
         <h4>➕ নতুন Moderator / Admin যোগ করুন</h4>
-        <p style="font-size:.82em;color:var(--muted);margin-bottom:12px;">Moderator: notification পাঠাতে পারবে। Delete করতে পারবে না, messages reply করতে পারবে না।</p>
+        <p style="font-size:.82em;color:var(--muted);margin-bottom:12px;">Moderator: notification পাঠাতে ও secret code request approve/deny করতে পারবে। Delete করতে পারবে না, messages reply করতে পারবে না।</p>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;max-width:600px;margin-bottom:10px;">
           <input type="text" id="mod_uname" placeholder="Username (a-z 0-9 _-)" style="padding:9px;background:var(--inp);border:1px solid var(--bdr);border-radius:8px;color:var(--text);font-size:.85em;">
           <input type="password" id="mod_pass" placeholder="Password (min 8 chars)" style="padding:9px;background:var(--inp);border:1px solid var(--bdr);border-radius:8px;color:var(--text);font-size:.85em;">
@@ -1979,7 +2095,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
       <!-- Browser Notifications (available to all roles) -->
       <div class="settings-section">
         <h4>🔔 Admin Browser Notifications</h4>
-        <p style="font-size:.82em;color:var(--muted);margin-bottom:12px;">নতুন <strong>Inbox message</strong> এলে browser notification আসবে — tab background এ থাকলেও কাজ করবে।</p>
+        <p style="font-size:.82em;color:var(--muted);margin-bottom:12px;">নতুন <strong>Inbox message</strong> বা <strong>Secret Code Request</strong> এলে browser notification আসবে — tab background এ থাকলেও কাজ করবে।</p>
         <div id="adminNotifStatus" style="margin-bottom:12px;padding:10px 14px;border-radius:10px;font-size:.83em;background:rgba(107,114,128,.1);border:1px solid var(--bdr);">
           ⏳ Notification status check করা হচ্ছে...
         </div>
@@ -2244,6 +2360,20 @@ function bulkDelete(table){
     }).catch(e=>alert('Network error: '+e.message));
 }
 
+// ── SECRET CODE: Client-side filter ─────────────────────
+function filterSecrets() {
+    const name=document.getElementById('scName').value.toLowerCase();
+    const phone=document.getElementById('scPhone').value.toLowerCase();
+    const group=document.getElementById('scGroup').value;
+    const badge=document.getElementById('scBadge').value;
+    let visible=0;
+    document.querySelectorAll('.sc-row').forEach(tr=>{
+        const ok=(!name||tr.dataset.name.includes(name))&&(!phone||tr.dataset.phone.includes(phone))&&(!group||tr.dataset.group===group)&&(!badge||tr.dataset.badge===badge);
+        tr.style.display=ok?'':'none'; if(ok) visible++;
+    });
+    const cnt=document.getElementById('scCount'); if(cnt) cnt.textContent=visible+' টি দেখাচ্ছে';
+}
+
 // ── INBOX ─────────────────────────────────────────────────
 var _inboxFilter='all';
 function loadInbox(filter){
@@ -2421,6 +2551,127 @@ function delModerator(id,btn,uname){
     };
 })();
 
+function resetSecretFilters(){
+    ['scName','scPhone'].forEach(id=>document.getElementById(id).value='');
+    ['scGroup','scBadge'].forEach(id=>document.getElementById(id).value='');
+    filterSecrets();
+}
+
+// ── SECRET CODE: Reveal ──────────────────────────────────
+function revealSecret(id, btn){
+    btn.disabled=true; btn.textContent='⏳';
+    const fd=new FormData(); fd.append('act','reveal_secret'); fd.append('id',id); fd.append('csrf',CSRF);
+    fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json()).then(d=>{
+        btn.disabled=false; btn.innerHTML='👁 Reveal';
+        if(d.ok){
+            document.getElementById('modalTitle').textContent='🔑 Secret Code — Revealed';
+            document.getElementById('modalCode').textContent=d.code;
+            document.getElementById('modalDonor').textContent='Donor: '+d.name;
+            document.getElementById('codeModal').style.display='flex';
+            const span=document.getElementById('code-'+id);
+            if(span){span.className='code-visible';span.textContent=d.code;}
+        } else {alert(d.msg||'Error');}
+    }).catch(()=>{btn.disabled=false;btn.innerHTML='👁 Reveal';alert('Network error');});
+}
+
+// ── SECRET CODE: Reset ───────────────────────────────────
+function resetSecret(id,btn,donorName){
+    if(!confirm('🔄 '+donorName+' এর Secret Code reset করবেন? পুরনো code আর কাজ করবে না!')) return;
+    btn.disabled=true; btn.textContent='⏳';
+    const fd=new FormData(); fd.append('act','reset_secret'); fd.append('id',id); fd.append('csrf',CSRF);
+    fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json()).then(d=>{
+        btn.disabled=false; btn.innerHTML='🔄 Reset';
+        if(d.ok){
+            document.getElementById('modalTitle').textContent='✅ নতুন Secret Code';
+            document.getElementById('modalCode').textContent=d.code;
+            const notifNote = d.auto_notified
+                ? '✅ Donor এর Services notification এ পাঠানো হয়েছে।'
+                : 'Donor: '+donorName+' — নতুন code পাঠিয়ে দিন';
+            document.getElementById('modalDonor').textContent=notifNote;
+            document.getElementById('codeModal').style.display='flex';
+            const span=document.getElementById('code-'+id);
+            if(span){span.className='code-visible';span.textContent=d.code;}
+            if(d.auto_notified) showToast('🔔 Donor কে auto-notification পাঠানো হয়েছে!','#10b981');
+        } else {alert(d.msg||'Error');}
+    }).catch(()=>{btn.disabled=false;btn.innerHTML='🔄 Reset';alert('Network error');});
+}
+
+// ── SECRET CODE REQUESTS TAB ──────────────────────────────
+function loadSecretReqs(){
+    const tb=document.getElementById('scReqTable');
+    tb.innerHTML='<tr><td colspan="10" class="empty">⏳ লোড হচ্ছে...</td></tr>';
+    const fd=new FormData(); fd.append('act','get_secret_requests'); fd.append('csrf',CSRF);
+    fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json()).then(d=>{
+        if(!d.ok||!d.rows.length){ tb.innerHTML='<tr><td colspan="10" class="empty">কোনো request নেই</td></tr>'; return; }
+        const statusColor={'pending':'#f59e0b','approved':'#10b981','denied':'#ef4444','ref_expired':'#6b7280'};
+        tb.innerHTML=d.rows.map((r,i)=>`
+            <tr id="scr_${r.id}" class="secretreqs-row">
+              <td class="cb-td"><input type="checkbox" class="row-cb secretreqs-cb" value="${r.id}" onchange="onRowCbChange('secretreqs')"></td>
+              <td style="color:var(--muted);">${i+1}</td>
+              <td style="font-weight:600;">${escHtml(r.donor_name||'—')}</td>
+              <td style="font-family:monospace;font-size:.8em;">${escHtml(r.donor_number)}</td>
+              <td style="font-family:monospace;font-size:.8em;color:var(--cyan);">${escHtml(r.ref_code)}</td>
+              <td style="font-family:monospace;font-size:.72em;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;" title="${escHtml(r.device_id)}">${escHtml(r.device_id.substr(0,18))}…</td>
+              <td style="font-family:monospace;font-size:.74em;color:var(--muted);">${escHtml(r.req_ip||'—')}</td>
+              <td>
+                <span style="padding:2px 9px;border-radius:20px;font-size:.76em;font-weight:700;background:${statusColor[r.status]||'#888'}22;color:${statusColor[r.status]||'#888'};">${r.status}</span>
+                ${r.status==='approved'?`<span style="font-size:.7em;color:var(--muted);display:block;margin-top:2px;">👁 ${r.view_count||0}/3 views</span>`:''}
+                ${r.status==='ref_expired'?`<span style="font-size:.7em;color:var(--muted);display:block;margin-top:2px;">⛔ 3/3 used</span>`:''}
+              </td>
+              <td style="font-size:.75em;color:var(--muted);white-space:nowrap;">${r.created_at||'—'}</td>
+              <td>
+                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                ${r.status==='pending'?`
+                  <button class="btn bo" onclick="resolveSecretReq(${r.id},'approve')" title="Approve">✅ Approve</button>
+                  <button class="btn bd" onclick="resolveSecretReq(${r.id},'deny')" title="Deny">❌ Deny</button>
+                `:'<span style="font-size:.75em;color:var(--muted);">Processed</span>'}
+                ${IS_SUPER?`<button class="btn bd" onclick="act('del_secretreq',${r.id},this,'scr_${r.id}')" title="Delete" style="padding:3px 7px;font-size:.72em;">🗑</button>`:''}
+                </div>
+              </td>
+            </tr>`).join('');
+    }).catch(()=>{ tb.innerHTML='<tr><td colspan="10" class="empty">❌ Load করতে সমস্যা হয়েছে।</td></tr>'; });
+}
+
+
+function clearSecretReqs(filter){
+    var lbl=filter==='processed'?'Processed (approved/denied/expired) requests':'সব requests';
+    if(!confirm('🗑 '+lbl+' মুছে ফেলবেন?')) return;
+    var fd=new FormData(); fd.append('act','clear_secret_reqs'); fd.append('filter',filter); fd.append('csrf',CSRF);
+    fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){return r.json();}).then(function(d){
+        if(d.ok){ showToast(d.msg,'#10b981'); loadSecretReqs(); }
+        else { alert('❌ '+(d.msg||'Error')); }
+    }).catch(function(){alert('Network error');});
+}
+
+function resolveSecretReq(reqId, action){
+    const label = action==='approve'?'Approve করে নতুন code দেবেন?':'Deny করবেন?';
+    if(!confirm('⚠️ '+label+' Donor কে notification যাবে।')) return;
+    const note = action==='deny' ? (prompt('Admin Note (optional):')||'') : '';
+    const fd=new FormData();
+    fd.append('act','resolve_secret_request');
+    fd.append('req_id',reqId);
+    fd.append('action',action);
+    fd.append('admin_note',note);
+    fd.append('csrf',CSRF);
+    fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json()).then(d=>{
+        if(d.ok){
+            showToast(d.msg,'#10b981');
+            if(action==='approve'&&d.new_code){
+                document.getElementById('modalTitle').textContent='✅ নতুন Secret Code';
+                document.getElementById('modalCode').textContent=d.new_code;
+                document.getElementById('modalDonor').textContent='Donor notification পাঠানো হয়েছে।';
+                document.getElementById('codeModal').style.display='flex';
+            }
+            loadSecretReqs();
+        } else { alert('❌ '+(d.msg||'Error')); }
+    }).catch(()=>alert('Network error'));
+}
+
 // ── NOTIFICATIONS ─────────────────────────────────────────
 function triggerReminderNow(){
     var btn = document.querySelector('[onclick="triggerReminderNow()"]');
@@ -2574,6 +2825,23 @@ function sendNotifySelected() {
             setTimeout(closeNotifySelectedModal, 2000);
         }
     }).catch(function(){ res.style.display='block'; res.textContent='❌ Network error'; });
+}
+
+// ── Auto-load Secret Requests when tab opened ─────────────
+const _origGo = window.go;
+window.go = function(tab, el) {
+    _origGo(tab, el);
+    if(tab==='secretreqs') loadSecretReqs();
+};
+
+// ── MODAL helpers ────────────────────────────────────────
+function closeModal(){ document.getElementById('codeModal').style.display='none'; }
+function copyModalCode(){
+    const code=document.getElementById('modalCode').textContent;
+    navigator.clipboard.writeText(code).then(()=>{
+        const b=document.getElementById('copyModalBtn');
+        b.textContent='✅ Copied!'; setTimeout(()=>b.textContent='📋 Copy',1800);
+    });
 }
 
 // ── TOKEN MANAGER ─────────────────────────────────────────
@@ -3015,6 +3283,7 @@ setInterval(()=>{
 
 // ── Init ─────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded',function(){
+    filterSecrets();
     document.querySelectorAll('#tab-advsearch input, #tab-advsearch select').forEach(el=>{
         el.addEventListener('keydown',function(e){if(e.key==='Enter') runAdvSearch();});
     });
@@ -3067,7 +3336,7 @@ function _checkNotifStatus() {
     }
     var perm = Notification.permission;
     if (perm === 'granted') {
-        statusEl.innerHTML = '✅ <strong style="color:var(--green);">Notifications চালু আছে</strong> — নতুন Inbox message এলে notification আসবে।';
+        statusEl.innerHTML = '✅ <strong style="color:var(--green);">Notifications চালু আছে</strong> — নতুন Inbox message বা Secret Code Request এলে notification আসবে।';
         statusEl.style.background = 'rgba(16,185,129,.08)';
         statusEl.style.borderColor = 'rgba(16,185,129,.3)';
         if (enableBtn) enableBtn.textContent = '🔕 Disable করুন';
@@ -3206,6 +3475,7 @@ function _pollAdminCounts() {
 
         // Update sidebar badges
         _updateSidebarBadge('inbox', d.total_inbox);
+        _updateSidebarBadge('secretreqs', d.total_scr);
 
         // ── Auto-refresh inbox if tab is open and count changed ──
         var inboxTab = document.getElementById('tab-inbox');
@@ -3235,6 +3505,15 @@ function _pollAdminCounts() {
                     _showAdminNotif(
                         '📬 নতুন Message: ' + (m.sender_name||''),
                         m.message ? m.message.substring(0,80) + (m.message.length>80?'…':'') : '',
+                        '/admin.php'
+                    );
+                });
+            }
+            if (d.new_scr && d.new_scr.length) {
+                d.new_scr.forEach(function(r){
+                    _showAdminNotif(
+                        '📩 নতুন Secret Code Request',
+                        '📞 ' + (r.donor_number||'') + ' — approve বা deny করুন।',
                         '/admin.php'
                     );
                 });
@@ -3278,6 +3557,7 @@ function _updateSidebarBadge(tabName, count) {
           <option value="warning">⚠️ Warning</option>
           <option value="location_on">📍 Location চালু করুন</option>
           <option value="notif_on">🔔 Notification চালু করুন</option>
+          <option value="secret_reset">🔑 Secret Code Reset</option>
         </select>
       </div>
       <div>

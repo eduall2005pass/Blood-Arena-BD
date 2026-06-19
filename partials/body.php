@@ -768,6 +768,14 @@ HTML;
         </button>
     </div>
 
+    <!-- ALREADY REGISTERED — এই account দিয়ে আগেই register করা হয়ে গেছে -->
+    <div id="regAlreadyRegistered" style="display:none;margin-top:20px;max-width:420px;margin-left:auto;margin-right:auto;padding:22px 18px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);border-radius:14px;text-align:center;">
+        <div style="font-size:2.2rem;line-height:1;margin-bottom:8px;">✅</div>
+        <p style="color:var(--text-main);font-weight:700;font-size:1.05em;margin:0 0 4px;">আপনি ইতিমধ্যে রেজিস্ট্রেশন করেছেন</p>
+        <p style="color:var(--text-muted);font-size:0.82em;margin:0 0 16px;line-height:1.7;">একটি অ্যাকাউন্ট দিয়ে একবারই রক্তদাতা হিসেবে যুক্ত হওয়া যায়। তথ্য বা নম্বর পরিবর্তন করতে নিচের বাটনে চাপুন।</p>
+        <button type="button" onclick="goToUpdateMyInfo()" style="background:var(--info);width:100%;max-width:320px;margin:0 auto;">✏️ Update My Info</button>
+    </div>
+
     <!-- TOGGLEABLE FORM -->
     <form id="regForm" style="display:none; opacity: 0; transform: translateY(-15px); transition: opacity 0.4s ease, transform 0.4s ease; margin-top: 25px;">  
         <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token'] ?? ''; ?>">
@@ -887,6 +895,19 @@ HTML;
 
     <div id="updateFields" style="display:none; margin-top:20px; border-top:1px solid var(--border-color); padding-top:25px;">
         <div class="input-group">
+
+            <!-- Registered phone number (read-only) + Change Number -->
+            <div>
+                <label style="font-size: 0.85em; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; display: block;">📱 Registered Number</label>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="tel" id="u_phone_display" readonly value="" placeholder="—"
+                        style="margin:0;flex:1;background:rgba(127,127,127,0.07);cursor:default;letter-spacing:0.5px;">
+                    <button type="button" onclick="openChangeNumberModal()" title="নম্বর পরিবর্তন করুন"
+                        style="margin:0;padding:10px 14px;min-height:unset;width:auto;background:rgba(245,158,11,0.12);border:1.5px solid rgba(245,158,11,0.4);color:#f59e0b;border-radius:10px;font-size:0.85em;font-weight:700;flex-shrink:0;box-shadow:none;cursor:pointer;white-space:nowrap;">🔄 Change</button>
+                </div>
+                <p style="font-size:0.71em;color:var(--text-muted);margin:4px 0 0;padding-left:2px;">🔒 নম্বর বদলাতে নতুন নম্বরটি Telegram/WhatsApp দিয়ে verify করতে হবে।</p>
+            </div>
+
             <input type="text" id="u_name" placeholder="Full Name" required oninput="validateName(this)">
             
             <div>
@@ -1022,8 +1043,9 @@ HTML;
         <div>
             <label style="font-size: 0.85em; font-weight: 500; color:var(--text-muted); display:block; margin-bottom:6px;">Live Status</label>
             <select id="statusFilter" onchange="fetchFilteredData(1)" style="margin:0;">  
-                <option value="All">Show All</option>  
-                <option value="Available">Available Only</option>  
+                <option value="All">Show All</option>
+                <option value="Available">Available Only</option>
+                <option value="Not Available">Not Available (✖)</option>
                 <option value="Unavailable">Not Willing (⛔)</option>
             </select>
         </div>
@@ -1720,6 +1742,65 @@ HTML;
             </p>
 
             </div><!-- /authSigninSection -->
+        </div>
+    </div>
+</div>
+
+<!-- ══════════ 🔄 CHANGE NUMBER MODAL — Update My Info থেকে নম্বর বদলানোর ছোট UI ══════════ -->
+<!-- authModal-এর verify section reuse করা হয়নি — এটি আলাদা ছোট modal।
+     নতুন নম্বর Telegram/WhatsApp দিয়ে verify হলেই donor নম্বর আপডেট হয়। -->
+<div class="popup-overlay" id="changeNumberModal">
+    <div class="popup" style="max-width:400px;padding:0;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-color);">
+            <div>
+                <strong style="font-family:var(--font-heading);font-size:1.05em;color:var(--text-main);">🔄 নম্বর পরিবর্তন</strong>
+                <p style="font-size:0.72em;color:var(--text-muted);margin:2px 0 0;">নতুন নম্বর verify করে বদলান</p>
+            </div>
+            <button onclick="closeChangeNumberModal()" type="button" style="background:none;border:none;color:var(--text-muted);font-size:1.2rem;cursor:pointer;width:auto;min-height:unset;margin:0;padding:6px 10px;box-shadow:none;border-radius:8px;">✕</button>
+        </div>
+        <div style="padding:20px;">
+
+            <!-- Step 1: নতুন নম্বর + চ্যানেল -->
+            <label style="font-size:0.78em;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">📱 নতুন নম্বর</label>
+            <input type="tel" id="cnPhoneInput" placeholder="+8801XXXXXXXXX" value="+880"
+                style="margin:0;width:100%;box-sizing:border-box;" pattern="^\+8801\d{9}$">
+
+            <p style="font-size:0.74em;color:var(--text-muted);margin:14px 0 6px;">কোথায় OTP পাবেন?</p>
+            <div style="display:flex;gap:10px;">
+                <button id="cnTgBtn" type="button" onclick="cnSelectChannel('tg')"
+                    style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px 8px;border-radius:12px;border:2px solid #229ED9;background:rgba(34,158,217,0.10);cursor:pointer;box-shadow:none;font-size:0.82em;font-weight:700;color:var(--text-main);">
+                    <svg width="20" height="20" viewBox="0 0 240 240" aria-hidden="true"><circle cx="120" cy="120" r="120" fill="#229ED9"/><path fill="#fff" d="M53.6 117.4c34.9-15.2 58.2-25.2 69.9-30.1 33.3-13.8 40.2-16.2 44.7-16.3 1 0 3.2.2 4.7 1.4 1.2 1 1.5 2.3 1.7 3.3.2 1 .4 3.1.2 4.8-1.8 19.4-9.8 66.3-13.9 88-1.7 9.2-5.1 12.3-8.4 12.6-7.1.7-12.6-4.7-19.5-9.2-10.8-7.1-16.9-11.5-27.4-18.4-12.1-8-4.3-12.4 2.7-19.6 1.8-1.9 33.4-30.6 34-33.2.1-.3.1-1.5-.6-2.1-.7-.6-1.7-.4-2.5-.2-1.1.2-18.1 11.5-51.3 33.8-4.9 3.3-9.3 5-13.2 4.9-4.3-.1-12.7-2.5-18.9-4.5-7.6-2.5-13.7-3.8-13.1-8 .3-2.2 3.3-4.4 9-6.7z"/></svg>
+                    Telegram
+                </button>
+                <button id="cnWaBtn" type="button" onclick="cnSelectChannel('wa')"
+                    style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:11px 8px;border-radius:12px;border:2px solid var(--border-color);background:transparent;cursor:pointer;box-shadow:none;font-size:0.82em;font-weight:700;color:var(--text-main);">
+                    <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true"><path fill="#25D366" d="M16 0C7.2 0 0 7.2 0 16c0 2.8.7 5.5 2.1 7.9L0 32l8.3-2.2C10.6 31.2 13.3 32 16 32c8.8 0 16-7.2 16-16S24.8 0 16 0z"/><path fill="#fff" d="M12.4 9.4c-.3-.7-.6-.7-.9-.7h-.8c-.3 0-.7.1-1.1.5s-1.4 1.4-1.4 3.4 1.5 3.9 1.7 4.2c.2.3 2.9 4.6 7.2 6.3 3.6 1.4 4.3 1.1 5.1 1s2.5-1 2.9-2 .4-1.8.3-2c-.1-.2-.4-.3-.9-.5s-2.7-1.3-3.1-1.5c-.4-.1-.7-.2-1 .2s-1.1 1.5-1.4 1.8c-.3.3-.5.3-.9.1s-1.9-.7-3.6-2.2c-1.3-1.2-2.2-2.6-2.5-3.1s0-.7.2-.9c.2-.2.4-.5.6-.8s.3-.4.4-.7.1-.5 0-.7-1-2.5-1.3-3.2z"/></svg>
+                    WhatsApp
+                </button>
+            </div>
+
+            <button id="cnSendOtpBtn" onclick="cnSendOtp()" type="button"
+                style="width:100%;margin-top:14px;background:var(--info);color:#fff;font-weight:700;">📤 OTP পাঠান</button>
+
+            <!-- Telegram open-bot fallback -->
+            <div id="cnOpenBotDiv" style="display:none;margin-top:10px;">
+                <p style="font-size:0.7em;color:var(--text-muted);margin:0 0 6px;line-height:1.5;">Telegram খোলেনি? নিচের বাটনে চাপুন →</p>
+                <a id="cnOpenBotBtn" href="#" target="_blank" rel="noopener"
+                    style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;box-sizing:border-box;padding:11px;background:#229ED9;color:#fff;font-weight:700;text-align:center;border-radius:10px;text-decoration:none;">Telegram এ OTP নিন</a>
+            </div>
+
+            <!-- Step 2: কোড যাচাই -->
+            <div id="cnOtpStep" style="display:none;margin-top:14px;border-top:1px solid var(--border-color);padding-top:14px;">
+                <label style="font-size:0.78em;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">🔢 ৬-সংখ্যার কোড</label>
+                <input type="text" id="cnOtpInput" inputmode="numeric" maxlength="6" placeholder="••••••"
+                    style="margin:0;width:100%;box-sizing:border-box;text-align:center;letter-spacing:6px;font-size:1.2em;font-family:monospace;">
+                <button id="cnVerifyBtn" onclick="cnVerifyOtp()" type="button"
+                    style="width:100%;margin-top:10px;background:var(--success);color:#000;font-weight:700;">✅ যাচাই করে নম্বর বদলান</button>
+            </div>
+
+            <p style="font-size:0.7em;color:var(--text-muted);text-align:center;margin:14px 0 0;line-height:1.6;">
+                নতুন নম্বরটি অন্য কোনো অ্যাকাউন্ট/রক্তদাতায় ব্যবহৃত হলে বদলানো যাবে না।
+            </p>
         </div>
     </div>
 </div>

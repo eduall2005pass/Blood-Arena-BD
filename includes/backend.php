@@ -473,7 +473,9 @@ $_is_ajax = !empty($_POST['log_call']) || !empty($_POST['get_phone'])
          || !empty($_POST['wa_send_otp'])
          || !empty($_POST['wa_verify_otp'])
          || !empty($_POST['tg_send_otp'])
-         || !empty($_POST['tg_verify_otp']);
+         || !empty($_POST['tg_verify_otp'])
+         || !empty($_POST['cn_send_otp'])
+         || !empty($_POST['cn_verify_otp']);
 
 // === LIVE COUNTS — only on full page load, never on AJAX ===
 $avail_counts = ["A+"=>0,"A-"=>0,"B+"=>0,"B-"=>0,"AB+"=>0,"AB-"=>0,"O+"=>0,"O-"=>0];
@@ -674,7 +676,7 @@ if(isset($_POST['load_my_donor'])){
 
     mysqli_report(MYSQLI_REPORT_OFF);
     // 1) auth_uid দিয়ে খোঁজো
-    $stmt = $conn->prepare("SELECT name, location, last_donation, willing_to_donate, total_donations, reg_geo FROM donors WHERE auth_uid=? LIMIT 1");
+    $stmt = $conn->prepare("SELECT name, phone, location, last_donation, willing_to_donate, total_donations, reg_geo FROM donors WHERE auth_uid=? LIMIT 1");
     $stmt->bind_param("s", $uid);
     $stmt->execute();
     $res = $stmt->get_result()->fetch_assoc();
@@ -682,7 +684,7 @@ if(isset($_POST['load_my_donor'])){
 
     // 2) না পেলে legacy fallback: একই phone, auth_uid খালি → claim করো
     if(!$res && $phone){
-        $lc = $conn->prepare("SELECT id, name, location, last_donation, willing_to_donate, total_donations, reg_geo FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
+        $lc = $conn->prepare("SELECT id, name, phone, location, last_donation, willing_to_donate, total_donations, reg_geo FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
         $lc->bind_param("s", $phone);
         $lc->execute();
         $res = $lc->get_result()->fetch_assoc();
@@ -709,6 +711,7 @@ if(isset($_POST['load_my_donor'])){
     echo json_encode([
         "status"=>"success",
         "name"=>$res['name'],
+        "phone"=>$res['phone'] ?? '',
         "location"=>$res['location'],
         "last_donation"=>$display_last,
         "willing"=>$res['willing_to_donate'],
@@ -1121,15 +1124,22 @@ if(isset($_POST['ajax_submit'])){
     exit();
 }
 
+// Three live statuses (mutually exclusive):
+//   "Not Available" — donated within 120 days (in cooldown). Physical fact, so it
+//                     wins over willingness: a donor who can't give isn't just "Not Willing".
+//   "Unavailable"   — cooldown passed but opted out (willing_to_donate='no'). Shown as "Not Willing".
+//   "Available"     — cooldown passed AND willing.
 function getLiveStatus($last_donation, $willing = 'yes') {
-    if($willing === 'no') return "Unavailable";
-    if($last_donation == 'no' || empty($last_donation) || $last_donation == '0000-00-00') {
-        return "Available";
+    // Cooldown check first — donated within 120 days → Not Available regardless of willingness
+    if(!($last_donation == 'no' || empty($last_donation) || $last_donation == '0000-00-00')) {
+        $today = new DateTime();
+        $last  = new DateTime($last_donation);
+        $diff  = $today->diff($last)->days;
+        if($diff < 120) return "Not Available";
     }
-    $today = new DateTime();
-    $last  = new DateTime($last_donation);
-    $diff  = $today->diff($last)->days;
-    return ($diff >= 120) ? "Available" : "Not Available";
+    // Cooldown passed (or never donated) → willingness decides
+    if($willing === 'no') return "Unavailable"; // displayed as "Not Willing"
+    return "Available";
 }
 
 function getBadgeInfo($total) {
@@ -1154,7 +1164,7 @@ if(isset($_POST['ajax_filter'])){
     // Whitelist blood group
     $valid_groups = ["A+","A-","B+","B-","AB+","AB-","O+","O-","All"];
     if(!in_array($f_group, $valid_groups, true)) $f_group = "All";
-    $valid_status = ["All","Available","Unavailable"];
+    $valid_status = ["All","Available","Unavailable","Not Available"];
     if(!in_array($f_status, $valid_status, true)) $f_status = "All";
     $f_badge = trim($_POST['filter_badge'] ?? 'All');
     $valid_badges = ["All","New","Active","Hero","Legend"];
@@ -1189,10 +1199,19 @@ if(isset($_POST['ajax_filter'])){
         $params[] = $like;
         $types .= "ss";
     }
+    // Three live statuses match getLiveStatus(): cooldown wins, then willingness.
+    // COOLDOWN_PASSED = never donated OR donated >=120 days ago.
+    $cooldown_passed = "(last_donation IS NULL OR last_donation = 'no' OR last_donation = '' OR last_donation = '0000-00-00' OR DATEDIFF(CURDATE(), last_donation) >= 120)";
+    $in_cooldown     = "(last_donation IS NOT NULL AND last_donation <> 'no' AND last_donation <> '' AND last_donation <> '0000-00-00' AND DATEDIFF(CURDATE(), last_donation) < 120)";
     if($f_status == "Available") {
-        $query_parts[] = "(willing_to_donate='yes' AND (last_donation = 'no' OR last_donation = '' OR last_donation = '0000-00-00' OR DATEDIFF(CURDATE(), last_donation) >= 120))";
+        // Willing (not 'no') AND cooldown passed
+        $query_parts[] = "((willing_to_donate IS NULL OR willing_to_donate<>'no') AND $cooldown_passed)";
     } elseif($f_status == "Unavailable") {
-        $query_parts[] = "(willing_to_donate='no' OR (willing_to_donate='yes' AND last_donation != 'no' AND last_donation != '' AND last_donation != '0000-00-00' AND DATEDIFF(CURDATE(), last_donation) < 120))";
+        // Not Willing: opted out AND cooldown passed (in-cooldown opt-outs show as Not Available)
+        $query_parts[] = "(willing_to_donate='no' AND $cooldown_passed)";
+    } elseif($f_status == "Not Available") {
+        // In cooldown — donated within 120 days, regardless of willingness
+        $query_parts[] = $in_cooldown;
     }
     if($f_badge != "All" && $f_badge != "") {
         $query_parts[] = "badge_level = ?";
@@ -1267,7 +1286,7 @@ if(isset($_POST['ajax_filter'])){
         $total_don = (int)($row['total_donations'] ?? 0);
         
         if($current_status == 'Available')      { $st_class='available';   $st_icon='✔'; $st_text='Available'; }
-        elseif($current_status == 'Unavailable') { $st_class='unavailable';  $st_icon='⛔'; $st_text='Unavailable'; }
+        elseif($current_status == 'Unavailable') { $st_class='unavailable';  $st_icon='⛔'; $st_text='Not Willing'; }
         else                                      { $st_class='notavailable'; $st_icon='✖'; $st_text='Not Available'; }
         $bg_class   = 'bg' . preg_replace('/[^a-zA-Z]/', '', $row['blood_group']) . (strpos($row['blood_group'],'+') !== false ? 'pos' : 'neg');
         $sn         = $serial++;
@@ -1372,10 +1391,13 @@ if(isset($_POST['get_analytics'])){
 
     $total       = (int)($conn->query("SELECT COUNT(*) as c FROM donors")->fetch_assoc()['c'] ?? 0);
 
-    $r_avail = $conn->query("SELECT COUNT(*) as c FROM donors WHERE willing_to_donate='yes' AND (last_donation='no' OR last_donation='' OR last_donation='0000-00-00' OR DATEDIFF(CURDATE(),last_donation)>=120)");
+    // Availability matches getLiveStatus(): willing (not 'no', NULL/empty = willing) AND cooldown passed
+    $r_avail = $conn->query("SELECT COUNT(*) as c FROM donors WHERE (willing_to_donate IS NULL OR willing_to_donate<>'no') AND (last_donation='no' OR last_donation='' OR last_donation='0000-00-00' OR DATEDIFF(CURDATE(),last_donation)>=120)");
     $available   = $r_avail ? (int)$r_avail->fetch_assoc()['c'] : 0;
 
-    $r_unav = $conn->query("SELECT COUNT(*) as c FROM donors WHERE willing_to_donate='no'");
+    // "Not Willing" — opted out AND cooldown passed (matches displayed status; in-cooldown
+    // opt-outs count as Not Available, since cooldown wins in getLiveStatus()).
+    $r_unav = $conn->query("SELECT COUNT(*) as c FROM donors WHERE willing_to_donate='no' AND (last_donation='no' OR last_donation='' OR last_donation='0000-00-00' OR DATEDIFF(CURDATE(),last_donation)>=120)");
     $unavailable = $r_unav ? (int)$r_unav->fetch_assoc()['c'] : 0;
 
     $r_calls = $conn->query("SELECT counter_value as c FROM analytics_counters WHERE counter_name='total_calls_ever'");
@@ -1444,8 +1466,8 @@ if(isset($_POST['get_analytics'])){
 
     // Available count by blood group (for stat cards live update)
     $by_group_avail = ["A+"=>0,"A-"=>0,"B+"=>0,"B-"=>0,"AB+"=>0,"AB-"=>0,"O+"=>0,"O-"=>0];
-    $bga_res = $conn->query("SELECT blood_group, COUNT(*) as cnt FROM donors 
-        WHERE (willing_to_donate IS NULL OR willing_to_donate='yes')
+    $bga_res = $conn->query("SELECT blood_group, COUNT(*) as cnt FROM donors
+        WHERE (willing_to_donate IS NULL OR willing_to_donate<>'no')
           AND (last_donation='no' OR last_donation='' OR last_donation='0000-00-00' OR DATEDIFF(CURDATE(),last_donation)>=120)
         GROUP BY blood_group");
     if($bga_res) while($r=$bga_res->fetch_assoc()) { if(isset($by_group_avail[$r['blood_group']])) $by_group_avail[$r['blood_group']]=(int)$r['cnt']; }
@@ -2046,8 +2068,10 @@ if(isset($_POST['firebase_auth'])){
         "name"           => $disp_name,
         "photo"          => $photo_url,
         "linked_donor"   => $linked_donor,
+        "has_donor"      => _has_donor_for_uid($conn, $firebase_uid, $phone),
         "verified"       => _auth_is_verified(),
-        "verify_channel" => $_SESSION['auth_verify_channel'] ?? null
+        "verify_channel" => $_SESSION['auth_verify_channel'] ?? null,
+        "verify_phone"   => $_SESSION['auth_verify_phone'] ?? ($phone ?: null)
     ]);
     exit();
 }
@@ -2094,6 +2118,23 @@ function _phone_taken_by_other($conn, $phone, $uid) {
     $taken = (bool)$q->get_result()->fetch_assoc(); $q->close();
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     return $taken;
+}
+
+// ── এই account-এর কি ইতিমধ্যে donor profile আছে? (register tab gate-এর জন্য) ──
+//  auth_uid দিয়ে মেলে; না পেলে legacy fallback: একই verify/phone নম্বর, auth_uid খালি।
+function _has_donor_for_uid($conn, $uid, $phone = null) {
+    if (empty($uid) || !isset($conn)) return false;
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $q = $conn->prepare("SELECT id FROM donors WHERE auth_uid=? LIMIT 1");
+    $q->bind_param("s", $uid); $q->execute();
+    $has = (bool)$q->get_result()->fetch_assoc(); $q->close();
+    if (!$has && !empty($phone)) {
+        $q2 = $conn->prepare("SELECT id FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
+        $q2->bind_param("s", $phone); $q2->execute();
+        $has = (bool)$q2->get_result()->fetch_assoc(); $q2->close();
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    return $has;
 }
 
 // === WHATSAPP — Step 1: কোড পাঠাও (whatsapp-web.js bot-এ) ===
@@ -2278,6 +2319,187 @@ if(isset($_POST['tg_verify_otp'])){
         mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
         _mark_account_verified($conn, $uid, 'telegram', $row['phone']);
         echo json_encode(["status"=>"success","msg"=>"✅ Telegram যাচাই সম্পন্ন!","channel"=>"telegram","phone"=>$row['phone']]);
+        exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $u = $conn->prepare("UPDATE otp_verifications SET attempts=attempts+1 WHERE id=?");
+    $u->bind_param("i", $row['id']); $u->execute(); $u->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    echo json_encode(["status"=>"error","msg"=>"ভুল কোড। আবার দেখুন।"]);
+    exit();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CHANGE NUMBER — registered donor নম্বর বদলানো (Update My Info থেকে)
+//  নতুন নম্বর Telegram/WhatsApp দিয়ে আবার verify করতে হয়। verify সফল হলেই
+//  donors.phone + auth_users.verify_phone দুটোই আপডেট হয় (atomic)।
+//  সাধারণ verify OTP-এর সাথে যাতে collision না হয় — channel marker
+//  'tg_change' / 'wa_change' ব্যবহার করা হয়।
+// ════════════════════════════════════════════════════════════════════
+
+// ── এই account-এর নিজের donor row id খোঁজে (auth_uid দিয়ে) ──
+function _cn_owned_donor_id($conn, $uid) {
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $q = $conn->prepare("SELECT id FROM donors WHERE auth_uid=? LIMIT 1");
+    $q->bind_param("s", $uid); $q->execute();
+    $r = $q->get_result()->fetch_assoc(); $q->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    return $r ? (int)$r['id'] : 0;
+}
+
+// ── নতুন নম্বরটি অন্য কোনো donor-এ register করা আছে কিনা (নিজের row বাদে) ──
+function _cn_phone_on_other_donor($conn, $phone, $uid) {
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $q = $conn->prepare("SELECT id FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid<>?) LIMIT 1");
+    $q->bind_param("ss", $phone, $uid); $q->execute();
+    $taken = (bool)$q->get_result()->fetch_assoc(); $q->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    return $taken;
+}
+
+// === CHANGE NUMBER — Step 1: নতুন নম্বরে কোড পাঠাও (Telegram বা WhatsApp) ===
+if(isset($_POST['cn_send_otp'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('cn_otp_' . ($_SESSION['auth_uid'] ?? session_id()), 5, 600);
+    requireAuth();
+    $uid     = $_SESSION['auth_uid'];
+    $channel = trim($_POST['channel'] ?? '');
+    if(!in_array($channel, ['tg','wa'], true)){
+        echo json_encode(["status"=>"error","msg"=>"চ্যানেল নির্বাচন করুন (Telegram বা WhatsApp)।"]); exit();
+    }
+    // এই account-এর donor profile থাকতে হবে — তবেই নম্বর বদলানো যাবে
+    if(!_cn_owned_donor_id($conn, $uid)){
+        echo json_encode(["status"=>"error","msg"=>"আপনার donor profile পাওয়া যায়নি। প্রথমে তথ্য লোড করুন।"]); exit();
+    }
+    $phone = trim($_POST['phone'] ?? '');
+    if(preg_match('/^01\d{9}$/', $phone)) $phone = '+88' . $phone;
+    if(!preg_match('/^\+8801\d{9}$/', $phone)){
+        echo json_encode(["status"=>"error","msg"=>"সঠিক বাংলাদেশি নম্বর দিন (+8801XXXXXXXXX)।"]); exit();
+    }
+    // বর্তমান verify করা নম্বরের সাথে একই হলে বদলানোর দরকার নেই
+    $cur = trim($_SESSION['auth_verify_phone'] ?? '');
+    if($cur !== '' && $phone === $cur){
+        echo json_encode(["status"=>"error","msg"=>"এটি আপনার বর্তমান নম্বরই। নতুন নম্বর দিন।"]); exit();
+    }
+    // নম্বরটি অন্য account/donor-এ ব্যবহৃত হলে block করো
+    if(_phone_taken_by_other($conn, $phone, $uid)){
+        echo json_encode(["status"=>"error","msg"=>"এই নম্বরটি দিয়ে আগে অন্য একটি অ্যাকাউন্ট verify করা হয়েছে।"]); exit();
+    }
+    if(_cn_phone_on_other_donor($conn, $phone, $uid)){
+        echo json_encode(["status"=>"error","msg"=>"এই নম্বরটি দিয়ে ইতিমধ্যে একজন রক্তদাতা register করা আছে।"]); exit();
+    }
+
+    $marker = ($channel === 'tg') ? 'tg_change' : 'wa_change';
+    $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $hash = password_hash($code, PASSWORD_DEFAULT);
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $del = $conn->prepare("DELETE FROM otp_verifications WHERE auth_uid=? AND channel=? AND status!='verified'");
+    $del->bind_param("ss", $uid, $marker); $del->execute(); $del->close();
+    $ins = $conn->prepare("INSERT INTO otp_verifications (auth_uid, channel, phone, code_hash, status, expires_at)
+        VALUES (?, ?, ?, ?, 'code_sent', DATE_ADD(NOW(), INTERVAL ? SECOND))");
+    $ttl = (int)VERIFY_OTP_TTL;
+    $ins->bind_param("ssssi", $uid, $marker, $phone, $hash, $ttl);
+    $ins->execute(); $ins->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+    if($channel === 'tg'){
+        if(TELEGRAM_BOT_URL === '' || TELEGRAM_BOT_SECRET === ''){
+            echo json_encode(["status"=>"error","msg"=>"Telegram যাচাই এখনো চালু হয়নি।"]); exit();
+        }
+        $r = _bot_send(TELEGRAM_BOT_URL, ["secret"=>TELEGRAM_BOT_SECRET, "phone"=>$phone, "otp"=>$code],
+                       defined('TELEGRAM_BOT_INSECURE_TLS') && TELEGRAM_BOT_INSECURE_TLS, '/prepare');
+        if($r['http'] !== 200){
+            echo json_encode(["status"=>"error","msg"=>"Bot সংযোগ সমস্যা। একটু পর আবার চেষ্টা করুন।"]); exit();
+        }
+        $start_param = ltrim($phone, '+');
+        $link = TELEGRAM_BOT_USERNAME !== '' ? ('https://t.me/' . TELEGRAM_BOT_USERNAME . '?start=' . $start_param) : null;
+        echo json_encode(["status"=>"open_bot","link"=>$link,"msg"=>"Telegram খুলুন — OTP আসবে।"]);
+        exit();
+    } else {
+        if(WA_BOT_URL === '' || WA_BOT_SECRET === ''){
+            echo json_encode(["status"=>"error","msg"=>"WhatsApp যাচাই এখনো চালু হয়নি।"]); exit();
+        }
+        $message = "🩸 Blood Arena নম্বর পরিবর্তন কোড: {$code}\n\nএই কোডটি সাইটে বসান। ৫ মিনিটের জন্য বৈধ। কাউকে শেয়ার করবেন না।";
+        $r = _bot_send(WA_BOT_URL, ["secret"=>WA_BOT_SECRET, "phone"=>$phone, "message"=>$message],
+                       defined('WA_BOT_INSECURE_TLS') && WA_BOT_INSECURE_TLS);
+        if($r['http'] !== 200){
+            $err = '';
+            $j = json_decode($r['body'] ?? '', true);
+            if(is_array($j) && !empty($j['error'])) $err = $j['error'];
+            $map = [
+                'not_ready'       => "WhatsApp bot এখনো প্রস্তুত নয়। একটু পরে আবার চেষ্টা করুন।",
+                'not_on_whatsapp' => "এই নম্বরটি WhatsApp-এ পাওয়া যায়নি। সঠিক WhatsApp নম্বর দিন।",
+                'bad_phone'       => "নম্বরটি সঠিক ফরম্যাটে নেই (+8801XXXXXXXXX)।",
+                'bad_message'     => "বার্তা পাঠানো যায়নি। আবার চেষ্টা করুন।",
+                'forbidden'       => "যাচাই সার্ভিসে অনুমোদন ব্যর্থ (secret mismatch)। অ্যাডমিনকে জানান।",
+                'send_failed'     => "কোড পাঠানো যায়নি। একটু পরে আবার চেষ্টা করুন।",
+            ];
+            $msg = $map[$err] ?? ($r['http'] === 0
+                ? "যাচাই সার্ভারে সংযোগ করা যায়নি। একটু পরে আবার চেষ্টা করুন।"
+                : "কোড পাঠানো যায়নি। নম্বরটি WhatsApp-এ আছে কিনা দেখে আবার চেষ্টা করুন।");
+            echo json_encode(["status"=>"error","msg"=>$msg]); exit();
+        }
+        echo json_encode(["status"=>"success","msg"=>"📲 WhatsApp-এ কোড পাঠানো হয়েছে {$phone} নম্বরে।"]);
+        exit();
+    }
+}
+
+// === CHANGE NUMBER — Step 2: কোড যাচাই করে donor নম্বর আপডেট করো ===
+if(isset($_POST['cn_verify_otp'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('cn_verify_otp', 10, 600);
+    requireAuth();
+    $uid     = $_SESSION['auth_uid'];
+    $channel = trim($_POST['channel'] ?? '');
+    if(!in_array($channel, ['tg','wa'], true)){
+        echo json_encode(["status"=>"error","msg"=>"চ্যানেল নির্বাচন করুন।"]); exit();
+    }
+    $marker = ($channel === 'tg') ? 'tg_change' : 'wa_change';
+    $code = trim($_POST['code'] ?? '');
+    if(!preg_match('/^\d{6}$/', $code)){
+        echo json_encode(["status"=>"error","msg"=>"৬-সংখ্যার কোড দিন।"]); exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $q = $conn->prepare("SELECT id, phone, code_hash, attempts FROM otp_verifications
+        WHERE auth_uid=? AND channel=? AND status='code_sent' AND expires_at > NOW()
+        ORDER BY id DESC LIMIT 1");
+    $q->bind_param("ss", $uid, $marker); $q->execute();
+    $row = $q->get_result()->fetch_assoc(); $q->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    if(!$row){
+        echo json_encode(["status"=>"error","msg"=>"কোডের মেয়াদ শেষ বা পাওয়া যায়নি। আবার পাঠান।"]); exit();
+    }
+    if((int)$row['attempts'] >= 5){
+        echo json_encode(["status"=>"error","msg"=>"অনেকবার ভুল হয়েছে। নতুন কোড পাঠান।"]); exit();
+    }
+    if(password_verify($code, $row['code_hash'])){
+        $newphone = $row['phone'];
+        // race-condition guard — verify-এর মুহূর্তে আবার uniqueness দেখো
+        if(_phone_taken_by_other($conn, $newphone, $uid)){
+            echo json_encode(["status"=>"error","msg"=>"এই নম্বরটি দিয়ে আগে অন্য একটি অ্যাকাউন্ট verify করা হয়েছে।"]); exit();
+        }
+        if(_cn_phone_on_other_donor($conn, $newphone, $uid)){
+            echo json_encode(["status"=>"error","msg"=>"এই নম্বরটি দিয়ে ইতিমধ্যে একজন রক্তদাতা register করা আছে।"]); exit();
+        }
+        $donor_id = _cn_owned_donor_id($conn, $uid);
+        if(!$donor_id){
+            echo json_encode(["status"=>"error","msg"=>"আপনার donor profile পাওয়া যায়নি।"]); exit();
+        }
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $u = $conn->prepare("UPDATE otp_verifications SET status='verified' WHERE id=?");
+        $u->bind_param("i", $row['id']); $u->execute(); $u->close();
+        // donors.phone আপডেট করো (নিজের row)
+        $dp = $conn->prepare("UPDATE donors SET phone=? WHERE id=?");
+        $dp->bind_param("si", $newphone, $donor_id); $dp->execute(); $dp->close();
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+        // auth_users.verify_phone + verify_channel + session আপডেট করো
+        $verify_channel = ($channel === 'tg') ? 'telegram' : 'whatsapp';
+        _mark_account_verified($conn, $uid, $verify_channel, $newphone);
+        echo json_encode(["status"=>"success","msg"=>"✅ আপনার নম্বর সফলভাবে পরিবর্তন হয়েছে!","phone"=>$newphone]);
         exit();
     }
     mysqli_report(MYSQLI_REPORT_OFF);

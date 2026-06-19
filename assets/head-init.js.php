@@ -280,7 +280,8 @@ function _onAuthSuccess(res) {
   _authWait(false); _gRedirectFlag(false);
   try { localStorage.setItem('ba_auth', JSON.stringify({
     provider: res.provider, email: res.email, phone: res.phone, name: res.name, photo: res.photo,
-    verified: !!res.verified, verify_channel: res.verify_channel || null
+    verified: !!res.verified, verify_channel: res.verify_channel || null,
+    verify_phone: res.verify_phone || res.phone || null, has_donor: !!res.has_donor
   })); } catch(e){}
   if (typeof closeAuthModal === 'function') closeAuthModal();
   var who = res.name || res.email || res.phone || 'User';
@@ -442,4 +443,94 @@ function tgVerifyOtp() {
     if (res && res.status === 'success') _onVerifySuccess('telegram', res.msg, res.phone);
     else _authToast((res && res.msg) ? res.msg : 'যাচাই ব্যর্থ।', 'error');
   }).catch(function(){ _authBusy(false, 'tgVerifyBtn'); _authToast('নেটওয়ার্ক সমস্যা।', 'error'); });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// 🔄 CHANGE NUMBER — Update My Info থেকে registered নম্বর বদলানোর ছোট UI
+//   authModal-এর verify section reuse না করে আলাদা #changeNumberModal।
+//   নতুন নম্বর Telegram/WhatsApp দিয়ে verify হলেই donor নম্বর আপডেট হয়।
+// ════════════════════════════════════════════════════════════════════
+var _cnChannel = 'tg';
+
+function openChangeNumberModal() {
+  _cnChannel = 'tg';
+  cnSelectChannel('tg');
+  var p = document.getElementById('cnPhoneInput'); if (p) p.value = '+880';
+  ['cnOtpStep','cnOpenBotDiv'].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display='none'; });
+  var o = document.getElementById('cnOtpInput'); if (o) o.value = '';
+  var m = document.getElementById('changeNumberModal'); if (m) m.classList.add('active');
+}
+function closeChangeNumberModal() {
+  var m = document.getElementById('changeNumberModal'); if (m) m.classList.remove('active');
+  ['cnOtpStep','cnOpenBotDiv'].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display='none'; });
+  var o = document.getElementById('cnOtpInput'); if (o) o.value = '';
+}
+function cnSelectChannel(ch) {
+  _cnChannel = (ch === 'wa') ? 'wa' : 'tg';
+  var tgB = document.getElementById('cnTgBtn');
+  var waB = document.getElementById('cnWaBtn');
+  if (_cnChannel === 'wa') {
+    if (waB) { waB.style.borderColor = '#25D366'; waB.style.background = 'rgba(37,211,102,0.10)'; }
+    if (tgB) { tgB.style.borderColor = 'var(--border-color)'; tgB.style.background = 'transparent'; }
+  } else {
+    if (tgB) { tgB.style.borderColor = '#229ED9'; tgB.style.background = 'rgba(34,158,217,0.10)'; }
+    if (waB) { waB.style.borderColor = 'var(--border-color)'; waB.style.background = 'transparent'; }
+  }
+  // চ্যানেল বদলালে আগের OTP step লুকাও — নতুন করে পাঠাতে হবে
+  ['cnOtpStep','cnOpenBotDiv'].forEach(function(id){ var e=document.getElementById(id); if(e) e.style.display='none'; });
+}
+
+// Step 1: নতুন নম্বরে কোড পাঠাও
+function cnSendOtp() {
+  var input = document.getElementById('cnPhoneInput');
+  var phone = (input ? input.value : '').trim();
+  if (/^01\d{9}$/.test(phone)) phone = '+88' + phone;
+  if (!/^\+8801\d{9}$/.test(phone)) { _authToast('সঠিক বাংলাদেশি নম্বর দিন।', 'error'); return; }
+  // Telegram-এর জন্য click gesture-এর ভেতরেই blank tab খুলে রাখো
+  var botWin = (_cnChannel === 'tg') ? window.open('', '_blank') : null;
+  _authBusy(true, 'cnSendOtpBtn');
+  _verifyPost('cn_send_otp', { phone: phone, channel: _cnChannel }).then(function(res){
+    _authBusy(false, 'cnSendOtpBtn');
+    if (res && res.status === 'open_bot' && res.link) {
+      var div = document.getElementById('cnOpenBotDiv');
+      if (div) { div.style.display = 'block'; var a = document.getElementById('cnOpenBotBtn'); if (a) a.href = res.link; }
+      var step = document.getElementById('cnOtpStep'); if (step) step.style.display = 'block';
+      if (botWin) { try { botWin.location = res.link; } catch(e){} }
+      _authToast('Telegram-এ "START" চাপুন — OTP আসবে।', 'info');
+    } else if (res && res.status === 'success') {
+      if (botWin) { try { botWin.close(); } catch(e){} }
+      var step2 = document.getElementById('cnOtpStep'); if (step2) step2.style.display = 'block';
+      _authToast(res.msg || '📲 কোড পাঠানো হয়েছে।', 'success');
+    } else {
+      if (botWin) { try { botWin.close(); } catch(e){} }
+      _authToast((res && res.msg) ? res.msg : 'কোড পাঠানো যায়নি।', 'error');
+    }
+  }).catch(function(){
+    if (botWin) { try { botWin.close(); } catch(e){} }
+    _authBusy(false, 'cnSendOtpBtn');
+    _authToast('নেটওয়ার্ক সমস্যা।', 'error');
+  });
+}
+
+// Step 2: কোড যাচাই করে নম্বর বদলাও
+function cnVerifyOtp() {
+  var el = document.getElementById('cnOtpInput');
+  var code = (el ? el.value : '').trim();
+  if (!/^\d{6}$/.test(code)) { _authToast('৬-সংখ্যার কোড দিন।', 'error'); return; }
+  _authBusy(true, 'cnVerifyBtn');
+  _verifyPost('cn_verify_otp', { code: code, channel: _cnChannel }).then(function(res){
+    _authBusy(false, 'cnVerifyBtn');
+    if (res && res.status === 'success') {
+      var newPhone = res.phone || '';
+      // UI-তে নতুন নম্বর দেখাও
+      var disp = document.getElementById('u_phone_display'); if (disp && newPhone) disp.value = newPhone;
+      // verify_phone + channel সবখানে আপডেট করো (verified থাকা অবস্থায় নম্বর বদলেছে)
+      _setLocalVerified((_cnChannel === 'tg') ? 'telegram' : 'whatsapp', newPhone);
+      _authToast(res.msg || '✅ নম্বর পরিবর্তন হয়েছে!', 'success');
+      closeChangeNumberModal();
+      if (typeof _renderAuthState === 'function') _renderAuthState();
+    } else {
+      _authToast((res && res.msg) ? res.msg : 'যাচাই ব্যর্থ।', 'error');
+    }
+  }).catch(function(){ _authBusy(false, 'cnVerifyBtn'); _authToast('নেটওয়ার্ক সমস্যা।', 'error'); });
 }

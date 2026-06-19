@@ -12,6 +12,7 @@ const BA_AUTH = <?php echo json_encode(!empty($_SESSION['auth_uid']) ? [
     'verified' => _auth_is_verified(),
     'verify_channel' => $_SESSION['auth_verify_channel'] ?? null,
     'verify_phone' => $_SESSION['auth_verify_phone'] ?? ($_SESSION['auth_phone'] ?? null),
+    'has_donor' => _has_donor_for_uid($conn, $_SESSION['auth_uid'] ?? null, $_SESSION['auth_verify_phone'] ?? ($_SESSION['auth_phone'] ?? null)),
 ] : null, JSON_UNESCAPED_UNICODE); ?>;
 // AJAX endpoint — always use pathname (strips ?query from URL bar)
 const _AJAX_URL = window.location.origin + window.location.pathname;
@@ -464,6 +465,8 @@ function submitRegistration() {
                 document.getElementsByName('phone')[0].value = "+880";
                 setDonationNever();
                 closeRegForm();
+                // এই account এখন registered — register tab "Already Registered" দেখাবে
+                _markHasDonorLocal();
 
                 // OK immediately clickable — no countdown, no page reload
                 okBtn.innerHTML = "✅ OK";
@@ -1400,6 +1403,23 @@ function switchTab(n) {
     if (btns[n]) btns[n].classList.add('active');
 }
 
+// "Already Registered" panel থেকে — Update My Info ট্যাবে গিয়ে তথ্য লোড করো
+function goToUpdateMyInfo() {
+    switchTab(1);
+    try { document.getElementById('regSection').scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch(e){}
+    if (typeof loadMyDonorInfo === 'function') loadMyDonorInfo();
+}
+
+// fresh registration সফল হলে has_donor flag সেট করে register tab flip করো (reload ছাড়াই)
+function _markHasDonorLocal() {
+    try { if (typeof BA_AUTH !== 'undefined' && BA_AUTH) BA_AUTH.has_donor = true; } catch(e){}
+    try {
+        var a = JSON.parse(localStorage.getItem('ba_auth') || 'null');
+        if (a) { a.has_donor = true; localStorage.setItem('ba_auth', JSON.stringify(a)); }
+    } catch(e){}
+    if (typeof _renderAuthState === 'function') _renderAuthState();
+}
+
 // সাইন-ইন করা account-এর নিজের donor record auto-load করে (secret code লাগে না)
 function loadMyDonorInfo() {
     // সাইন ইন না থাকলে আগে auth modal খোলো
@@ -1447,6 +1467,8 @@ function _loadUpdateFields(data) {
     if(data.status === "success"){
         document.getElementById('updateFields').style.display = 'block';
         document.getElementById('u_name').value = data.name;
+        var _uPhone = document.getElementById('u_phone_display');
+        if (_uPhone) _uPhone.value = data.phone || '';
 
         // Parse Location — defensive null check (uExactLocation may not exist in all builds)
         let fullLoc = data.location || '';
@@ -2957,6 +2979,32 @@ function switchNTab(tab) {
     };
 })();
 
+// Lock background page scroll while the notification panel is open.
+// Watches the 'show' class so every open/close path (toggle, outside-click,
+// row-click) is covered without touching each call site.
+(function(){
+    var p = document.getElementById('nPanel');
+    if (!p || !window.MutationObserver) return;
+    var _savedY = 0, _locked = false;
+    function lock() {
+        if (_locked) return;
+        _locked = true;
+        _savedY = window.scrollY || window.pageYOffset || 0;
+        document.body.style.top = '-' + _savedY + 'px';
+        document.body.classList.add('npanel-scroll-lock');
+    }
+    function unlock() {
+        if (!_locked) return;
+        _locked = false;
+        document.body.classList.remove('npanel-scroll-lock');
+        document.body.style.top = '';
+        window.scrollTo(0, _savedY);
+    }
+    new MutationObserver(function(){
+        if (p.classList.contains('show')) lock(); else unlock();
+    }).observe(p, { attributes: true, attributeFilter: ['class'] });
+})();
+
 // ============================================================
 // SERVICE NOTIFICATIONS — device-specific, polls every 30s
 // ============================================================
@@ -3716,16 +3764,21 @@ function _renderAuthState() {
     //  signed-out → sign-in prompt; signed-in কিন্তু unverified → verify prompt;
     //  verified হলেই register toggle দেখা যাবে।
     var verifiedNow = loggedIn && _isVerified();
+    var hasDonor    = !!(auth && auth.has_donor);
+    var regDone     = verifiedNow && hasDonor; // verified + ইতিমধ্যে registered
     var regPrompt = document.getElementById('regAuthPrompt');
-    if (regPrompt) regPrompt.style.display = verifiedNow ? 'none' : '';
+    if (regPrompt) regPrompt.style.display = (verifiedNow) ? 'none' : '';
     var regSigninBlk = document.getElementById('regSigninBlock');
     if (regSigninBlk) regSigninBlk.style.display = loggedIn ? 'none' : '';
     var regVerifyBlk = document.getElementById('regVerifyBlock');
     if (regVerifyBlk) regVerifyBlk.style.display = (loggedIn && !verifiedNow) ? '' : 'none';
+    // register toggle শুধু verified + এখনো register করেনি এমন account-এ; নইলে "Already Registered"
     var regToggle = document.getElementById('regToggleContainer');
-    if (regToggle) regToggle.style.display = verifiedNow ? '' : 'none';
-    // verify না করে আগের থেকে form খোলা থাকলে বন্ধ করো
-    if (!verifiedNow) {
+    if (regToggle) regToggle.style.display = (verifiedNow && !hasDonor) ? '' : 'none';
+    var regAlready = document.getElementById('regAlreadyRegistered');
+    if (regAlready) regAlready.style.display = regDone ? '' : 'none';
+    // verify না করলে — বা ইতিমধ্যে registered হলে — খোলা form বন্ধ করো
+    if (!verifiedNow || regDone) {
         var rfx = document.getElementById('regForm');
         if (rfx && rfx.style.display !== 'none') { try { closeRegForm(); } catch(e){ rfx.style.display = 'none'; } }
     }

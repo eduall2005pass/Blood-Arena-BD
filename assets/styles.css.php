@@ -2109,6 +2109,7 @@ tr.donor-called-outline > td {
     backdrop-filter:blur(var(--glass-blur)); -webkit-backdrop-filter:blur(var(--glass-blur));
     border-radius:var(--radius-lg); width:290px; max-height:420px; overflow-y:auto;
     overflow-x: hidden;
+    overscroll-behavior: contain;
     box-shadow:var(--shadow-glass); z-index:9100; display:none; padding:10px;
     scroll-behavior: smooth;
     scrollbar-width: thin;
@@ -2118,6 +2119,8 @@ tr.donor-called-outline > td {
 .notif-panel::-webkit-scrollbar-track { background: transparent; }
 .notif-panel::-webkit-scrollbar-thumb { background: rgba(220,38,38,0.4); border-radius: 4px; }
 .notif-panel.show { display:block; animation:fadeIn 0.2s ease; }
+/* Lock background scroll while notification panel is open (only the panel scrolls) */
+body.npanel-scroll-lock { position: fixed; width: 100%; overflow: hidden; }
 .notif-panel-hdr { font-weight:700; font-size:0.85em; color:var(--text-main);
     padding:5px 8px 10px; border-bottom:1px solid var(--border-color); margin-bottom:6px;
     display:flex; justify-content:space-between; }
