@@ -1,9 +1,9 @@
 /**
- * Blood Solution — Service Worker v5.8
+ * Blood Solution — Service Worker v6.0
  * Cache/PWA handler — FCM push handled by firebase-messaging-sw.js
  */
 
-const APP_VERSION = 'blood-solution-v5.8';
+const APP_VERSION = 'blood-solution-v6.0';
 const STATIC_CACHE = APP_VERSION + '-static';
 const IMG_CACHE = APP_VERSION + '-img';
 const PAGE_CACHE = APP_VERSION + '-pages';
@@ -21,8 +21,13 @@ const PRECACHE_ASSETS = [
 const CDN_HOSTS = /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com|basemaps\.cartocdn\.com/;
 
 // ── Install: precache all assets ─────────────────────────────
+// NOTE: skipWaiting() is intentionally NOT called here. A new SW now stays in
+// the "waiting" state so boot.js.php can detect it and show the user an
+// "update available — refresh" banner. The user clicking that banner posts
+// SKIP_WAITING (handled below) → activate → controllerchange → one reload.
+// Brand-new installs (no existing controller) still activate immediately,
+// because there is nothing for them to wait behind.
 self.addEventListener('install', function(e) {
-  self.skipWaiting();
   e.waitUntil(
     caches.open(STATIC_CACHE).then(function(cache) {
       return Promise.allSettled(
@@ -97,9 +102,9 @@ self.addEventListener('fetch', function(e) {
     return;
   }
   
-  // JS / CSS → stale-while-revalidate (instant load, silently updates)
+  // JS / CSS → Network-First, cache fallback (always fresh online, works offline)
   if (req.destination === 'script' || req.destination === 'style') {
-    e.respondWith(staleWhileRevalidate(req, STATIC_CACHE));
+    e.respondWith(networkFirstAsset(req, STATIC_CACHE));
     return;
   }
   
@@ -145,19 +150,24 @@ function cacheFirst(req, cacheName) {
   });
 }
 
-// ── Stale-While-Revalidate ───────────────────────────────────
-function staleWhileRevalidate(req, cacheName) {
-  return caches.open(cacheName).then(function(cache) {
-    return cache.match(req).then(function(cached) {
-      var networkFetch = fetch(req).then(function(res) {
-        if (res && res.status === 200) cache.put(req, res.clone());
-        return res;
-      }).catch(function() {
-        return cached || new Response('', { status: 503 });
+// ── Network-First for assets (JS/CSS) ────────────────────────
+// Revalidate on every load so a fresh deploy is picked up immediately; fall
+// back to the cached copy only when the network is unavailable (offline).
+function networkFirstAsset(req, cacheName) {
+  return fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }))
+    .then(function(res) {
+      if (res && res.status === 200) {
+        var clone = res.clone();
+        caches.open(cacheName).then(function(c) { c.put(req, clone); });
+      }
+      return res;
+    }).catch(function() {
+      return caches.open(cacheName).then(function(c) {
+        return c.match(req).then(function(cached) {
+          return cached || new Response('', { status: 503 });
+        });
       });
-      return cached || networkFetch;
     });
-  });
 }
 
 // ── Network with cache fallback ──────────────────────────────

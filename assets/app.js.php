@@ -2377,6 +2377,33 @@ function _debounce(fn, ms) {
     });
 })();
 
+// ── Fresh content on app reopen / resume ───────────────────
+// PWA reopen বা tab-switch-এ browser প্রায়ই frozen snapshot (bfcache) দেখায়,
+// যা service worker bypass করে — তাই page network-first হওয়া সত্ত্বেও পুরনো
+// data দেখাতে পারে। pull-to-refresh = location.reload() বলে refresh-এ ঠিক হয়।
+// নিচের logic সেই manual refresh স্বয়ংক্রিয় করে, offline snapshot নষ্ট না করে।
+(function() {
+    // bfcache থেকে restore → পুরো page একটা frozen snapshot। online হলে fresh
+    // navigation-এর জন্য reload (offline হলে snapshot-ই রাখি — তখন কাজে লাগে)।
+    window.addEventListener('pageshow', function(e) {
+        if (e.persisted && navigator.onLine) window.location.reload();
+    });
+
+    // অনেকক্ষণ background-এ থেকে আবার foreground এলে full reload ছাড়াই dynamic
+    // content (donor list + analytics) চুপচাপ refresh করি। দ্রুত tab-switch ignore।
+    var _hiddenAt = 0;
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) { _hiddenAt = Date.now(); return; }
+        if (!_hiddenAt) return;
+        var awayMs = Date.now() - _hiddenAt;
+        _hiddenAt = 0;
+        if (awayMs < 60000) return;        // <১ মিনিট দূরে থাকলে কিছু করি না
+        if (!navigator.onLine) return;     // offline → যা আছে তাই থাক
+        try { if (typeof fetchFilteredData === 'function') fetchFilteredData(1); } catch (e) {}
+        try { if (typeof loadAnalytics === 'function') loadAnalytics(); } catch (e) {}
+    });
+})();
+
 // ── Network Live Status Dot ────────────────────────────────
 (function() {
     var _dot = null;

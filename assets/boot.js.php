@@ -196,10 +196,72 @@
                 }
             }, 3000);
 
-            // ── updatefound: নতুন SW install হলে SKIP_WAITING পাঠাই না।
-            // sw.js নিজেই install event-এ skipWaiting করে।
-            // এখানে postMessage করলে → controllerchange → reload → loop তৈরি হয়।
-            // তাই এই block সম্পূর্ণ সরিয়ে দেওয়া হয়েছে।
+            // ── Update detection → "নতুন আপডেট" banner ──────────────────
+            // sw.js v5.9 install-এ আর skipWaiting করে না → নতুন SW "waiting"-এ
+            // বসে থাকে। এখানে detect করে নিচের banner দেখাই। User "রিফ্রেশ" চাপলে
+            // SKIP_WAITING পাঠাই → activate → controllerchange (নিচের handler) →
+            // একবার reload। User-gated বলে reload loop হয় না।
+            function _baShowUpdateBanner(worker) {
+                if (!worker || document.getElementById('baUpdateOverlay')) return;
+
+                // keyframes + styles একবারই inject করি
+                if (!document.getElementById('baUpdateCss')) {
+                    var st = document.createElement('style');
+                    st.id = 'baUpdateCss';
+                    st.textContent =
+                        '@keyframes baUpFade{from{opacity:0}to{opacity:1}}' +
+                        '@keyframes baUpPop{0%{opacity:0;transform:translateY(16px) scale(.9)}100%{opacity:1;transform:translateY(0) scale(1)}}' +
+                        '@keyframes baUpGlow{0%,100%{box-shadow:0 0 0 0 rgba(224,36,36,.5)}50%{box-shadow:0 0 0 16px rgba(224,36,36,0)}}' +
+                        '#baUpdateOverlay{position:fixed;inset:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;padding:22px;background:rgba(2,6,23,.62);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);animation:baUpFade .25s ease both;font-family:inherit}' +
+                        '#baUpdateCard{width:100%;max-width:338px;text-align:center;color:#f1f5f9;background:linear-gradient(162deg,#1e293b,#0f172a);border:1px solid rgba(239,68,68,.3);border-radius:24px;padding:28px 22px 20px;box-shadow:0 24px 64px rgba(0,0,0,.6);animation:baUpPop .38s cubic-bezier(.2,.85,.25,1) both}' +
+                        '#baUpdateCard .ic{width:66px;height:66px;margin:0 auto 16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:2rem;background:linear-gradient(135deg,#ef4444,#b91c1c);animation:baUpGlow 2.1s ease-in-out infinite}' +
+                        '#baUpdateCard h3{margin:0 0 8px;font-size:1.2rem;font-weight:800;color:#fff}' +
+                        '#baUpdateCard p{margin:0 0 22px;font-size:.9rem;line-height:1.65;color:#9aa7bd}' +
+                        '#baUpdateCard .pri{width:100%;border:none;cursor:pointer;color:#fff;font-weight:800;font-size:1rem;border-radius:14px;padding:14px;font-family:inherit;background:linear-gradient(135deg,#e02424,#b91c1c);box-shadow:0 8px 22px rgba(220,38,38,.42);transition:transform .12s ease}' +
+                        '#baUpdateCard .pri:active{transform:scale(.97)}';
+                    document.head.appendChild(st);
+                }
+
+                var ov = document.createElement('div');
+                ov.id = 'baUpdateOverlay';
+                ov.setAttribute('role', 'alertdialog');
+                ov.setAttribute('aria-label', 'নতুন আপডেট');
+                ov.innerHTML =
+                    '<div id="baUpdateCard">' +
+                        '<div class="ic">🔄</div>' +
+                        '<h3>নতুন আপডেট এসেছে</h3>' +
+                        '<p>Blood Arena-এর সর্বশেষ ভার্সন প্রস্তুত। সবচেয়ে নতুন তথ্য দেখতে একবার রিফ্রেশ করুন।</p>' +
+                        '<button type="button" class="pri" id="baUpdateBtn">🔄 রিফ্রেশ করুন</button>' +
+                    '</div>';
+                (document.body || document.documentElement).appendChild(ov);
+                if (document.body) document.body.style.overflow = 'hidden'; // forced — dismiss নেই
+
+                // একমাত্র পথ: রিফ্রেশ। SKIP_WAITING → activate → controllerchange → একবার reload।
+                // reload-এর পর নতুন SW-ই controller, waiting আর নেই — তাই modal আর আসে না
+                // (পরের নতুন version deploy হওয়া পর্যন্ত)। অর্থাৎ একবার করলেই যথেষ্ট।
+                ov.querySelector('#baUpdateBtn').addEventListener('click', function() {
+                    this.disabled = true;
+                    this.textContent = '⏳ হচ্ছে…';
+                    try { worker.postMessage({ type: 'SKIP_WAITING' }); }
+                    catch (e) { window.location.reload(); }
+                });
+            }
+
+            // এই load-এর আগেই একটি নতুন SW waiting থাকলে banner দেখাও
+            if (reg.waiting && navigator.serviceWorker.controller) {
+                _baShowUpdateBanner(reg.waiting);
+            }
+            // load চলাকালীন নতুন SW install হলে banner দেখাও
+            reg.addEventListener('updatefound', function() {
+                var nw = reg.installing;
+                if (!nw) return;
+                nw.addEventListener('statechange', function() {
+                    // installed + আগে থেকে controller আছে = update (first install নয়)
+                    if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                        _baShowUpdateBanner(nw);
+                    }
+                });
+            });
         })
         .catch(function(err) { console.warn('[SW] Registration failed:', err); });
 
