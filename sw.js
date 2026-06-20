@@ -1,9 +1,9 @@
 /**
- * Blood Solution — Service Worker v5.7
+ * Blood Solution — Service Worker v5.8
  * Cache/PWA handler — FCM push handled by firebase-messaging-sw.js
  */
 
-const APP_VERSION = 'blood-solution-v5.7';
+const APP_VERSION = 'blood-solution-v5.8';
 const STATIC_CACHE = APP_VERSION + '-static';
 const IMG_CACHE = APP_VERSION + '-img';
 const PAGE_CACHE = APP_VERSION + '-pages';
@@ -57,7 +57,18 @@ self.addEventListener('fetch', function(e) {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
   if (req.method !== 'GET') return;
   if (url.pathname.startsWith('/admin')) return;
-  
+
+  // Token-addressed patient docs (?req_doc=<token>) → pure network, NEVER the
+  // long-lived SW image cache. cacheFirst caches any HTTP-200 body without
+  // checking Content-Type; on InfinityFree a 200 HTML interstitial could get
+  // stored under the token URL and serve a broken image forever. These are
+  // dynamic + access-guarded and already carry Cache-Control from the server,
+  // so the browser HTTP cache still handles them sanely.
+  if (url.search.indexOf('req_doc=') !== -1) {
+    e.respondWith(fetch(req).catch(function() { return new Response('', { status: 503 }); }));
+    return;
+  }
+
   // External CDN → Cache-First (fonts, leaflet, cartocdn — works offline)
   if (url.origin !== self.location.origin) {
     if (CDN_HOSTS.test(url.host)) {

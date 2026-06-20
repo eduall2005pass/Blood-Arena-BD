@@ -70,7 +70,29 @@
       "Bash(sed -n '600,665p' assets/app.js.php)",
       "Bash(sed -n '4060,4245p' assets/app.js.php)",
       "Bash(python .claude/_ogfix.py)",
-      "Bash(rm .claude/_ogfix.py)"
+      "Bash(rm .claude/_ogfix.py)",
+      "Bash(mkdir -p ../storage/req_docs)",
+      "Bash(printf 'Require all denied\\\\nDeny from all\\\\n')",
+      "Bash(printf '')",
+      "Bash(printf '%s\\\\n' '*')",
+      "Bash(php -l config.php)",
+      "Bash(xxd)",
+      "Bash(php -l cleanup_requests.php)",
+      "Bash(php -r 'echo \"imagick: \".\\(extension_loaded\\(\"imagick\"\\)?\"YES\":\"no\"\\).\"\\\\n\"; echo \"gd: \".\\(extension_loaded\\(\"gd\"\\)?\"YES\":\"no\"\\).\"\\\\n\"; if\\(extension_loaded\\(\"gd\"\\)\\){$i=gd_info\\(\\); echo \"  WEBP: \".\\(!empty\\($i[\"WebP Support\"]\\)?\"yes\":\"no\"\\).\"\\\\n\";}')",
+      "Bash(php cleanup_requests.php)",
+      "Bash(php -r 'putenv\\(\"X\"\\);' -d auto_prepend_file= -r '$_SERVER[\"REQUEST_METHOD\"]=\"GET\";')",
+      "Bash(php -r '$s=file_get_contents\\(\"assets/app.js.php\"\\); file_put_contents\\(sys_get_temp_dir\\(\\).\"/_chk.js\", preg_replace\\(\"/<\\\\?php.*?\\\\?>/s\",\"0\",$s\\)\\);')",
+      "Bash(php -r 'echo sys_get_temp_dir\\(\\);')",
+      "Bash(php -r 'require \"config.php\"; echo \"BRAND_NAME=\".BRAND_NAME.\"\\\\n\"; echo \"COLOR_PRIMARY=\".COLOR_PRIMARY.\"\\\\n\"; echo \"REQ_DOC_MAX_BYTES=\".REQ_DOC_MAX_BYTES.\"\\\\n\"; echo \"AUTO_DELETE_DAYS=\".AUTO_DELETE_DAYS.\"\\\\n\"; echo \"FIREBASE.apiKey=\".FIREBASE[\"apiKey\"].\"\\\\n\"; echo \"SPLASH_ENABLED=\".var_export\\(SPLASH_ENABLED,true\\).\"\\\\n\";')",
+      "Bash(php -r 'require \"config.php\"; echo \"BRAND_NAME=\".BRAND_NAME.\"\\\\nCOLOR_PRIMARY=\".COLOR_PRIMARY.\"\\\\nAUTO_DELETE_DAYS=\".AUTO_DELETE_DAYS.\"\\\\nFIREBASE.apiKey=\".FIREBASE[\"apiKey\"].\"\\\\nFIREBASE.projectId=\".FIREBASE[\"projectId\"].\"\\\\n\";')",
+      "Bash(php -r 'require \"config.php\"; echo \"BRAND_NAME=\".BRAND_NAME.\" \\(should be Blood Arena\\)\\\\n\";')",
+      "Bash(php -r 'require \"config.php\"; echo \"AUTO_DELETE_DAYS=\".AUTO_DELETE_DAYS.\" SPLASH_ENABLED=\".var_export\\(SPLASH_ENABLED,true\\).\" BRAND_NAME=\".BRAND_NAME.\"\\\\n\";')",
+      "Bash(php -r ' *)",
+      "Bash(php -r 'require \"config.php\"; *)",
+      "Bash(php -r 'require \"config.php\"; echo \"BRAND_NAME=\".BRAND_NAME.\" SPLASH_ENABLED=\".var_export\\(SPLASH_ENABLED,true\\).\"\\\\n\";')",
+      "Bash(php -l _reqdoc_check.php)",
+      "Bash(php -v)",
+      "Bash(php -r 'var_dump\\(function_exists\\(\"random_bytes\"\\), function_exists\\(\"imagecreatefromstring\"\\), extension_loaded\\(\"gd\"\\)\\);')"
     ]
   }
 }

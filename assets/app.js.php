@@ -2414,11 +2414,50 @@ function settingsReload() {
 
 
 
+// File input change → enforce max 2 + show chosen count/oversize warning.
+function onReqDocsChange(input){
+    var hint = document.getElementById('req_docs_hint');
+    var files = input && input.files ? Array.from(input.files) : [];
+    if (files.length > 2) {
+        if (typeof showValidationError === 'function') showValidationError('সর্বোচ্চ ২টি ছবি দেওয়া যাবে — প্রথম ২টি রাখা হলো।');
+        try { var dt = new DataTransfer(); files.slice(0,2).forEach(function(f){ dt.items.add(f); }); input.files = dt.files; files = Array.from(input.files); } catch(e) {}
+    }
+    var over = files.find(function(f){ return f.size > 5*1024*1024; });
+    if (hint) {
+        if (over) hint.innerHTML = '<span style="color:#ef4444;">⚠️ ' + over.name + ' — ৫MB-এর বেশি</span>';
+        else if (files.length) hint.textContent = '✅ ' + files.length + 'টি ছবি নির্বাচিত · server-এ compress হবে';
+        else hint.textContent = 'JPG / PNG / WEBP / HEIC · প্রতিটি ৫MB পর্যন্ত · server-এ compress হবে';
+    }
+}
+
 function openBloodRequestModal(){
     document.getElementById('req_group').value = '';
+    var _ra = document.getElementById('req_required_at'); if (_ra) _ra.value = '';
+    var _di = document.getElementById('req_docs');
+    if (_di) { _di.value = ''; var _dh = document.getElementById('req_docs_hint'); if (_dh) _dh.textContent = 'JPG / PNG / WEBP / HEIC · প্রতিটি ৫MB পর্যন্ত · server-এ compress হবে'; }
     // Clear previously selected group button
     document.querySelectorAll('#reqGroupGrid .req-group-btn').forEach(function(b){ b.classList.remove('selected'); });
+    // Reset any leftover upload-progress / button state from a previous attempt
+    _resetReqUploadProgress();
+    var _sb = document.querySelector('#bloodReqSheet button[onclick="submitBloodRequest()"]');
+    if (_sb) { _sb.disabled = false; _sb.innerHTML = '🆘 Send Request'; }
     document.getElementById('bloodReqModal').classList.add('active');
+}
+
+// ── Upload-progress helpers (blood request form) ─────────────
+function _resetReqUploadProgress(){
+    var w = document.getElementById('reqUploadProgWrap');
+    var b = document.getElementById('reqUploadProgBar');
+    var t = document.getElementById('reqUploadProgTxt');
+    if (w) w.style.display = 'none';
+    if (b) b.style.width = '0%';
+    if (t) t.textContent = 'আপলোড হচ্ছে... 0%';
+}
+function _setReqUploadProgress(pct, label){
+    var b = document.getElementById('reqUploadProgBar');
+    var t = document.getElementById('reqUploadProgTxt');
+    if (b) b.style.width = pct + '%';
+    if (t) t.textContent = label;
 }
 
 function closeBloodReqModal(){
@@ -2448,8 +2487,22 @@ function submitBloodRequest(){
     const urgency  = document.getElementById('req_urgency').value;
     const bags     = document.getElementById('req_bags').value;
     const note     = document.getElementById('req_note').value.trim();
+    const requiredAt = document.getElementById('req_required_at').value; // "YYYY-MM-DDTHH:mm" or ''
+
+    // ── ALL validation runs FIRST, before the button is disabled ──
+    // (পুরনো bug: button disable করার পরে file-validation fail করলে button
+    //  permanently locked হয়ে যেত। এখন সব check submit শুরুর আগেই।)
     if(!patient||!group||!hospital){ showValidationError('রোগীর নাম, blood group ও হাসপাতাল দিতে হবে।'); return; }
     if(!/^\+8801\d{9}$/.test(contact)){ showValidationError('সঠিক যোগাযোগ নম্বর দিন (+8801XXXXXXXXX)।'); return; }
+    if(!requiredAt){ showValidationError('কখন রক্ত প্রয়োজন তা দিন।'); return; }
+
+    const docInput = document.getElementById('req_docs');
+    const docFiles = docInput && docInput.files ? Array.from(docInput.files) : [];
+    if (docFiles.length < 1) { showValidationError('ছবি / প্রেসক্রিপশন দিন (কমপক্ষে ১টি আবশ্যক)।'); return; }
+    if (docFiles.length > 2) { showValidationError('সর্বোচ্চ ২টি ছবি দেওয়া যাবে।'); return; }
+    for (const f of docFiles) {
+        if (f.size > 5 * 1024 * 1024) { showValidationError('প্রতিটি ছবি ৫MB-এর কম হতে হবে: ' + f.name); return; }
+    }
 
     // ── FIX: GPS fire-and-forget — do NOT block submit on GPS ──
     // requestGPSWithPrompt caused a popup + wait before submit, making form feel frozen.
@@ -2463,7 +2516,11 @@ function submitBloodRequest(){
     }
 
     const submitBtn = document.querySelector('#bloodReqSheet button[onclick="submitBloodRequest()"]');
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '⏳ পাঠানো হচ্ছে...'; }
+    const hasFiles  = docFiles.length > 0;
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = hasFiles ? '⏳ আপলোড হচ্ছে...' : '⏳ পাঠানো হচ্ছে...'; }
+    // ছবি থাকলে progress bar দেখাও; না থাকলে শুধু "পাঠানো হচ্ছে" state.
+    if (hasFiles) { document.getElementById('reqUploadProgWrap').style.display = 'block'; _setReqUploadProgress(0, 'আপলোড হচ্ছে... 0%'); }
+    else { _resetReqUploadProgress(); }
 
     const fd = new FormData();
     fd.append('submit_blood_request','1');
@@ -2474,14 +2531,41 @@ function submitBloodRequest(){
     fd.append('urgency', urgency);
     fd.append('bags_needed', bags);
     fd.append('req_note', note);
+    fd.append('required_at', requiredAt);
     fd.append('req_location', currentLocData);
     fd.append('device_id', (typeof getDeviceId === 'function') ? getDeviceId() : '');
     fd.append('csrf_token', CSRF_TOKEN);
+    docFiles.slice(0, 2).forEach(function(f){ fd.append('req_docs[]', f, f.name); });
 
-    fetch(_AJAX_URL, {method:'POST', body:fd})
-    .then(safeJSON)
-    .then(d=>{
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '🆘 Emergency Request পাঠান'; }
+    var resetBtn = function(){
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '🆘 Send Request'; }
+        _resetReqUploadProgress();
+    };
+
+    // ── XHR (not fetch) so we can report real upload progress ──
+    //  fetch() upload progress দেখাতে পারে না; তাই XMLHttpRequest ব্যবহার।
+    //  ফাইল upload শেষ হলে (100%) "Send করা হচ্ছে..." দেখায়, তারপর server response।
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', _AJAX_URL, true);
+
+    if (hasFiles && xhr.upload) {
+        xhr.upload.onprogress = function(e){
+            if (!e.lengthComputable) return;
+            var pct = Math.round((e.loaded / e.total) * 100);
+            if (pct >= 100) {
+                _setReqUploadProgress(100, '✅ আপলোড সম্পূর্ণ — Send করা হচ্ছে...');
+                if (submitBtn) submitBtn.innerHTML = '⏳ Send করা হচ্ছে...';
+            } else {
+                _setReqUploadProgress(pct, 'আপলোড হচ্ছে... ' + pct + '%');
+            }
+        };
+    }
+
+    xhr.onload = function(){
+        resetBtn();
+        var d;
+        try { d = JSON.parse(xhr.responseText); } catch(e){ d = null; }
+        if (!d) { showValidationError('সার্ভার থেকে ভুল উত্তর। আবার চেষ্টা করুন।'); return; }
         closeBloodReqModal();
         if(d.status==='success'){
             document.getElementById('req_patient').value = '';
@@ -2491,6 +2575,9 @@ function submitBloodRequest(){
             document.getElementById('req_urgency').value = 'High';
             document.getElementById('req_bags').value = '1';
             document.getElementById('req_note').value = '';
+            document.getElementById('req_required_at').value = '';
+            var _di = document.getElementById('req_docs');
+            if (_di) { _di.value = ''; var _dh = document.getElementById('req_docs_hint'); if (_dh) _dh.textContent = 'JPG / PNG / WEBP / HEIC · প্রতিটি ৫MB পর্যন্ত · server-এ compress হবে'; }
             document.querySelectorAll('#reqGroupGrid .req-group-btn').forEach(function(b){ b.classList.remove('selected'); });
             appSwitchPage('requests');   // jump to the Active Requests page (reloads the list)
             // Request is tied to the signed-in account — manage/delete it from the
@@ -2500,10 +2587,12 @@ function submitBloodRequest(){
         } else {
             showValidationError(d.msg||'ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
         }
-    }).catch(function(){
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '🆘 Emergency Request পাঠান'; }
+    };
+    xhr.onerror = function(){
+        resetBtn();
         showValidationError('Network error। Internet connection চেক করুন।');
-    });
+    };
+    xhr.send(fd);
 }
 
 // Kept for backward-compat: Active Requests is now a dedicated page, not an
@@ -2585,6 +2674,70 @@ function applyReqFilter(){
     renderReqGrid(filtered, _reqTabMode === 'mine');
 }
 
+// Render the expandable image-attachment block for a request card.
+// docs = ['?req_doc=tok', ...]. Hidden until the card is clicked (see toggleReqCardDocs).
+// Thumbnails open the full-screen zoom lightbox via openReqImage().
+function reqDocThumbs(docs){
+    if(!docs || !docs.length) return '';
+    var base = (typeof _AJAX_URL === 'string') ? _AJAX_URL : '';
+    var imgs = docs.slice(0,2).map(function(u){
+        // docs come as relative '?req_doc=tok' — anchor to the AJAX base so the
+        // image always resolves to index.php regardless of current SPA route.
+        var abs = base + String(u);
+        var safe = abs.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        return '<img class="req-doc-thumb" src="'+safe+'" alt="রোগীর ছবি" loading="lazy" '
+             + 'onclick="event.stopPropagation();openReqImage(\''+safe+'\')">';
+    }).join('');
+    var label = docs.length > 1 ? (docs.length + 'টি Prescription দেখুন') : 'Prescription দেখুন';
+    return '<div class="req-card-attach-hint" onclick="event.stopPropagation();toggleReqCardDocs(this)">'
+         +     '📋 <span>'+label+'</span> <span class="chev">▾</span>'
+         +   '</div>'
+         +   '<div class="req-doc-thumbs"><div class="req-doc-thumbs-inner">'+imgs+'</div></div>';
+}
+
+// Toggle the expandable thumbnail strip on a request card.
+// Accepts either the card itself or any descendant (e.g. the 📎 hint).
+function toggleReqCardDocs(el){
+    var card = el.classList && el.classList.contains('req-card') ? el : el.closest('.req-card');
+    if(card) card.classList.toggle('docs-open');
+}
+
+// ── Full-screen image zoom lightbox ──────────────────────────────────
+function openReqImage(src){
+    var box = document.getElementById('reqImgLightbox');
+    var img = document.getElementById('reqImgFull');
+    if(!box || !img) return;
+    box.classList.remove('zoomed');
+    img.src = src;
+    box.classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+function closeReqImage(e){
+    // Only close when clicking the backdrop / close button — not the image itself
+    if(e){
+        var t = e.target;
+        if(t && t.id === 'reqImgFull') return;
+    }
+    var box = document.getElementById('reqImgLightbox');
+    var img = document.getElementById('reqImgFull');
+    if(!box) return;
+    box.classList.remove('show','zoomed');
+    document.body.style.overflow = '';
+    if(img) setTimeout(function(){ if(!box.classList.contains('show')) img.src=''; }, 250);
+}
+function toggleReqImageZoom(e){
+    if(e) e.stopPropagation();
+    var box = document.getElementById('reqImgLightbox');
+    if(box) box.classList.toggle('zoomed');
+}
+// Esc closes the lightbox
+document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){
+        var box = document.getElementById('reqImgLightbox');
+        if(box && box.classList.contains('show')) closeReqImage();
+    }
+});
+
 function renderReqGrid(reqs, showDeleteBtns) {
     var grid = document.getElementById('reqGrid');
     if(!grid) return;
@@ -2615,13 +2768,21 @@ function renderReqGrid(reqs, showDeleteBtns) {
         return Math.floor(diff / 1440) + 'দিন আগে';
     };
     var escHtml = function(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); };
+    var fmtRequiredAt = function(ts){
+        var unix = parseInt(ts, 10);
+        if (!unix || isNaN(unix)) return '';
+        try { return new Date(unix * 1000).toLocaleString('bn-BD', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}); }
+        catch(e){ return new Date(unix * 1000).toLocaleString(); }
+    };
     grid.innerHTML = reqs.map(function(r){
         var mine = isMyRequest(r.id);
         var deleteBtn = mine
-            ? '<button onclick="deleteMyAccountRequest('+r.id+', this)" style="margin-top:8px;width:100%;padding:9px;background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.35);color:var(--danger);border-radius:10px;font-size:0.82em;cursor:pointer;font-weight:700;min-height:unset;box-shadow:none;margin-top:8px;">🗑️ আমার Request মুছুন</button>'
+            ? '<button onclick="event.stopPropagation();deleteMyAccountRequest('+r.id+', this)" style="margin-top:8px;width:100%;padding:9px;background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.35);color:var(--danger);border-radius:10px;font-size:0.82em;cursor:pointer;font-weight:700;min-height:unset;box-shadow:none;margin-top:8px;">🗑️ আমার Request মুছুন</button>'
             : '';
         var myBadge = mine ? '<span style="font-size:0.7em;background:rgba(220,38,38,0.12);color:var(--danger);border-radius:20px;padding:2px 8px;font-weight:700;margin-left:6px;">👤 আমার</span>' : '';
-        return '<div class="req-card '+(urgencyClass[r.urgency]||'high')+'">'
+        var hasDocs = (r.docs && r.docs.length) ? '1' : '0';
+        var cardClick = hasDocs === '1' ? ' onclick="toggleReqCardDocs(this)"' : '';
+        return '<div class="req-card '+(urgencyClass[r.urgency]||'high')+'" data-has-docs="'+hasDocs+'"'+cardClick+'>'
             +'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
             +'<span class="req-card-urgency '+(urgencyClass[r.urgency]||'high')+'">'+(urgencyIcon[r.urgency]||'')+' '+escHtml(r.urgency)+'</span>'
             +'<span style="font-size:0.75em;color:var(--text-muted);">'+timeAgo(r.created_at)+'</span>'
@@ -2631,9 +2792,11 @@ function renderReqGrid(reqs, showDeleteBtns) {
             +'<div class="req-card-hosp">🏥 '+escHtml(r.hospital)+'</div>'
             +'<div class="req-card-meta">'
             +'<span class="req-tag">🩸 '+escHtml(r.bags_needed)+' ব্যাগ</span>'
+            +(r.required_at ? '<span class="req-tag">⏰ '+escHtml(fmtRequiredAt(r.required_at))+'</span>' : '')
             +(r.note ? '<span class="req-tag">📝 '+escHtml(r.note)+'</span>' : '')
             +'</div>'
-            +'<button class="req-call-btn" onclick="window.location=\'tel:'+escHtml(r.contact)+'\'">📞 '+escHtml(r.contact)+' — এখনই Call করুন</button>'
+            +reqDocThumbs(r.docs)
+            +'<button class="req-call-btn" onclick="event.stopPropagation();window.location=\'tel:'+escHtml(r.contact)+'\'">📞 '+escHtml(r.contact)+' — এখনই Call করুন</button>'
             +deleteBtn
             +'</div>';
     }).join('');
@@ -3961,6 +4124,7 @@ function _renderMyAccountRequests(rows) {
                 '👤 <strong style="color:var(--text-main);">' + _esc(r.patient_name) + '</strong><br>' +
                 '🏥 ' + _esc(r.hospital) + '<br>' +
                 '📞 ' + _esc(r.contact) +
+                (r.required_at ? '<br>⏰ <strong style="color:var(--text-main);">প্রয়োজন:</strong> ' + _esc(new Date(r.required_at * 1000).toLocaleString('bn-BD', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'})) : '') +
                 (r.created_at ? '<br>🗓️ ' + _esc(new Date(r.created_at * 1000).toLocaleString('bn-BD', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'})) : '') +
               '</div>' +
               '<button onclick="deleteMyAccountRequest(' + (r.id|0) + ', this)" style="width:100%;margin-top:10px;padding:9px;background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.35);color:var(--danger);border-radius:10px;font-size:0.82em;cursor:pointer;font-weight:700;min-height:unset;box-shadow:none;">🗑️ এই Request মুছুন</button>' +

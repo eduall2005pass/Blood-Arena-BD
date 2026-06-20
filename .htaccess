@@ -1,0 +1,55 @@
+# ════════════════════════════════════════════════════════════════════
+#  Blood Arena — cache policy (.htaccess)
+#  DirectAdmin / LiteSpeed shared hosting.
+#  Goal: dynamic PHP pages must ALWAYS load fresh on the first visit —
+#  no stale copy from the server cache or browser HTTP cache. Static
+#  media is cached aggressively; service workers are never cached.
+# ════════════════════════════════════════════════════════════════════
+
+# ── 1. Disable LiteSpeed server-side cache for everything dynamic ────
+#  DirectAdmin commonly runs LiteSpeed (LSCache). Its default policy can
+#  serve a cached HTML copy of the PHP output, which is the usual cause
+#  of "stale page until you hit refresh". Turn it off for this site.
+<IfModule LiteSpeed>
+  CacheLookup off
+  RewriteEngine On
+  RewriteRule .* - [E=Cache-Control:no-cache]
+  RewriteRule .* - [E=cache-control:no-cache]
+</IfModule>
+
+<IfModule mod_headers.c>
+  # ── 2. Dynamic PHP pages — never cache ────────────────────────────
+  #  Defense-in-depth: the app also sends these from PHP, but forcing
+  #  them here guarantees the directive survives the server cache layer
+  #  and reaches the browser even if a request short-circuits before
+  #  PHP runs. "no-store" also disables Chrome's back/forward (bf)cache,
+  #  so navigating back never shows a frozen, stale snapshot.
+  <FilesMatch "\.php$">
+    Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+
+  # ── 3. Service workers — always revalidate (never serve a stale SW) ─
+  #  A cached service worker would keep an old cache strategy alive and
+  #  re-introduce staleness. Browsers mostly do this already; enforce it.
+  <FilesMatch "(sw\.js|firebase-messaging-sw\.js)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+
+  # ── 4. Static media — cache hard (these rarely change) ────────────
+  #  Note: the only same-origin .js files are the service workers above,
+  #  so JS is deliberately excluded here to avoid caching them.
+  <FilesMatch "\.(png|jpg|jpeg|gif|webp|svg|ico|mp3|woff2?|ttf)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+
+  # ── 5. Drop ETags ─────────────────────────────────────────────────
+  #  Shared hosting builds inode-based ETags that differ across backend
+  #  nodes/load balancers, breaking validation. Let Cache-Control rule.
+  Header unset ETag
+</IfModule>
+
+FileETag None

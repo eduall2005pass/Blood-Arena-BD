@@ -60,6 +60,25 @@ try {
 // ── 5. HELPERS ───────────────────────────────────────────
 function esc($v){ return htmlspecialchars($v??'',ENT_QUOTES|ENT_HTML5,'UTF-8'); }
 function dbq($c,$s){ if(!$c) return null; $r=$c->query($s); return $r?:null; }
+// Delete attached document files (from disk) AND their DB rows for the given
+// blood_request IDs. (No FK/CASCADE — request_documents rows must be removed
+// explicitly here, otherwise they'd be orphaned when the request row is deleted.)
+function delReqDocFiles($conn, array $ids){
+    if(!$conn || !defined('UPLOAD_DIR')) return;
+    $ids=array_values(array_filter(array_map('intval',$ids),fn($x)=>$x>0));
+    if(!$ids) return;
+    $in=implode(',',$ids);
+    $res=dbq($conn,"SELECT file_path FROM request_documents WHERE request_id IN ($in)");
+    if($res){
+        $base=rtrim(UPLOAD_DIR,"/\\"); $broot=realpath(UPLOAD_DIR);
+        while($d=$res->fetch_assoc()){
+            $real=realpath($base.'/'.$d['file_path']);
+            if($real && $broot && strncmp($real,$broot,strlen($broot))===0 && is_file($real)){ @unlink($real); }
+        }
+    }
+    // remove the rows too (CASCADE is not used)
+    dbq($conn,"DELETE FROM request_documents WHERE request_id IN ($in)");
+}
 // PHP 7.x-safe COUNT(*) helper (replaces the PHP 8.0+ nullsafe-operator fetch pattern)
 function _cnt($res){ if($res instanceof mysqli_result){ $row=$res->fetch_assoc(); return isset($row['c'])?$row['c']:0; } return 0; }
 
@@ -263,7 +282,8 @@ if($logged_in && isset($_POST['act'])){
         'del_inbox_msg','clear_inbox',
         'add_moderator','del_moderator','list_moderators',
         'get_admin_poll',
-        'clear_service_notifs'
+        'clear_service_notifs',
+        'cfg_unlock','cfg_get','cfg_save','cfg_change_pass','cfg_reset'
     ];
     if(!in_array($act,$allowed,true)){ echo json_encode(['ok'=>false,'msg'=>'Unknown action']); exit(); }
 
@@ -274,7 +294,8 @@ if($logged_in && isset($_POST['act'])){
         'change_password','toggle_ip_whitelist',
         'add_token','add_ip',
         'reply_inbox_msg',  // moderator cannot reply messages
-        'add_moderator','del_moderator'
+        'add_moderator','del_moderator',
+        'cfg_unlock','cfg_get','cfg_save','cfg_change_pass','cfg_reset'  // Site Config = super admin only
     ];
     if($is_moderator && in_array($act,$super_only_acts,true)){
         echo json_encode(['ok'=>false,'msg'=>'🚫 এই কাজটি শুধুমাত্র Super Admin করতে পারবে।']); exit();
@@ -467,6 +488,127 @@ if($logged_in && isset($_POST['act'])){
         $tokens=[]; $tr=$conn->query("SELECT id,token_name,token_value,is_active,created_at,last_used FROM api_tokens ORDER BY id DESC");
         if($tr) while($r=$tr->fetch_assoc()) $tokens[]=$r;
         echo json_encode(['ok'=>true,'ip_whitelist_enabled'=>$enabled,'ips'=>$ips,'tokens'=>$tokens]); exit();
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  SITE CONFIG EDITOR (UI-editable config — writes config_overrides.json)
+    //  নিজস্ব password gate; default 'alif2005@A' (bcrypt hashed, DB-তে রাখা)।
+    //  config.php কখনো rewrite হয় না — শুধু data-only JSON overlay লেখা হয়।
+    // ════════════════════════════════════════════════════════════════
+    if(in_array($act,['cfg_unlock','cfg_get','cfg_save','cfg_change_pass','cfg_reset'],true)){
+        ensureAdminTables($conn);
+
+        // editor password helpers (stored in admin_settings as bcrypt hash) ──
+        $cfg_get_hash = function() use ($conn) {
+            $r=$conn->query("SELECT setting_value FROM admin_settings WHERE setting_key='cfg_editor_hash' LIMIT 1");
+            $row=$r?$r->fetch_assoc():null;
+            if($row && !empty($row['setting_value'])) return $row['setting_value'];
+            // first run — seed default password 'alif2005@A' (hashed)
+            $h=password_hash('alif2005@A',PASSWORD_BCRYPT,['cost'=>12]);
+            $he=mysqli_real_escape_string($conn,$h);
+            $conn->query("INSERT INTO admin_settings (setting_key,setting_value) VALUES ('cfg_editor_hash','$he') ON DUPLICATE KEY UPDATE setting_value='$he'");
+            return $h;
+        };
+        // session unlock flag (per admin session) ──
+        $cfg_is_unlocked = function() { return !empty($_SESSION['cfg_unlocked']); };
+
+        // editable-key list comes from config.php's exposed defaults ──
+        $defaults = $GLOBALS['CFG_DEFAULTS'] ?? [];
+        $effective = $GLOBALS['CFG_EFFECTIVE'] ?? $defaults;
+
+        // ── Unlock (verify editor password) ──────────────────────
+        if($act==='cfg_unlock'){
+            $pass=(string)($_POST['cfg_pass']??'');
+            if(!password_verify($pass,$cfg_get_hash())){
+                auditLog($conn,'CFG_UNLOCK_FAIL','wrong editor password');
+                echo json_encode(['ok'=>false,'msg'=>'❌ ভুল password।']); exit();
+            }
+            $_SESSION['cfg_unlocked']=true;
+            auditLog($conn,'CFG_UNLOCK','config editor unlocked');
+            echo json_encode(['ok'=>true]); exit();
+        }
+
+        // all remaining cfg_* actions require an unlocked session ──
+        if(!$cfg_is_unlocked()){
+            echo json_encode(['ok'=>false,'locked'=>true,'msg'=>'🔒 আগে Site Config password দিন।']); exit();
+        }
+
+        // ── Get current effective values (for rendering the form) ─
+        if($act==='cfg_get'){
+            // never ship nothing; secrets are shown so they can be edited (super-admin only, already gated)
+            echo json_encode(['ok'=>true,'defaults'=>$defaults,'values'=>$effective,
+                'overlay_exists'=>is_file(CFG_OVERLAY_FILE)]); exit();
+        }
+
+        // ── Save (merge posted values → config_overrides.json) ───
+        if($act==='cfg_save'){
+            $payload=$_POST['cfg']??[];
+            if(is_string($payload)){ $payload=json_decode($payload,true); }
+            if(!is_array($payload)){ echo json_encode(['ok'=>false,'msg'=>'Invalid data.']); exit(); }
+
+            // Build a clean overlay using ONLY known keys, coerced to default types.
+            $overlay=[];
+            foreach($defaults as $k=>$def){
+                if($k==='FIREBASE'){
+                    if(isset($payload['FIREBASE']) && is_array($payload['FIREBASE'])){
+                        $fb=[];
+                        foreach($def as $fk=>$fv){
+                            if(isset($payload['FIREBASE'][$fk])){
+                                $v=trim((string)$payload['FIREBASE'][$fk]);
+                                if($v!=='') $fb[$fk]=$v;
+                            }
+                        }
+                        if($fb) $overlay['FIREBASE']=$fb;
+                    }
+                    continue;
+                }
+                if(!array_key_exists($k,$payload)) continue;
+                $v=$payload[$k];
+                if(is_bool($def))        $overlay[$k]=($v==='1'||$v===1||$v===true||$v==='true');
+                elseif(is_int($def))     $overlay[$k]=(int)$v;
+                else                     $overlay[$k]=trim((string)$v);
+            }
+
+            // basic sanity: SITE_URL must look like a URL if provided
+            if(isset($overlay['SITE_URL']) && $overlay['SITE_URL']!=='' && !preg_match('~^https?://~i',$overlay['SITE_URL'])){
+                echo json_encode(['ok'=>false,'msg'=>'SITE_URL অবশ্যই http(s):// দিয়ে শুরু হতে হবে।']); exit();
+            }
+
+            $json=json_encode($overlay,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+            if($json===false){ echo json_encode(['ok'=>false,'msg'=>'JSON encode ব্যর্থ।']); exit(); }
+            // atomic write — temp then rename, so a half-write can't corrupt the live file
+            $tmp=CFG_OVERLAY_FILE.'.tmp';
+            if(@file_put_contents($tmp,$json)===false || !@rename($tmp,CFG_OVERLAY_FILE)){
+                @unlink($tmp);
+                echo json_encode(['ok'=>false,'msg'=>'❌ config_overrides.json লিখতে পারছি না — folder write permission চেক করুন।']); exit();
+            }
+            auditLog($conn,'CFG_SAVE','keys:'.implode(',',array_keys($overlay)));
+            echo json_encode(['ok'=>true,'msg'=>'✅ Config সংরক্ষিত! পরিবর্তন এখনই কার্যকর।']); exit();
+        }
+
+        // ── Reset to defaults (delete overlay file) ──────────────
+        if($act==='cfg_reset'){
+            if(is_file(CFG_OVERLAY_FILE) && !@unlink(CFG_OVERLAY_FILE)){
+                echo json_encode(['ok'=>false,'msg'=>'❌ overlay file মুছতে পারছি না।']); exit();
+            }
+            auditLog($conn,'CFG_RESET','overlay removed — back to defaults');
+            echo json_encode(['ok'=>true,'msg'=>'✅ সব default-এ ফিরে গেছে।']); exit();
+        }
+
+        // ── Change editor password ───────────────────────────────
+        if($act==='cfg_change_pass'){
+            $cur=(string)($_POST['cur_pass']??'');
+            $new=(string)($_POST['new_pass']??'');
+            $cnf=(string)($_POST['confirm_pass']??'');
+            if(!password_verify($cur,$cfg_get_hash())){ echo json_encode(['ok'=>false,'msg'=>'বর্তমান password ভুল।']); exit(); }
+            if(strlen($new)<8){ echo json_encode(['ok'=>false,'msg'=>'নতুন password কমপক্ষে ৮ অক্ষরের হতে হবে।']); exit(); }
+            if($new!==$cnf){ echo json_encode(['ok'=>false,'msg'=>'নতুন password ও confirm মিলছে না।']); exit(); }
+            $h=password_hash($new,PASSWORD_BCRYPT,['cost'=>12]);
+            $he=mysqli_real_escape_string($conn,$h);
+            $conn->query("INSERT INTO admin_settings (setting_key,setting_value) VALUES ('cfg_editor_hash','$he') ON DUPLICATE KEY UPDATE setting_value='$he'");
+            auditLog($conn,'CFG_CHANGE_PASS','config editor password changed');
+            echo json_encode(['ok'=>true,'msg'=>'✅ Config password পরিবর্তন হয়েছে।']); exit();
+        }
     }
 
     // ── Send Bulk Notification ───────────────────────────
@@ -961,6 +1103,8 @@ if($logged_in && isset($_POST['act'])){
         // Parse and validate IDs
         $ids=array_filter(array_map('intval',explode(',',$ids_raw)),fn($x)=>$x>0);
         if(empty($ids)){ echo json_encode(['ok'=>false,'msg'=>'কোনো ID পাওয়া যায়নি।']); exit(); }
+        // Requests carry attached image files — remove them from disk first.
+        if($tname==='blood_requests') delReqDocFiles($conn,$ids);
         $placeholders=implode(',',array_fill(0,count($ids),'?'));
         $types=str_repeat('i',count($ids));
         $stmt=$conn->prepare("DELETE FROM `$tname` WHERE id IN ($placeholders)");
@@ -977,7 +1121,7 @@ if($logged_in && isset($_POST['act'])){
     if($conn && $id>=0){
         $stmt=null;
         if($act==='del_donor')       $stmt=$conn->prepare("DELETE FROM donors WHERE id=?");
-        elseif($act==='del_req')     $stmt=$conn->prepare("DELETE FROM blood_requests WHERE id=?");
+        elseif($act==='del_req')   { delReqDocFiles($conn,[$id]); $stmt=$conn->prepare("DELETE FROM blood_requests WHERE id=?"); }
         elseif($act==='fulfill_req') $stmt=$conn->prepare("UPDATE blood_requests SET status='Fulfilled' WHERE id=?");
         elseif($act==='del_report')  $stmt=$conn->prepare("DELETE FROM reports WHERE id=?");
         elseif($act==='del_call')    $stmt=$conn->prepare("DELETE FROM call_logs WHERE id=?");
@@ -1037,6 +1181,14 @@ if($logged_in && $conn){
     $res2=dbq($conn,"SELECT * FROM blood_requests ORDER BY FIELD(status,'Active','Fulfilled','Expired'),created_at DESC LIMIT 100");
     if($res2) while($row=$res2->fetch_assoc()) $requests[]=$row;
     $stats['active_req']=count(array_filter($requests,function($r){return $r['status']==='Active';}));
+
+    // Attached document tokens per request (request_documents — created by index.php schema v6)
+    $reqDocs=[];
+    if($requests){
+        $ids=implode(',', array_map(function($r){return (int)$r['id'];}, $requests));
+        $rd=dbq($conn,"SELECT request_id, token FROM request_documents WHERE request_id IN ($ids) ORDER BY id ASC");
+        if($rd) while($d=$rd->fetch_assoc()) $reqDocs[(int)$d['request_id']][]=$d['token'];
+    }
 
     $inbox_unread=(int)_cnt(dbq($conn,"SELECT COUNT(*) c FROM admin_messages WHERE is_read=0 AND admin_reply IS NULL"));
 
@@ -1542,7 +1694,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
         <div class="ow"><table>
           <thead><tr>
             <th class="cb-th"><input type="checkbox" id="cb-all-requests" onchange="toggleAll('requests',this.checked)"></th>
-            <th>#</th><th>Patient</th><th>Group</th><th>Hospital</th><th>Contact</th><th>Urgency</th><th>Bags</th><th>Status</th><th>Time</th><th>Actions</th>
+            <th>#</th><th>Patient</th><th>Group</th><th>Hospital</th><th>Contact</th><th>Urgency</th><th>Bags</th><th>Required</th><th>Status</th><th>Time</th><th>Actions</th>
           </tr></thead>
           <tbody id="rtb">
           <?php foreach($requests as $i=>$r):
@@ -1550,6 +1702,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
             if(!in_array($uc,['critical','high','medium'])) $uc='high';
             $ucmap=['critical'=>'cr','high'=>'hi','medium'=>'me'];
             $tm=!empty($r['created_at'])?date('d M, h:i A',strtotime($r['created_at'])):'—';
+            $rq=!empty($r['required_at'])?date('d M, h:i A',strtotime($r['required_at'])):'—';
           ?><tr id="rr<?=$r['id']?>" class="requests-row">
             <td class="cb-td"><input type="checkbox" class="row-cb requests-cb" value="<?=$r['id']?>" onchange="onRowCbChange('requests')"></td>
             <td style="color:var(--muted);"><?=$i+1?></td>
@@ -1559,15 +1712,21 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
             <td style="font-family:monospace;font-size:.8em;"><?=esc($r['contact'])?></td>
             <td><span class="uc <?=$ucmap[$uc]?>"><?=esc($r['urgency'])?></span></td>
             <td style="text-align:center;"><?=(int)($r['bags_needed']??1)?></td>
+            <td style="font-size:.77em;color:var(--muted);white-space:nowrap;"><?=$rq?></td>
             <td><span class="sp <?=strtolower(substr($r['status']??'Active',0,2))?>"><?=esc($r['status']??'Active')?></span></td>
             <td style="font-size:.77em;color:var(--muted);white-space:nowrap;"><?=$tm?></td>
             <td>
-              <div style="display:flex;gap:4px;">
+              <div style="display:flex;gap:4px;align-items:center;">
+                <?php $docs=$reqDocs[(int)$r['id']]??[]; foreach($docs as $tok): ?>
+                  <a href="/?req_doc=<?=esc($tok)?>" target="_blank" rel="noopener" title="সংযুক্ত ছবি দেখুন">
+                    <img src="/?req_doc=<?=esc($tok)?>" alt="doc" loading="lazy" style="width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;">
+                  </a>
+                <?php endforeach; ?>
                 <?php if(($r['status']??'')==='Active'):?><button class="btn bo" onclick="act('fulfill_req',<?=$r['id']?>,this,'rr<?=$r['id']?>')">✅</button><?php endif;?>
                 <?php if($is_super):?><button class="btn bd" onclick="act('del_req',<?=$r['id']?>,this,'rr<?=$r['id']?>')">🗑</button><?php endif;?>
               </div>
             </td>
-          </tr><?php endforeach; if(empty($requests)):?><tr><td colspan="11" class="empty">কোনো request নেই</td></tr><?php endif;?>
+          </tr><?php endforeach; if(empty($requests)):?><tr><td colspan="12" class="empty">কোনো request নেই</td></tr><?php endif;?>
           </tbody>
         </table></div>
       </div>
@@ -2024,6 +2183,48 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
           <?php endforeach; endif; ?>
         </div>
       </div>
+
+      <!-- ══ SITE CONFIG EDITOR (UI-based config — super admin only) ══ -->
+      <?php if($is_super):?>
+      <div class="settings-section" id="cfgSection">
+        <h4>🎛️ Site Config <span style="font-size:.72em;color:var(--muted);">(brand, contact, social, theme, firebase, bots)</span></h4>
+        <p style="font-size:.82em;color:var(--muted);margin-bottom:12px;">config.php না খুলেই এখান থেকে সব setting বদলান। পরিবর্তন <strong>সাথে সাথে</strong> কার্যকর হয় এবং <code>config_overrides.json</code>-এ নিরাপদে সংরক্ষিত হয় (মূল config.php কখনো overwrite হয় না)।</p>
+
+        <!-- Lock screen: editor password gate -->
+        <div id="cfgLock">
+          <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:16px 18px;max-width:420px;">
+            <div style="font-size:.9em;font-weight:700;margin-bottom:10px;">🔒 Site Config খুলতে password দিন</div>
+            <input type="password" id="cfgPass" placeholder="Config password" autocomplete="off"
+              style="width:100%;padding:10px 12px;border-radius:9px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);margin-bottom:10px;"
+              onkeydown="if(event.key==='Enter')cfgUnlock()">
+            <button onclick="cfgUnlock()" style="padding:9px 18px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;">🔓 Unlock</button>
+            <div id="cfgUnlockMsg" style="font-size:.82em;margin-top:8px;"></div>
+            <div style="font-size:.74em;color:var(--muted);margin-top:8px;">ℹ️ প্রথমবার default password: <code>alif2005@A</code> — unlock করার পর নিচ থেকে বদলে নিন।</div>
+          </div>
+        </div>
+
+        <!-- Editor body (hidden until unlocked) -->
+        <div id="cfgBody" style="display:none;">
+          <div id="cfgForm" style="display:grid;gap:18px;"></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;align-items:center;">
+            <button onclick="cfgSave()" id="cfgSaveBtn" style="padding:10px 22px;background:var(--green);color:#fff;border:none;border-radius:9px;font-weight:800;cursor:pointer;">💾 Save Config</button>
+            <button onclick="cfgReset()" style="padding:10px 18px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.3);border-radius:9px;font-weight:700;cursor:pointer;">♻️ Reset to defaults</button>
+            <button onclick="cfgLockNow()" style="padding:10px 16px;background:rgba(107,114,128,.15);color:var(--muted);border:1px solid var(--bdr);border-radius:9px;cursor:pointer;">🔒 Lock</button>
+            <span id="cfgSaveMsg" style="font-size:.85em;"></span>
+          </div>
+
+          <!-- Change editor password -->
+          <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--bdr);max-width:420px;">
+            <div style="font-size:.88em;font-weight:700;margin-bottom:10px;">🔑 Config password পরিবর্তন</div>
+            <input type="password" id="cfgCurPass" placeholder="বর্তমান config password" autocomplete="off" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);margin-bottom:8px;">
+            <input type="password" id="cfgNewPass" placeholder="নতুন password (min 8)" autocomplete="off" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);margin-bottom:8px;">
+            <input type="password" id="cfgCnfPass" placeholder="নতুন password নিশ্চিত করুন" autocomplete="off" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);margin-bottom:10px;">
+            <button onclick="cfgChangePass()" style="padding:9px 18px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;">🔑 পরিবর্তন করুন</button>
+            <div id="cfgPassMsg" style="font-size:.82em;margin-top:8px;"></div>
+          </div>
+        </div>
+      </div>
+      <?php endif;?>
 
       <!-- Password Change -->
       <?php if($is_super):?>
@@ -2729,6 +2930,140 @@ function changePassword(){
             ['pw_current','pw_new','pw_confirm'].forEach(id=>document.getElementById(id).value='');
         } else { res.className='pw-result err'; res.textContent=d.msg||'Failed'; }
     }).catch(e=>{btn.disabled=false;btn.textContent='🔑 Password পরিবর্তন করুন';res.className='pw-result err';res.style.display='block';res.textContent='Network error: '+e.message;});
+}
+
+// ══ SITE CONFIG EDITOR ════════════════════════════════════
+// Field schema → groups, labels, input type. Keys MUST match config.php defaults.
+const CFG_GROUPS = [
+  { title:'🏷️ Brand / Identity', fields:[
+    ['BRAND_NAME','App Name','text'],['BRAND_SHORT','Short / PWA Name','text'],
+    ['BRAND_TAGLINE','Tagline','text'],['ORG_NAME','Org Name (EN)','text'],
+    ['ORG_NAME_BN','Org Name (BN)','text'],['APP_DESC','App Description','text'] ]},
+  { title:'📞 Contact / Links', fields:[
+    ['CONTACT_PHONE','Emergency Phone','text'],['SITE_URL','Site URL','text'],
+    ['LOGO_PATH','Logo Path','text'],['ICON_PATH','Icon Path','text'] ]},
+  { title:'🔗 Social Links', fields:[
+    ['SOCIAL_FACEBOOK','Facebook','text'],['SOCIAL_TELEGRAM','Telegram','text'],
+    ['SOCIAL_YOUTUBE','YouTube','text'],['SOCIAL_WHATSAPP','WhatsApp','text'] ]},
+  { title:'🎨 Theme Colors', fields:[
+    ['COLOR_PRIMARY','Primary','color'],['COLOR_PRIMARY_HOVER','Primary Hover','color'],
+    ['COLOR_BG_MAIN','BG Main','color'],['COLOR_THEME','PWA Theme','color'] ]},
+  { title:'⏳ Splash Screen', fields:[
+    ['SPLASH_ENABLED','Enabled','bool'],['SPLASH_MIN_MS','Min ms','int'],
+    ['SPLASH_MIN_MS_STANDALONE','Min ms (PWA)','int'],['SPLASH_MAX_MS','Max ms','int'],
+    ['SPLASH_BG','BG (light)','color'],['SPLASH_BG_DARK','BG (dark)','color'] ]},
+  { title:'🔥 Firebase', fb:true, fields:[
+    ['apiKey','API Key','text'],['authDomain','Auth Domain','text'],['projectId','Project ID','text'],
+    ['storageBucket','Storage Bucket','text'],['messagingSenderId','Messaging Sender ID','text'],
+    ['appId','App ID','text'],['measurementId','Measurement ID','text'],['vapidKey','VAPID Key','text'] ]},
+  { title:'🤖 Telegram / WhatsApp Bot', fields:[
+    ['TELEGRAM_BOT_URL','Telegram Bot URL','text'],['TELEGRAM_BOT_SECRET','Telegram Secret','text'],
+    ['TELEGRAM_BOT_USERNAME','Telegram Username','text'],['TELEGRAM_BOT_INSECURE_TLS','Telegram Insecure TLS','bool'],
+    ['WA_BOT_URL','WhatsApp Bot URL','text'],['WA_BOT_SECRET','WhatsApp Secret','text'],
+    ['WA_BOT_INSECURE_TLS','WhatsApp Insecure TLS','bool'],['VERIFY_OTP_TTL','OTP TTL (sec)','int'],
+    ['PHONE_OTP_COUNTS_VERIFIED','Phone-OTP = Verified','bool'] ]},
+  { title:'📎 Request Documents', fields:[
+    ['AUTO_DELETE_DAYS','Auto-delete days','int'],['REQ_DOC_MAX_FILES','Max files/request','int'],
+    ['REQ_DOC_MAX_MB','Max MB/file','int'],['REQ_DOC_TARGET_KB','Compress target KB','int'] ]},
+];
+let _cfgValues = {};
+
+function cfgMsg(id,text,ok){ const e=document.getElementById(id); if(!e)return; e.style.display='block'; e.style.color=ok?'var(--green)':'var(--red)'; e.textContent=text; }
+function cfgPost(extra){ const fd=new FormData(); fd.append('csrf',CSRF); for(const k in extra) fd.append(k,extra[k]);
+  return fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.json()); }
+
+function cfgUnlock(){
+  const p=document.getElementById('cfgPass').value;
+  if(!p){cfgMsg('cfgUnlockMsg','Password দিন।',false);return;}
+  cfgPost({act:'cfg_unlock',cfg_pass:p}).then(d=>{
+    if(d.ok){ document.getElementById('cfgPass').value=''; cfgMsg('cfgUnlockMsg','',true); cfgLoad(); }
+    else cfgMsg('cfgUnlockMsg',d.msg||'ভুল password।',false);
+  }).catch(e=>cfgMsg('cfgUnlockMsg','Network error: '+e.message,false));
+}
+
+function cfgLoad(){
+  cfgPost({act:'cfg_get'}).then(d=>{
+    if(!d.ok){ if(d.locked){ document.getElementById('cfgLock').style.display='block'; document.getElementById('cfgBody').style.display='none'; } cfgMsg('cfgUnlockMsg',d.msg||'Locked',false); return; }
+    _cfgValues=d.values||{};
+    document.getElementById('cfgLock').style.display='none';
+    document.getElementById('cfgBody').style.display='block';
+    cfgRender(d.values,d.defaults);
+  });
+}
+
+function _cfgInput(key,type,val,fb){
+  const id='cfgf_'+(fb?'FIREBASE__'+key:key);
+  const esc=s=>String(s==null?'':s).replace(/"/g,'&quot;');
+  if(type==='bool'){ const on=(val===true||val==='1'||val===1);
+    return '<select id="'+id+'" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);"><option value="1"'+(on?' selected':'')+'>On</option><option value="0"'+(!on?' selected':'')+'>Off</option></select>'; }
+  if(type==='color'){
+    return '<span style="display:flex;gap:8px;align-items:center;"><input type="color" id="'+id+'" value="'+esc(val)+'" style="width:42px;height:34px;padding:0;border:1px solid var(--bdr);border-radius:6px;background:none;cursor:pointer;"><input type="text" value="'+esc(val)+'" oninput="var c=document.getElementById(\''+id+'\');c.value=this.value;" style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);font-family:monospace;"></span>'; }
+  const t=(type==='int')?'number':'text';
+  return '<input type="'+t+'" id="'+id+'" value="'+esc(val)+'" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);">';
+}
+
+function cfgRender(values,defaults){
+  const wrap=document.getElementById('cfgForm'); let html='';
+  CFG_GROUPS.forEach(g=>{
+    html+='<div style="border:1px solid var(--bdr);border-radius:12px;padding:14px 16px;">';
+    html+='<div style="font-weight:800;font-size:.92em;margin-bottom:12px;">'+g.title+'</div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">';
+    g.fields.forEach(f=>{
+      const [key,label,type]=f;
+      let val;
+      if(g.fb){ val=(values.FIREBASE&&values.FIREBASE[key]!=null)?values.FIREBASE[key]:''; }
+      else    { val=(values[key]!=null)?values[key]:''; }
+      html+='<div><label style="display:block;font-size:.74em;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px;">'+label+'</label>'+_cfgInput(key,type,val,g.fb)+'</div>';
+    });
+    html+='</div></div>';
+  });
+  wrap.innerHTML=html;
+}
+
+function cfgCollect(){
+  const out={}; const fb={};
+  CFG_GROUPS.forEach(g=>{
+    g.fields.forEach(f=>{
+      const [key,,type]=f;
+      const id='cfgf_'+(g.fb?'FIREBASE__'+key:key);
+      const el=document.getElementById(id); if(!el) return;
+      let v=el.value;
+      if(g.fb){ fb[key]=v; } else { out[key]=v; }
+    });
+  });
+  out.FIREBASE=fb;
+  return out;
+}
+
+function cfgSave(){
+  if(!guardSuper("Site Config")) return;
+  const btn=document.getElementById('cfgSaveBtn'); btn.disabled=true; const old=btn.textContent; btn.textContent='⏳ সংরক্ষণ...';
+  cfgPost({act:'cfg_save', cfg:JSON.stringify(cfgCollect())}).then(d=>{
+    btn.disabled=false; btn.textContent=old;
+    cfgMsg('cfgSaveMsg',d.msg||(d.ok?'Saved':'Failed'),d.ok);
+  }).catch(e=>{btn.disabled=false;btn.textContent=old;cfgMsg('cfgSaveMsg','Network error: '+e.message,false);});
+}
+
+function cfgReset(){
+  if(!guardSuper("Site Config")) return;
+  if(!confirm('♻️ সব setting আবার default-এ ফিরিয়ে নেবেন? (config_overrides.json মুছে যাবে)')) return;
+  cfgPost({act:'cfg_reset'}).then(d=>{ cfgMsg('cfgSaveMsg',d.msg||(d.ok?'Reset':'Failed'),d.ok); if(d.ok) cfgLoad(); });
+}
+
+function cfgLockNow(){
+  document.getElementById('cfgBody').style.display='none';
+  document.getElementById('cfgLock').style.display='block';
+  // server-side session flag persists until logout; this is a client-side hide only.
+}
+
+function cfgChangePass(){
+  if(!guardSuper("Site Config")) return;
+  const cur=document.getElementById('cfgCurPass').value, nw=document.getElementById('cfgNewPass').value, cf=document.getElementById('cfgCnfPass').value;
+  if(!cur||!nw||!cf){cfgMsg('cfgPassMsg','সব field পূরণ করুন।',false);return;}
+  cfgPost({act:'cfg_change_pass',cur_pass:cur,new_pass:nw,confirm_pass:cf}).then(d=>{
+    cfgMsg('cfgPassMsg',d.msg||(d.ok?'Changed':'Failed'),d.ok);
+    if(d.ok){['cfgCurPass','cfgNewPass','cfgCnfPass'].forEach(id=>document.getElementById(id).value='');}
+  }).catch(e=>cfgMsg('cfgPassMsg','Network error: '+e.message,false));
 }
 
 // ── ADVANCED SEARCH ──────────────────────────────────────

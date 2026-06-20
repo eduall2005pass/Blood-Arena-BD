@@ -1596,12 +1596,36 @@ HTML;
                 </div>
             </div>
 
+            <!-- Required by — date & time (mandatory) -->
+            <div style="margin-bottom:14px;">
+                <label style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">কখন রক্ত প্রয়োজন <span style="color:#ef4444;">*</span></label>
+                <input type="datetime-local" id="req_required_at"
+                    style="margin:0;height:46px;font-size:0.9rem;padding:0 12px;border-radius:12px;width:100%;">
+            </div>
+
             <!-- Note -->
-            <div style="margin-bottom:20px;">
+            <div style="margin-bottom:14px;">
                 <label style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">অতিরিক্ত তথ্য <span style="color:var(--text-muted);font-weight:400;">(Optional)</span></label>
                 <input type="text" id="req_note" placeholder="রোগের ধরন, patient condition ইত্যাদি"
                     style="margin:0;height:46px;font-size:0.88rem;padding:0 14px;border-radius:12px;">
             </div>
+
+            <!-- Documents (prescription / patient ID) — up to 2 images, optional -->
+            <div style="margin-bottom:20px;">
+                <label style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">ছবি / প্রেসক্রিপশন <span style="color:#ef4444;">*</span> <span style="color:var(--text-muted);font-weight:400;">(সর্বোচ্চ ২টি)</span></label>
+                <input type="file" id="req_docs" accept="image/*" multiple capture="environment"
+                    onchange="onReqDocsChange(this)"
+                    style="margin:0;font-size:0.82rem;padding:10px 12px;border-radius:12px;width:100%;background:var(--input-bg);border:1px solid var(--border-color);color:var(--text-muted);cursor:pointer;">
+                <div id="req_docs_hint" style="font-size:0.72rem;color:var(--text-muted);margin-top:5px;">JPG / PNG / WEBP / HEIC · প্রতিটি ৫MB পর্যন্ত · server-এ compress হবে</div>
+            </div>
+        </div>
+
+        <!-- Upload progress (shown only while images are uploading) -->
+        <div id="reqUploadProgWrap" style="display:none;padding:6px 20px 0;">
+            <div style="height:8px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:6px;overflow:hidden;">
+                <div id="reqUploadProgBar" style="height:100%;width:0%;background:linear-gradient(90deg,#dc2626,#9f1239);transition:width 0.15s ease;"></div>
+            </div>
+            <div id="reqUploadProgTxt" style="font-size:0.72rem;color:var(--text-muted);margin-top:5px;text-align:center;font-weight:600;">আপলোড হচ্ছে... 0%</div>
         </div>
 
         <!-- Sticky action buttons -->
@@ -1642,6 +1666,12 @@ HTML;
 
 <!-- ========== FAQ MODAL ========== -->
 <!-- ══════════ 🔐 AUTH (Sign in) MODAL ══════════ -->
+<!-- ══════ Request image zoom lightbox (active request attachments) ══════ -->
+<div class="reqimg-lightbox" id="reqImgLightbox" onclick="closeReqImage(event)">
+    <button class="reqimg-close" onclick="closeReqImage(event)" aria-label="বন্ধ করুন" title="বন্ধ করুন">✕</button>
+    <img class="reqimg-full" id="reqImgFull" src="" alt="রোগীর ছবি" onclick="toggleReqImageZoom(event)">
+</div>
+
 <div class="popup-overlay" id="authModal">
     <div class="popup" style="max-width:420px;padding:0;overflow:hidden;">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-color);">

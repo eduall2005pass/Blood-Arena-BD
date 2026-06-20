@@ -118,6 +118,15 @@ if(!file_exists($_schema_v5) && isset($conn)){
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     @file_put_contents($_schema_v5, date('Y-m-d H:i:s'));
 }
+// ── Schema v13: "required by" date/time for blood requests ───────────
+// রক্ত কখন প্রয়োজন তা সংরক্ষণ করতে নতুন column। NULL allowed — পুরনো rows-এ ফাঁকা।
+$_schema_v13 = dirname(__DIR__) . '/.schema_v13_done';
+if(!file_exists($_schema_v13) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("ALTER TABLE blood_requests ADD COLUMN required_at DATETIME DEFAULT NULL");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v13, date('Y-m-d H:i:s'));
+}
 // ── Schema v4: persistent analytics_counters table ───────────
 // This table stores ever-increasing counters that never decrease,
 // even if call_logs are cleared or donors are deleted.
@@ -138,10 +147,247 @@ if(!file_exists($_schema_v4) && isset($conn)){
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     @file_put_contents($_schema_v4, date('Y-m-d H:i:s'));
 }
+// ── Schema v6: request_documents (blood request attachments) ─────────
+// রক্তের অনুরোধের সাথে রোগীর ছবি/প্রেসক্রিপশন (≤২টি JPEG)। file_path হলো
+// UPLOAD_DIR-এর সাপেক্ষে relative; token দিয়ে ?req_doc=token endpoint serve করে।
+//
+// NOTE: কোনো FOREIGN KEY নয় — DirectAdmin/shared hosting-এ FK fail করলে পুরো
+// CREATE silently fail করে।
+//
+// IMPORTANT (stale-flag bug fix): আগে flag-file (.schema_v6_done) দিয়ে gate করা
+// হতো। পুরনো FK-ভার্সন CREATE fail করেও flag লিখে ফেলত → নতুন কোড "done" ভেবে
+// table কখনো বানাতো না (production-এ ছবি save হচ্ছিল না)। তাই এখন flag-file আর
+// ব্যবহার করি না — blood_requests-এর মতোই প্রতি (non-serve) request-এ
+// `CREATE TABLE IF NOT EXISTS` চালাই। table থাকলে এটা কার্যত no-op, আর stale
+// flag-এর কোনো সুযোগই থাকে না। InnoDB fail করলে MyISAM fallback।
+// (?req_doc image-serve fast-path-এ skip করি — latency বাঁচাতে।)
+if(isset($conn) && !isset($_GET['req_doc'])){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $reqdoc_ddl = "CREATE TABLE IF NOT EXISTS `request_documents` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `request_id` INT NOT NULL,
+        `file_path` VARCHAR(255) NOT NULL,
+        `token` VARCHAR(64) NOT NULL,
+        `mime` VARCHAR(20) DEFAULT 'image/jpeg',
+        `bytes` INT DEFAULT 0,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY `uq_token` (`token`),
+        KEY `idx_request` (`request_id`)
+    ) ENGINE=%s DEFAULT CHARSET=utf8mb4";
+    if (!$conn->query(sprintf($reqdoc_ddl, 'InnoDB'))) {
+        $reqdoc_err = $conn->error; // InnoDB shared-host-এ off থাকলে MyISAM চেষ্টা
+        if (!$conn->query(sprintf($reqdoc_ddl, 'MyISAM'))) {
+            error_log('schema v6 request_documents create failed — InnoDB: ' . $reqdoc_err . ' | MyISAM: ' . $conn->error);
+        }
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+}
 if(isset($conn)){
     // Set strictly to utf8mb4 to prevent multi-byte encoding SQL injection attacks
     $conn->set_charset("utf8mb4");
 }
+
+// ════════════════════════════════════════════════════════════════════
+//  REQUEST DOCUMENTS — upload helpers + serve endpoint
+//  রোগীর ছবি/প্রেসক্রিপশন (JPEG-এ normalize + compress, web root-এর বাইরে রাখা)।
+// ════════════════════════════════════════════════════════════════════
+
+// UPLOAD_DIR নিশ্চিত করো — না থাকলে বানাও, সাথে defense .htaccess + index.html।
+// (UPLOAD_DIR web root-এর বাইরে হলে .htaccess নিষ্প্রয়োজন, কিন্তু in-root fallback-এর
+//  জন্য রাখা — দুই ক্ষেত্রেই নিরাপদ।)
+function reqdoc_ensure_dir() {
+    $dir = UPLOAD_DIR;
+    if (!is_dir($dir)) { @mkdir($dir, 0775, true); }
+    if (is_dir($dir)) {
+        $ht = $dir . '/.htaccess';
+        if (!file_exists($ht)) @file_put_contents($ht, "Require all denied\nDeny from all\n");
+        $idx = $dir . '/index.html';
+        if (!file_exists($idx)) @file_put_contents($idx, '');
+    }
+    return is_dir($dir) && is_writable($dir);
+}
+
+// কোন image library আছে detect করো: 'imagick' (HEIC সহ), 'gd' (JPG/PNG/WEBP), বা ''।
+function reqdoc_image_engine() {
+    static $engine = null;
+    if ($engine !== null) return $engine;
+    if (extension_loaded('imagick') && class_exists('Imagick')) {
+        $engine = 'imagick';
+    } elseif (extension_loaded('gd') && function_exists('imagecreatetruecolor')) {
+        $engine = 'gd';
+    } else {
+        $engine = '';
+    }
+    return $engine;
+}
+
+// একটি uploaded ফাইল process করো: validate → JPEG-এ convert → ≤REQ_DOC_TARGET_KB
+// compress → UPLOAD_DIR-এ সেভ। ফেরত: ['ok'=>bool,'relpath'=>str,'bytes'=>int,'err'=>str]
+function reqdoc_process_upload($tmp, $origSize) {
+    if (!is_uploaded_file($tmp)) return ['ok'=>false,'err'=>'invalid upload'];
+    if ($origSize <= 0 || $origSize > REQ_DOC_MAX_BYTES) {
+        return ['ok'=>false,'err'=>'ফাইলটি অনেক বড় (সর্বোচ্চ ৫MB)।'];
+    }
+    $engine = reqdoc_image_engine();
+    if ($engine === '') return ['ok'=>false,'err'=>'সার্ভারে ছবি প্রসেস করার লাইব্রেরি নেই।'];
+
+    // type detect (path দিয়ে — extension trust করি না)
+    $info = @getimagesize($tmp);
+    $type = $info['mime'] ?? '';
+    // getimagesize HEIC চেনে না → finfo দিয়ে আবার চেক
+    if ($type === '' && function_exists('finfo_open')) {
+        $f = finfo_open(FILEINFO_MIME_TYPE);
+        $type = (string)@finfo_file($f, $tmp);
+        finfo_close($f);
+    }
+    $is_heic = stripos($type, 'heic') !== false || stripos($type, 'heif') !== false;
+    $is_std  = in_array($type, ['image/jpeg','image/png','image/webp'], true);
+    if (!$is_std && !$is_heic) {
+        return ['ok'=>false,'err'=>'শুধু JPG/PNG/WEBP/HEIC ছবি দেওয়া যাবে।'];
+    }
+    if ($is_heic && $engine !== 'imagick') {
+        return ['ok'=>false,'err'=>'HEIC সাপোর্ট নেই — JPG/PNG দিয়ে চেষ্টা করুন।'];
+    }
+    if (!reqdoc_ensure_dir()) return ['ok'=>false,'err'=>'স্টোরেজ লেখা যাচ্ছে না।'];
+
+    // relative path: YYYYMM/<random>.jpg
+    $sub = date('Ym');
+    $absSub = UPLOAD_DIR . '/' . $sub;
+    if (!is_dir($absSub)) @mkdir($absSub, 0775, true);
+    $name = bin2hex(random_bytes(16)) . '.jpg';
+    $rel  = $sub . '/' . $name;
+    $dest = UPLOAD_DIR . '/' . $rel;
+
+    try {
+        if ($engine === 'imagick') {
+            $img = new Imagick();
+            $img->readImage($tmp);          // HEIC/WEBP/PNG/JPEG — libheif থাকলে HEIC ok
+            $img->setImageFormat('jpeg');
+            $img->setImageOrientation(Imagick::ORIENTATION_TOPLEFT);
+            if (method_exists($img, 'autoOrient')) @$img->autoOrient();
+            $img->stripImage();
+            // বড় হলে ছোট করো (long edge ≤ 1600px)
+            $w = $img->getImageWidth(); $h = $img->getImageHeight();
+            $maxEdge = 1600;
+            if (max($w,$h) > $maxEdge) {
+                if ($w >= $h) $img->resizeImage($maxEdge, 0, Imagick::FILTER_LANCZOS, 1);
+                else          $img->resizeImage(0, $maxEdge, Imagick::FILTER_LANCZOS, 1);
+            }
+            // quality step down until ≤ target
+            $q = 85; $blob = '';
+            do {
+                $img->setImageCompressionQuality($q);
+                $blob = $img->getImagesBlob();
+                if (strlen($blob) <= REQ_DOC_TARGET_KB * 1024) break;
+                $q -= 10;
+            } while ($q >= 35);
+            $img->clear(); $img->destroy();
+            if (@file_put_contents($dest, $blob) === false) {
+                return ['ok'=>false,'err'=>'ফাইল সেভ করা যায়নি।'];
+            }
+        } else { // gd
+            $data = @file_get_contents($tmp);
+            $src  = @imagecreatefromstring($data);
+            if (!$src) return ['ok'=>false,'err'=>'ছবিটি পড়া যায়নি।'];
+            $w = imagesx($src); $h = imagesy($src);
+            $maxEdge = 1600;
+            if (max($w,$h) > $maxEdge) {
+                $scale = $maxEdge / max($w,$h);
+                $nw = (int)round($w*$scale); $nh = (int)round($h*$scale);
+                $dst = imagecreatetruecolor($nw, $nh);
+                // PNG/WEBP transparency → white background (JPEG-এ alpha নেই)
+                $white = imagecolorallocate($dst, 255,255,255);
+                imagefilledrectangle($dst, 0,0,$nw,$nh, $white);
+                imagecopyresampled($dst, $src, 0,0,0,0, $nw,$nh, $w,$h);
+                imagedestroy($src); $src = $dst;
+            }
+            $q = 85; $ok = false;
+            do {
+                ob_start(); imagejpeg($src, null, $q); $blob = ob_get_clean();
+                if (strlen($blob) <= REQ_DOC_TARGET_KB * 1024 || $q < 35) {
+                    $ok = (@file_put_contents($dest, $blob) !== false); break;
+                }
+                $q -= 10;
+            } while (true);
+            imagedestroy($src);
+            if (!$ok) return ['ok'=>false,'err'=>'ফাইল সেভ করা যায়নি।'];
+        }
+    } catch (\Throwable $e) {
+        error_log('reqdoc process: ' . $e->getMessage());
+        return ['ok'=>false,'err'=>'ছবি প্রসেস করা যায়নি।'];
+    }
+
+    return ['ok'=>true, 'relpath'=>$rel, 'bytes'=>(int)@filesize($dest)];
+}
+
+// একগুচ্ছ request id-র জন্য doc URL ফেরত দেয়: [request_id => ['?req_doc=tok', ...]]।
+function reqdoc_fetch_for($conn, array $ids) {
+    $out = [];
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+    if (!$ids) return $out;
+    $in = implode(',', $ids); // ints only — safe to inline
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $res = $conn->query("SELECT request_id, token FROM request_documents WHERE request_id IN ($in) ORDER BY id ASC");
+    if ($res) {
+        while ($r = $res->fetch_assoc()) {
+            $rid = (int)$r['request_id'];
+            $out[$rid][] = '?req_doc=' . $r['token'];
+        }
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    return $out;
+}
+
+// ── Serve endpoint: ?req_doc=<token> — same-origin only ──────────────
+// ফাইল web root-এর বাইরে; শুধু এই PHP endpoint দিয়ে, এবং শুধু নিজেদের সাইট
+// থেকে (Sec-Fetch-Site / Referer) serve হয়।
+if (isset($_GET['req_doc']) && isset($conn)) {
+    while (ob_get_level()) ob_end_clean();
+    $tok = preg_replace('/[^a-f0-9]/', '', (string)$_GET['req_doc']);
+    // same-origin / same-site guard ("আমাদের সাইট থেকেই")
+    $sfs = strtolower($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '');
+    $ok_origin = in_array($sfs, ['same-origin','same-site','none'], true);
+    if (!$ok_origin) {
+        // Sec-Fetch-* অনুপস্থিত (পুরনো iOS Safari, Facebook/Messenger in-app
+        // webview) — Referer host দিয়ে যাচাই। Referer host == আসল request host
+        // (HTTP_HOST) হলেই same-origin; canonical SITE_URL host-ও মানি যাতে www/
+        // apex বা proxy-তে 403 না হয়। SITE_URL একা hardcode করলে www. ভার্সনে
+        // legacy browser-এ ছবি ভেঙে যেত।
+        $ref      = $_SERVER['HTTP_REFERER'] ?? '';
+        $refHost  = $ref ? parse_url($ref, PHP_URL_HOST) : '';
+        $reqHost  = strtok((string)($_SERVER['HTTP_HOST'] ?? ''), ':'); // :port বাদ
+        $siteHost = parse_url(SITE_URL, PHP_URL_HOST);
+        $ok_origin = $refHost && (
+            ($reqHost  && strcasecmp($refHost, $reqHost)  === 0) ||
+            ($siteHost && strcasecmp($refHost, $siteHost) === 0)
+        );
+    }
+    if ($tok === '' || !$ok_origin) { http_response_code(403); exit; }
+
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $stmt = $conn->prepare("SELECT file_path, mime FROM request_documents WHERE token=? LIMIT 1");
+    if (!$stmt) { http_response_code(404); exit; }
+    $stmt->bind_param("s", $tok); $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    if (!$row) { http_response_code(404); exit; }
+
+    // path traversal guard — resolved file must stay inside UPLOAD_DIR
+    $full = rtrim(UPLOAD_DIR, "/\\") . '/' . $row['file_path'];
+    $real = realpath($full);
+    $base = realpath(UPLOAD_DIR);
+    if (!$real || !$base || strncmp($real, $base, strlen($base)) !== 0 || !is_file($real)) {
+        http_response_code(404); exit;
+    }
+    header('Content-Type: ' . ($row['mime'] ?: 'image/jpeg'));
+    header('X-Content-Type-Options: nosniff');
+    header('Content-Disposition: inline');
+    header('Cache-Control: private, max-age=3600');
+    header('Content-Length: ' . filesize($real));
+    readfile($real);
+    exit;
+}
+
 // ── Schema v5: service notifications ─────────────────────────
 //  (পুরনো secret_code recovery — ref_code ও security_code_requests — বাদ
 //   দেওয়া হয়েছে; এখন donor identity হলো Firebase account।)
@@ -1538,6 +1784,27 @@ if(isset($_POST['submit_blood_request'])){
     $bags      = max(1, min(10, (int)($_POST['bags_needed'] ?? 1)));
     $note      = trim($_POST['req_note']        ?? '');
 
+    // ── "কখন রক্ত প্রয়োজন" (required by) — datetime-local পাঠায় "Y-m-dTH:i" ──
+    // MySQL DATETIME-এ normalize: 'T' → space, seconds যোগ। invalid হলে ফাঁকা।
+    $required_raw = trim($_POST['required_at'] ?? '');
+    $required_sql = '';
+    if($required_raw !== ''){
+        $rr = str_replace('T', ' ', $required_raw);
+        $rd = DateTime::createFromFormat('Y-m-d H:i:s', $rr)
+            ?: DateTime::createFromFormat('Y-m-d H:i', $rr);
+        if($rd instanceof DateTime) $required_sql = $rd->format('Y-m-d H:i:s');
+    }
+
+    // ── ছবি/প্রেসক্রিপশন এখন আবশ্যক — কমপক্ষে ১টি validly-uploaded ফাইল লাগবে ──
+    // JS bypass করলেও server এখানে আটকাবে। DB insert-এর আগেই যাচাই করা হয়,
+    // তাই ছবি ছাড়া কোনো request কখনো তৈরি হবে না।
+    $has_doc = false;
+    if (!empty($_FILES['req_docs']) && is_array($_FILES['req_docs']['error'] ?? null)) {
+        foreach ($_FILES['req_docs']['error'] as $de) {
+            if ($de === UPLOAD_ERR_OK) { $has_doc = true; break; }
+        }
+    }
+
     // Build response array — output NOTHING until the very end
     $resp = [];
 
@@ -1548,6 +1815,10 @@ if(isset($_POST['submit_blood_request'])){
         $resp = ["status"=>"error","msg"=>"সঠিক যোগাযোগ নম্বর দিন।"];
     } elseif(empty($patient)||empty($hospital)){
         $resp = ["status"=>"error","msg"=>"রোগীর নাম ও হাসপাতাল দিন।"];
+    } elseif($required_sql===''){
+        $resp = ["status"=>"error","msg"=>"কখন রক্ত প্রয়োজন তা দিন।"];
+    } elseif(!$has_doc){
+        $resp = ["status"=>"error","msg"=>"ছবি / প্রেসক্রিপশন দিন (কমপক্ষে ১টি আবশ্যক)।"];
     } else {
         $valid_urgency=['Critical','High','Medium'];
         if(!in_array($urgency,$valid_urgency,true)) $urgency='High';
@@ -1574,14 +1845,46 @@ if(isset($_POST['submit_blood_request'])){
         $req_auth_uid  = currentAuthUid(); // signed-in account → tie request for account-owned management
 
         try {
-            $stmt = $conn->prepare("INSERT INTO blood_requests (patient_name,blood_group,hospital,contact,urgency,bags_needed,note,req_ip,auth_uid) VALUES (?,?,?,?,?,?,?,?,?)");
-            $stmt->bind_param("sssssisss",$patient,$blood_grp,$hospital,$contact,$urgency,$bags,$note,$ip,$req_auth_uid);
+            $stmt = $conn->prepare("INSERT INTO blood_requests (patient_name,blood_group,hospital,contact,urgency,bags_needed,note,required_at,req_ip,auth_uid) VALUES (?,?,?,?,?,?,?,?,?,?)");
+            $stmt->bind_param("sssssissss",$patient,$blood_grp,$hospital,$contact,$urgency,$bags,$note,$required_sql,$ip,$req_auth_uid);
             if($stmt->execute()){
                 $new_id = $conn->insert_id;
+                // ── Optional document uploads (≤ REQ_DOC_MAX_FILES images) ──
+                // Request ইতিমধ্যে সেভ হয়ে গেছে — কোনো ফাইল fail করলেও request fail করে না।
+                $docs_saved = 0; $doc_warn = '';
+                if (!empty($_FILES['req_docs']) && is_array($_FILES['req_docs']['tmp_name'])) {
+                    $names = $_FILES['req_docs']['tmp_name'];
+                    $sizes = $_FILES['req_docs']['size'];
+                    $errs  = $_FILES['req_docs']['error'];
+                    $count = min(count($names), REQ_DOC_MAX_FILES);
+                    for ($i = 0; $i < $count; $i++) {
+                        if (($errs[$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) continue;
+                        if (($errs[$i] ?? 1) !== UPLOAD_ERR_OK) { $doc_warn = 'কিছু ছবি আপলোড হয়নি।'; continue; }
+                        try {
+                            $pr = reqdoc_process_upload($names[$i], (int)($sizes[$i] ?? 0));
+                            if ($pr['ok']) {
+                                $tok = bin2hex(random_bytes(16));
+                                mysqli_report(MYSQLI_REPORT_OFF);
+                                $ds = $conn->prepare("INSERT INTO request_documents (request_id,file_path,token,mime,bytes) VALUES (?,?,?,?,?)");
+                                $mime = 'image/jpeg';
+                                $ds->bind_param("isssi", $new_id, $pr['relpath'], $tok, $mime, $pr['bytes']);
+                                $ds->execute(); $ds->close();
+                                mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+                                $docs_saved++;
+                            } else {
+                                $doc_warn = $pr['err'] ?: 'কিছু ছবি সংরক্ষণ হয়নি।';
+                            }
+                        } catch (\Throwable $de) {
+                            error_log('reqdoc save: ' . $de->getMessage());
+                            $doc_warn = 'কিছু ছবি সংরক্ষণ হয়নি।';
+                        }
+                    }
+                }
                 $resp = [
                     "status"       => "success",
-                    "msg"          => "✅ রক্তের অনুরোধ পাঠানো হয়েছে!",
-                    "request_id"   => (int)$new_id
+                    "msg"          => "✅ রক্তের অনুরোধ পাঠানো হয়েছে!" . ($doc_warn ? (" (" . $doc_warn . ")") : ""),
+                    "request_id"   => (int)$new_id,
+                    "docs_saved"   => $docs_saved
                 ];
                 // ── Service notification → requester device কে confirmation পাঠাও ──
                 if (!empty($req_device_id)) {
@@ -1747,7 +2050,7 @@ if(isset($_POST['get_my_requests'])){
     mysqli_report(MYSQLI_REPORT_OFF);
     $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
     $rows = [];
-    $stmt = $conn->prepare("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE auth_uid=? AND status='Active' ORDER BY created_at DESC LIMIT 20");
+    $stmt = $conn->prepare("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,UNIX_TIMESTAMP(required_at) as required_at,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE auth_uid=? AND status='Active' ORDER BY created_at DESC LIMIT 20");
     if($stmt){
         $stmt->bind_param("s", $uid);
         $stmt->execute();
@@ -1756,6 +2059,9 @@ if(isset($_POST['get_my_requests'])){
         $stmt->close();
     }
     mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    $docmap = reqdoc_fetch_for($conn, array_column($rows, 'id'));
+    foreach ($rows as &$rw) { $rw['docs'] = $docmap[(int)$rw['id']] ?? []; }
+    unset($rw);
     echo json_encode(["status"=>"success","requests"=>$rows], JSON_UNESCAPED_UNICODE);
     exit();
 }
@@ -1819,9 +2125,12 @@ if(isset($_POST['get_blood_requests'])){
     $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
     // UNIX_TIMESTAMP = seconds since epoch, completely timezone-independent
     // DATE_FORMAT with 'Z' suffix failed on InfinityFree (MySQL timezone != UTC)
-    $res = $conn->query("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE status='Active' ORDER BY FIELD(urgency,'Critical','High','Medium'), created_at DESC LIMIT 20");
+    $res = $conn->query("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,UNIX_TIMESTAMP(required_at) as required_at,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE status='Active' ORDER BY FIELD(urgency,'Critical','High','Medium'), created_at DESC LIMIT 20");
     $requests=[];
     if($res) while($r=$res->fetch_assoc()) $requests[]=$r;
+    $docmap = reqdoc_fetch_for($conn, array_column($requests, 'id'));
+    foreach ($requests as &$rw) { $rw['docs'] = $docmap[(int)$rw['id']] ?? []; }
+    unset($rw);
     mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
     echo json_encode($requests);
     exit();
