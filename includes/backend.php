@@ -127,6 +127,40 @@ if(!file_exists($_schema_v13) && isset($conn)){
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     @file_put_contents($_schema_v13, date('Y-m-d H:i:s'));
 }
+// ── Schema v14: Privacy + gender + request-notification system ───────
+//  donors          : gender / hide_me / allow_call  (gender-based privacy defaults)
+//  blood_requests  : hospital_lat / hospital_lng / verified_location (map + badge)
+//  contact_requests: "Request" button → donor notification + accept/contact flow
+//  Existing donor rows keep pre-change behaviour via column defaults
+//  (hide_me=0 → visible, allow_call=1 → callable). New registrations get
+//  gender-based values set explicitly in the registration handler.
+$_schema_v14 = dirname(__DIR__) . '/.schema_v14_done';
+if(!file_exists($_schema_v14) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS gender VARCHAR(10) DEFAULT NULL");
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS hide_me TINYINT(1) DEFAULT 0");
+    $conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS allow_call TINYINT(1) DEFAULT 1");
+    $conn->query("ALTER TABLE blood_requests ADD COLUMN IF NOT EXISTS hospital_lat DECIMAL(10,7) DEFAULT NULL");
+    $conn->query("ALTER TABLE blood_requests ADD COLUMN IF NOT EXISTS hospital_lng DECIMAL(10,7) DEFAULT NULL");
+    $conn->query("ALTER TABLE blood_requests ADD COLUMN IF NOT EXISTS verified_location TINYINT(1) DEFAULT 0");
+    $conn->query("CREATE TABLE IF NOT EXISTS `contact_requests` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `donor_id` INT NOT NULL,
+        `donor_auth_uid` VARCHAR(128) DEFAULT NULL,
+        `requester_auth_uid` VARCHAR(128) DEFAULT NULL,
+        `requester_name` VARCHAR(120) DEFAULT NULL,
+        `requester_phone` VARCHAR(20) DEFAULT NULL,
+        `blood_group` VARCHAR(5) DEFAULT NULL,
+        `message` VARCHAR(500) DEFAULT '',
+        `status` VARCHAR(20) DEFAULT 'pending',
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY `idx_donor` (`donor_id`),
+        KEY `idx_donor_uid` (`donor_auth_uid`),
+        KEY `idx_status` (`status`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v14, date('Y-m-d H:i:s'));
+}
 // ── Schema v4: persistent analytics_counters table ───────────
 // This table stores ever-increasing counters that never decrease,
 // even if call_logs are cleared or donors are deleted.
@@ -703,6 +737,42 @@ function _bot_send($base, $payload, $insecure, $path = '/send') {
     return ["http" => $http, "body" => (string)$body];
 }
 
+// === LOCATION PRIVACY — server-side coordinate jitter ===
+//  একটি donor-এর exact pinpoint কখনো client-এ পাঠানো হয় না; সবসময় এই helper
+//  দিয়ে jitter করে পাঠানো হয়। $seed (যেমন donor id) + ~10-মিনিটের time-bucket
+//  ব্যবহার করায় একই window-এ মান স্থির থাকে (UI flicker নেই), সময়ের সাথে সামান্য
+//  বদলায় (privacy ভালো), আর কখনো exact coordinate-এ reverse করা যায় না।
+//  $minMeters..$maxMeters radius-এর মধ্যে random bearing-এ shift করা হয়।
+function applyLocationJitter($lat, $lng, $minMeters, $maxMeters, $seed = '') {
+    $lat = (float)$lat; $lng = (float)$lng;
+    if ($lat == 0.0 && $lng == 0.0) return [$lat, $lng];
+    if ($maxMeters < $minMeters) { $t = $minMeters; $minMeters = $maxMeters; $maxMeters = $t; }
+    $bucket = (int)floor(time() / 600);                       // ~10 min stability window
+    $h1 = crc32($seed . '|dist|' . $bucket) & 0x7fffffff;     // distance entropy
+    $h2 = crc32($seed . '|brng|' . $bucket) & 0x7fffffff;     // bearing entropy
+    $r1 = ($h1 % 100000) / 100000.0;                          // 0..1
+    $r2 = ($h2 % 100000) / 100000.0;                          // 0..1
+    $dist    = $minMeters + $r1 * ($maxMeters - $minMeters);  // metres
+    $bearing = $r2 * 2 * M_PI;                                // radians
+    // metres → degrees (≈ 111320 m per degree of latitude)
+    $dLat   = ($dist * cos($bearing)) / 111320.0;
+    $cosLat = cos(deg2rad($lat));
+    $dLng   = ($dist * sin($bearing)) / (111320.0 * ($cosLat != 0.0 ? $cosLat : 1e-6));
+    return [$lat + $dLat, $lng + $dLng];
+}
+
+// === Telegram donor notification (best-effort) ===
+//  Donor-এর নম্বর bot-এ linked থাকলে তার Telegram-এ message যায়; না থাকলে চুপচাপ skip।
+//  Node bot-এর নতুন /notify endpoint-এ POST করে (secret-guarded)।
+function notifyDonorTelegram($phone, $message) {
+    if (TELEGRAM_BOT_URL === '' || TELEGRAM_BOT_SECRET === '') return false;
+    if (!preg_match('/^\+8801\d{9}$/', (string)$phone)) return false;
+    $r = _bot_send(TELEGRAM_BOT_URL,
+        ["secret" => TELEGRAM_BOT_SECRET, "phone" => $phone, "message" => $message],
+        defined('TELEGRAM_BOT_INSECURE_TLS') && TELEGRAM_BOT_INSECURE_TLS, '/notify');
+    return ((int)($r['http'] ?? 0)) === 200;
+}
+
 // === AJAX DETECTION — skip heavy queries on every AJAX call ===
 $_is_ajax = !empty($_POST['log_call']) || !empty($_POST['get_phone'])
          || !empty($_POST['ajax_filter']) || !empty($_POST['ajax_submit'])
@@ -731,7 +801,11 @@ $_is_ajax = !empty($_POST['log_call']) || !empty($_POST['get_phone'])
          || !empty($_POST['tg_send_otp'])
          || !empty($_POST['tg_verify_otp'])
          || !empty($_POST['cn_send_otp'])
-         || !empty($_POST['cn_verify_otp']);
+         || !empty($_POST['cn_verify_otp'])
+         || !empty($_POST['update_privacy'])
+         || !empty($_POST['send_contact_request'])
+         || !empty($_POST['get_my_contact_requests'])
+         || !empty($_POST['act_contact_request']);
 
 // === LIVE COUNTS — only on full page load, never on AJAX ===
 $avail_counts = ["A+"=>0,"A-"=>0,"B+"=>0,"B-"=>0,"AB+"=>0,"AB-"=>0,"O+"=>0,"O-"=>0];
@@ -909,12 +983,15 @@ if(isset($_POST['get_phone'])){
         echo "unverified"; exit();
     }
     $id = (int)$_POST['id'];
-    $stmt = $conn->prepare("SELECT phone FROM donors WHERE id=?");
+    $stmt = $conn->prepare("SELECT phone, allow_call FROM donors WHERE id=?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
     $res = $stmt->get_result()->fetch_assoc();
     while(ob_get_level()) ob_end_clean(); ob_start();
-    echo $res ? trim($res['phone']) : "error";
+    if(!$res){ echo "error"; exit(); }
+    // Allow Call = OFF → নম্বর কখনো expose হবে না; requester-কে "Request" পাঠাতে হবে (point #3)
+    if((int)($res['allow_call'] ?? 1) === 0){ echo "request_only"; exit(); }
+    echo trim($res['phone']);
     exit();
 }
 
@@ -932,7 +1009,7 @@ if(isset($_POST['load_my_donor'])){
 
     mysqli_report(MYSQLI_REPORT_OFF);
     // 1) auth_uid দিয়ে খোঁজো
-    $stmt = $conn->prepare("SELECT name, phone, location, last_donation, willing_to_donate, total_donations, reg_geo FROM donors WHERE auth_uid=? LIMIT 1");
+    $stmt = $conn->prepare("SELECT name, phone, location, last_donation, willing_to_donate, total_donations, reg_geo, gender, hide_me, allow_call FROM donors WHERE auth_uid=? LIMIT 1");
     $stmt->bind_param("s", $uid);
     $stmt->execute();
     $res = $stmt->get_result()->fetch_assoc();
@@ -940,7 +1017,7 @@ if(isset($_POST['load_my_donor'])){
 
     // 2) না পেলে legacy fallback: একই phone, auth_uid খালি → claim করো
     if(!$res && $phone){
-        $lc = $conn->prepare("SELECT id, name, phone, location, last_donation, willing_to_donate, total_donations, reg_geo FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
+        $lc = $conn->prepare("SELECT id, name, phone, location, last_donation, willing_to_donate, total_donations, reg_geo, gender, hide_me, allow_call FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
         $lc->bind_param("s", $phone);
         $lc->execute();
         $res = $lc->get_result()->fetch_assoc();
@@ -975,7 +1052,10 @@ if(isset($_POST['load_my_donor'])){
         "badge_level"=>$badge['level'],
         "badge_icon"=>$badge['icon'],
         "geo_lat"=>$geo_lat,
-        "geo_lng"=>$geo_lng
+        "geo_lng"=>$geo_lng,
+        "gender"=>$res['gender'] ?? null,
+        "hide_me"=>(int)($res['hide_me'] ?? 0),
+        "allow_call"=>(int)($res['allow_call'] ?? 1)
     ]);
     exit();
 }
@@ -1079,6 +1159,20 @@ if(isset($_POST['ajax_update'])){
     }
     $donor_id = (int)$drow['id'];
 
+    // ── Privacy toggles from Update form (point #1) — শুধু পাঠানো field বদলায় ──
+    if(isset($_POST['hide_me']) || isset($_POST['allow_call'])){
+        mysqli_report(MYSQLI_REPORT_OFF);
+        if(isset($_POST['hide_me'])){
+            $hm = (trim($_POST['hide_me'])==='1') ? 1 : 0;
+            if($p=$conn->prepare("UPDATE donors SET hide_me=? WHERE id=?")){ $p->bind_param("ii",$hm,$donor_id); $p->execute(); $p->close(); }
+        }
+        if(isset($_POST['allow_call'])){
+            $ac = (trim($_POST['allow_call'])==='1') ? 1 : 0;
+            if($p=$conn->prepare("UPDATE donors SET allow_call=? WHERE id=?")){ $p->bind_param("ii",$ac,$donor_id); $p->execute(); $p->close(); }
+        }
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    }
+
     $today = date("Y-m-d");
     $last_to_save = "no";
     $reg_geo_update = trim($_POST['reg_geo_update'] ?? '');
@@ -1170,6 +1264,240 @@ if(isset($_POST['ajax_update'])){
     } else {
         $stmt->close();
         echo json_encode(["status"=>"error", "msg"=>"❌ Update failed. Please try again."]);
+    }
+    exit();
+}
+
+// === UPDATE PRIVACY / GENDER (settings + profile, point #1) ===
+//  Logged-in donor নিজের gender / hide_me / allow_call যেকোনো সময় বদলাতে পারে।
+//  শুধু যে field পাঠানো হবে সেটিই বদলায় — gender বদলালেও hide_me/allow_call
+//  auto-reset হয় না (manual override বজায় থাকে)।
+if(isset($_POST['update_privacy'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('update_privacy', 20, 60);
+    $uid   = requireAuth();
+    $phone = $_SESSION['auth_phone'] ?? null;
+
+    // Resolve this account's donor row (auth_uid; legacy phone fallback + claim)
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $find = $conn->prepare("SELECT id FROM donors WHERE auth_uid=? LIMIT 1");
+    $find->bind_param("s", $uid); $find->execute();
+    $drow = $find->get_result()->fetch_assoc(); $find->close();
+    if(!$drow && $phone){
+        $f2 = $conn->prepare("SELECT id FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
+        $f2->bind_param("s", $phone); $f2->execute();
+        $drow = $f2->get_result()->fetch_assoc(); $f2->close();
+        if($drow){
+            $email = $_SESSION['auth_email'] ?? null;
+            $cl = $conn->prepare("UPDATE donors SET auth_uid=?, auth_email=? WHERE id=?");
+            $cl->bind_param("ssi", $uid, $email, $drow['id']); $cl->execute(); $cl->close();
+        }
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    if(!$drow){
+        echo json_encode(["status"=>"error","code"=>"no_donor","msg"=>"আপনার donor profile পাওয়া যায়নি। প্রথমে রেজিস্ট্রেশন করুন।"]);
+        exit();
+    }
+    $donor_id = (int)$drow['id'];
+
+    // Partial update — only the fields that were actually sent.
+    // NOTE (point #1): gender registration-এ একবার set হয় ও locked — এই endpoint দিয়ে
+    //  কখনো পরিবর্তন করা যায় না (gender field পাঠালেও উপেক্ষা করা হয়)।
+    $sets = []; $vals = []; $types = "";
+    if(isset($_POST['hide_me'])){
+        $hm = (trim($_POST['hide_me']) === '1') ? 1 : 0;
+        $sets[] = "hide_me=?"; $vals[] = $hm; $types .= "i";
+    }
+    if(isset($_POST['allow_call'])){
+        $ac = (trim($_POST['allow_call']) === '1') ? 1 : 0;
+        $sets[] = "allow_call=?"; $vals[] = $ac; $types .= "i";
+    }
+    if(empty($sets)){
+        echo json_encode(["status"=>"error","msg"=>"কোনো পরিবর্তন পাঠানো হয়নি।"]); exit();
+    }
+    $vals[] = $donor_id; $types .= "i";
+    $stmt = $conn->prepare("UPDATE donors SET " . implode(", ", $sets) . " WHERE id=?");
+    $stmt->bind_param($types, ...$vals);
+    $ok = $stmt->execute(); $stmt->close();
+
+    if($ok){
+        $g2 = $conn->prepare("SELECT gender, hide_me, allow_call FROM donors WHERE id=?");
+        $g2->bind_param("i", $donor_id); $g2->execute();
+        $st = $g2->get_result()->fetch_assoc(); $g2->close();
+        echo json_encode([
+            "status"     => "success",
+            "msg"        => "✅ প্রাইভেসি সেটিংস আপডেট হয়েছে।",
+            "gender"     => $st['gender'] ?? null,
+            "hide_me"    => (int)($st['hide_me'] ?? 0),
+            "allow_call" => (int)($st['allow_call'] ?? 1)
+        ]);
+    } else {
+        echo json_encode(["status"=>"error","msg"=>"❌ আপডেট ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"]);
+    }
+    exit();
+}
+
+// ============================================================
+// FEATURE: CONTACT REQUESTS (Allow Call = OFF → "Request" flow, point #3)
+//  Requester (logged-in) donor-কে contact request পাঠায় → donor Telegram +
+//  in-app notification পায় → donor "Accept" করলে requester-এর নাম+phone দেখে
+//  নিজে যোগাযোগ করে। Donor-এর নিজের নম্বর কখনো requester-কে দেখানো হয় না।
+// ============================================================
+
+// --- Requester → Donor: send a contact request ---
+if(isset($_POST['send_contact_request'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('contact_request', 10, 300);
+    $uid = requireAuth(); // শুধু logged-in user request পাঠাতে পারবে
+    if(!_auth_is_verified()){
+        echo json_encode(["status"=>"error","msg"=>"Request পাঠাতে হলে প্রথমে আপনার ফোন নম্বর verify করুন।"]); exit();
+    }
+    $donor_id = (int)($_POST['donor_id'] ?? 0);
+    $message  = mb_substr(trim($_POST['message'] ?? ''), 0, 500, 'UTF-8');
+    if($donor_id <= 0){ echo json_encode(["status"=>"error","msg"=>"Donor পাওয়া যায়নি।"]); exit(); }
+
+    mysqli_report(MYSQLI_REPORT_OFF);
+    // Target donor
+    $dstmt = $conn->prepare("SELECT id, name, phone, auth_uid, allow_call, blood_group, device_id FROM donors WHERE id=? LIMIT 1");
+    $dstmt->bind_param("i", $donor_id); $dstmt->execute();
+    $donor = $dstmt->get_result()->fetch_assoc(); $dstmt->close();
+    if(!$donor){ mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT); echo json_encode(["status"=>"error","msg"=>"Donor পাওয়া যায়নি।"]); exit(); }
+
+    // Requester profile (name + phone) — own donor profile, fallback to session phone
+    $rname = ''; $rphone = '';
+    $rp = $conn->prepare("SELECT name, phone FROM donors WHERE auth_uid=? LIMIT 1");
+    $rp->bind_param("s", $uid); $rp->execute();
+    $rprof = $rp->get_result()->fetch_assoc(); $rp->close();
+    if($rprof){ $rname = (string)$rprof['name']; $rphone = (string)$rprof['phone']; }
+    if($rphone === ''){ $rphone = trim($_SESSION['auth_phone'] ?? ''); }
+    if($rname === ''){ $rname = trim($_POST['requester_name'] ?? '') ?: 'একজন রক্তগ্রহীতা'; }
+    $rname = mb_substr($rname, 0, 120, 'UTF-8');
+    if(!preg_match('/^\+8801\d{9}$/', $rphone)){
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"error","code"=>"need_profile","msg"=>"Request পাঠাতে আপনার একটি verified ফোন নম্বর দরকার।"]); exit();
+    }
+
+    // Prevent duplicate pending spam to the same donor (within 1 hour)
+    $dup = $conn->prepare("SELECT id FROM contact_requests WHERE donor_id=? AND requester_auth_uid=? AND status='pending' AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR) LIMIT 1");
+    $dup->bind_param("is", $donor_id, $uid); $dup->execute();
+    $hasDup = $dup->get_result()->fetch_assoc(); $dup->close();
+    if($hasDup){
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"success","msg"=>"⏳ আপনি ইতিমধ্যে এই দাতাকে request পাঠিয়েছেন। দাতার সাড়ার অপেক্ষা করুন।"]); exit();
+    }
+
+    $bg = (string)$donor['blood_group'];
+    $donor_uid = $donor['auth_uid']; // may be NULL for legacy rows
+    $ins = $conn->prepare("INSERT INTO contact_requests (donor_id, donor_auth_uid, requester_auth_uid, requester_name, requester_phone, blood_group, message, status) VALUES (?,?,?,?,?,?,?, 'pending')");
+    $ins->bind_param("issssss", $donor_id, $donor_uid, $uid, $rname, $rphone, $bg, $message);
+    $ok = $ins->execute(); $ins->close();
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    if(!$ok){ echo json_encode(["status"=>"error","msg"=>"Request পাঠাতে ব্যর্থ। আবার চেষ্টা করুন।"]); exit(); }
+
+    // ── Notify donor: in-app (service_notifications) + Telegram (best-effort) ──
+    $notif_text = "🩸 নতুন রক্তের অনুরোধ\n\n{$rname} আপনার সাথে যোগাযোগ করতে চান ({$bg} প্রয়োজন)।"
+                . ($message !== '' ? "\n\n📝 {$message}" : "")
+                . "\n\nBloodArena অ্যাপে গিয়ে Accept করলে যোগাযোগের তথ্য দেখতে পাবেন।";
+    if(!empty($donor['device_id'])){
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $sn = $conn->prepare("INSERT INTO service_notifications (device_id, type, message) VALUES (?, 'contact_request', ?)");
+        if($sn){ $sn->bind_param("ss", $donor['device_id'], $notif_text); @$sn->execute(); $sn->close(); }
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    }
+    @notifyDonorTelegram($donor['phone'], $notif_text); // bot-এ linked থাকলেই যাবে
+
+    echo json_encode(["status"=>"success","msg"=>"✅ আপনার অনুরোধ দাতাকে পাঠানো হয়েছে। দাতা Accept করলে যোগাযোগ করবেন।"]);
+    exit();
+}
+
+// --- Donor: list contact requests addressed to me ---
+if(isset($_POST['get_my_contact_requests'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('get_contact_requests', 30, 60);
+    $uid   = requireAuth();
+    $phone = $_SESSION['auth_phone'] ?? null;
+
+    mysqli_report(MYSQLI_REPORT_OFF);
+    // Resolve my donor row id (legacy rows without auth_uid still match by id)
+    $my_id = 0;
+    $f = $conn->prepare("SELECT id FROM donors WHERE auth_uid=? LIMIT 1");
+    $f->bind_param("s", $uid); $f->execute();
+    $fr = $f->get_result()->fetch_assoc(); $f->close();
+    if($fr) $my_id = (int)$fr['id'];
+    elseif($phone){
+        $f2 = $conn->prepare("SELECT id FROM donors WHERE phone=? LIMIT 1");
+        $f2->bind_param("s", $phone); $f2->execute();
+        $fr2 = $f2->get_result()->fetch_assoc(); $f2->close();
+        if($fr2) $my_id = (int)$fr2['id'];
+    }
+    $rows = [];
+    $q = $conn->prepare("SELECT id, requester_name, requester_phone, blood_group, message, status, UNIX_TIMESTAMP(created_at) as created_at FROM contact_requests WHERE (donor_auth_uid=? OR donor_id=?) AND status<>'declined' ORDER BY (status='pending') DESC, created_at DESC LIMIT 50");
+    $q->bind_param("si", $uid, $my_id); $q->execute();
+    $rr = $q->get_result();
+    while($row = $rr->fetch_assoc()){
+        // Requester phone revealed only after the donor accepts (point #3 accept flow)
+        if($row['status'] !== 'accepted') $row['requester_phone'] = null;
+        $rows[] = $row;
+    }
+    $q->close();
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    echo json_encode(["status"=>"success","requests"=>$rows], JSON_UNESCAPED_UNICODE);
+    exit();
+}
+
+// --- Donor: accept / decline a contact request ---
+if(isset($_POST['act_contact_request'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('act_contact_request', 30, 60);
+    $uid    = requireAuth();
+    $phone  = $_SESSION['auth_phone'] ?? null;
+    $req_id = (int)($_POST['request_id'] ?? 0);
+    $action = trim($_POST['act'] ?? '');
+    if($req_id <= 0 || !in_array($action, ['accept','decline'], true)){
+        echo json_encode(["status"=>"error","msg"=>"Invalid request."]); exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    // Resolve my donor id for ownership check
+    $my_id = 0;
+    $f = $conn->prepare("SELECT id FROM donors WHERE auth_uid=? LIMIT 1");
+    $f->bind_param("s", $uid); $f->execute();
+    $fr = $f->get_result()->fetch_assoc(); $f->close();
+    if($fr) $my_id = (int)$fr['id'];
+    elseif($phone){
+        $f2 = $conn->prepare("SELECT id FROM donors WHERE phone=? LIMIT 1");
+        $f2->bind_param("s", $phone); $f2->execute();
+        $fr2 = $f2->get_result()->fetch_assoc(); $f2->close();
+        if($fr2) $my_id = (int)$fr2['id'];
+    }
+    // Ownership: only the targeted donor can act
+    $own = $conn->prepare("SELECT id, requester_name, requester_phone FROM contact_requests WHERE id=? AND (donor_auth_uid=? OR donor_id=?) LIMIT 1");
+    $own->bind_param("isi", $req_id, $uid, $my_id); $own->execute();
+    $crow = $own->get_result()->fetch_assoc(); $own->close();
+    if(!$crow){
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"error","msg"=>"এই request আপনার নয় অথবা পাওয়া যায়নি।"]); exit();
+    }
+    $new_status = ($action === 'accept') ? 'accepted' : 'declined';
+    $up = $conn->prepare("UPDATE contact_requests SET status=? WHERE id=?");
+    $up->bind_param("si", $new_status, $req_id); $up->execute(); $up->close();
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    if($action === 'accept'){
+        echo json_encode([
+            "status"=>"success","accepted"=>true,
+            "requester_name"=>$crow['requester_name'],
+            "requester_phone"=>$crow['requester_phone'],
+            "msg"=>"✅ Accept করেছেন — এখন requester-এর সাথে যোগাযোগ করুন।"
+        ]);
+    } else {
+        echo json_encode(["status"=>"success","accepted"=>false,"msg"=>"Request বাতিল করা হয়েছে।"]);
     }
     exit();
 }
@@ -1298,6 +1626,20 @@ if(isset($_POST['ajax_submit'])){
     if($reg_total_donations > 999) $reg_total_donations = 999;
     $reg_badge   = getBadgeInfo($reg_total_donations)['level'];
 
+    // ── Gender + privacy (point #1) ──────────────────────────────
+    //  gender required (Male/Female)। front-end gender অনুযায়ী hide_me/allow_call-এর
+    //  default বসায় (Female → hidden + no-call, Male → visible + call) এবং user
+    //  override করতে পারে। submitted মান নিই; না থাকলে gender-default fallback।
+    $gender = trim($_POST['gender'] ?? '');
+    if(!in_array($gender, ['Male','Female'], true)){
+        echo json_encode(["status"=>"error","msg"=>"লিঙ্গ (Male / Female) নির্বাচন করুন।"]);
+        exit();
+    }
+    $gdef_hide  = ($gender === 'Female') ? 1 : 0;
+    $gdef_call  = ($gender === 'Female') ? 0 : 1;
+    $hide_me    = isset($_POST['hide_me'])    ? ((trim($_POST['hide_me'])    === '1') ? 1 : 0) : $gdef_hide;
+    $allow_call = isset($_POST['allow_call']) ? ((trim($_POST['allow_call']) === '1') ? 1 : 0) : $gdef_call;
+
     // Ensure account-link + device columns exist on donors
     @$conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS device_id VARCHAR(100) DEFAULT NULL");
     @$conn->query("ALTER TABLE donors ADD COLUMN IF NOT EXISTS auth_uid VARCHAR(128) DEFAULT NULL");
@@ -1321,8 +1663,8 @@ if(isset($_POST['ajax_submit'])){
         }
         // Legacy row (no auth_uid) with same phone → claim & update it for this account
         // 11 params: name,location,group,last,geo,total(i),badge,device,uid,email + id(i)
-        $up = $conn->prepare("UPDATE donors SET name=?, location=?, blood_group=?, last_donation=?, reg_geo=?, total_donations=?, badge_level=?, device_id=?, auth_uid=?, auth_email=? WHERE id=?");
-        $up->bind_param("sssssissssi", $name,$location,$group,$last_to_save,$reg_geo,$reg_total_donations,$reg_badge,$reg_device_id,$uid,$auth_email,$existing['id']);
+        $up = $conn->prepare("UPDATE donors SET name=?, location=?, blood_group=?, last_donation=?, reg_geo=?, total_donations=?, badge_level=?, device_id=?, auth_uid=?, auth_email=?, gender=?, hide_me=?, allow_call=? WHERE id=?");
+        $up->bind_param("sssssisssssiii", $name,$location,$group,$last_to_save,$reg_geo,$reg_total_donations,$reg_badge,$reg_device_id,$uid,$auth_email,$gender,$hide_me,$allow_call,$existing['id']);
         if($up->execute()){
             $up->close();
             if($reg_total_donations > 0){
@@ -1337,8 +1679,8 @@ if(isset($_POST['ajax_submit'])){
         exit();
     }
 
-    $stmt = $conn->prepare("INSERT INTO donors (name,phone,location,blood_group,last_donation,reg_ip,reg_device,reg_geo,total_donations,badge_level,device_id,auth_uid,auth_email) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
-    $stmt->bind_param("ssssssssissss", $name,$phone,$location,$group,$last_to_save,$reg_ip,$reg_device,$reg_geo,$reg_total_donations,$reg_badge,$reg_device_id,$uid,$auth_email);
+    $stmt = $conn->prepare("INSERT INTO donors (name,phone,location,blood_group,last_donation,reg_ip,reg_device,reg_geo,total_donations,badge_level,device_id,auth_uid,auth_email,gender,hide_me,allow_call) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+    $stmt->bind_param("ssssssssisssssii", $name,$phone,$location,$group,$last_to_save,$reg_ip,$reg_device,$reg_geo,$reg_total_donations,$reg_badge,$reg_device_id,$uid,$auth_email,$gender,$hide_me,$allow_call);
     if($stmt->execute()){
         if($reg_total_donations > 0){
             $conn->query("INSERT INTO analytics_counters (counter_name,counter_value) VALUES ('total_donations_ever',$reg_total_donations)
@@ -1547,14 +1889,23 @@ if(isset($_POST['ajax_filter'])){
         $bg_class   = 'bg' . preg_replace('/[^a-zA-Z]/', '', $row['blood_group']) . (strpos($row['blood_group'],'+') !== false ? 'pos' : 'neg');
         $sn         = $serial++;
 
-        // ── Call button state based on availability ──────────────────
-        $is_available = ($current_status == 'Available');
-        $call_btn_desktop = $is_available
-            ? "<button class='phone-link' onclick=\"prepCall('".$row['id']."')\">📞 Call</button>"
-            : "<button class='phone-link-disabled' disabled title='দাতা এখন Available নেই'>🚫 Unavailable</button>";
-        $call_btn_mobile = $is_available
-            ? "<button class='dc-call-btn unselectable' onclick=\"prepCall('".$row['id']."')\" oncontextmenu='return false;' aria-label='Call donor'>📞</button>"
-            : "<button class='dc-call-btn-disabled' disabled title='দাতা এখন Available নেই' aria-label='Not available'>🚫</button>";
+        // ── Call / Request button (availability + Allow Call, point #3) ──
+        //  Available + allow_call ON  → 📞 Call (নম্বর reveal)
+        //  Available + allow_call OFF → ✉️ Request (notification flow; নম্বর গোপন)
+        //  Not available              → 🚫 disabled
+        $is_available   = ($current_status == 'Available');
+        $allow_call_row = (int)($row['allow_call'] ?? 1);
+        $hide_me_row    = (int)($row['hide_me'] ?? 0);
+        if(!$is_available){
+            $call_btn_desktop = "<button class='phone-link-disabled' disabled title='দাতা এখন Available নেই'>🚫 Unavailable</button>";
+            $call_btn_mobile  = "<button class='dc-call-btn-disabled' disabled title='দাতা এখন Available নেই' aria-label='Not available'>🚫</button>";
+        } elseif($allow_call_row === 0){
+            $call_btn_desktop = "<button class='phone-link request-link' onclick=\"prepRequest('".$row['id']."')\">✉️ Request</button>";
+            $call_btn_mobile  = "<button class='dc-call-btn dc-req-btn unselectable' onclick=\"prepRequest('".$row['id']."')\" oncontextmenu='return false;' aria-label='Request donor'>✉️</button>";
+        } else {
+            $call_btn_desktop = "<button class='phone-link' onclick=\"prepCall('".$row['id']."')\">📞 Call</button>";
+            $call_btn_mobile  = "<button class='dc-call-btn unselectable' onclick=\"prepCall('".$row['id']."')\" oncontextmenu='return false;' aria-label='Call donor'>📞</button>";
+        }
 
         // ── Desktop table row ──────────────────────────────────────────
         $output .= "<tr>
@@ -1584,7 +1935,9 @@ if(isset($_POST['ajax_filter'])){
             ." data-total='".$total_don."'"
             ." data-badge='".esc($donor_badge['level'])."'"
             ." data-badgeicon='".esc($donor_badge['icon'])."'"
-            ." data-available='".($is_available ? '1' : '0')."'";
+            ." data-available='".($is_available ? '1' : '0')."'"
+            ." data-hide='".$hide_me_row."'"
+            ." data-allowcall='".$allow_call_row."'";
         $cards .= "
         <div class='dc' $dc_data>
             <div class='dc-badge-wrap' onclick='openDonorDetail(this.parentNode)'>
@@ -1740,28 +2093,34 @@ if(isset($_POST['get_map_data'])){
     header('Content-Type: application/json; charset=utf-8');
     while(ob_get_level()) ob_end_clean(); ob_start();
     checkRateLimit('map_data', 10, 60);
-    $stmt = $conn->prepare("SELECT name, blood_group, location, reg_geo, last_donation, willing_to_donate, total_donations FROM donors WHERE reg_geo != 'Not captured' AND reg_geo != 'Not provided' AND reg_geo LIKE 'Lat:%' LIMIT 200");
-    $stmt->execute();
-    $res = $stmt->get_result();
+    // Point #4: map এখন Active Emergency Requests দেখায় (patient/hospital location, EXACT)।
+    //  Donor-এর personal location আর কখনো map-এ plot হয় না (privacy)। শুধু geo-tagged
+    //  (hospital_lat/lng সহ) active request-গুলো pin হয়।
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
+    $res = $conn->query("SELECT id, patient_name, blood_group, hospital, contact, urgency, bags_needed, note, verified_location, hospital_lat, hospital_lng, UNIX_TIMESTAMP(required_at) as required_at, UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE status='Active' AND hospital_lat IS NOT NULL AND hospital_lng IS NOT NULL ORDER BY FIELD(urgency,'Critical','High','Medium'), created_at DESC LIMIT 200");
     $markers = [];
-    while($row = $res->fetch_assoc()){
-        preg_match('/Lat:\s*([\-0-9.]+),\s*Lon:\s*([\-0-9.]+)/', $row['reg_geo'], $m);
-        if(count($m) === 3){
-            $status = getLiveStatus($row['last_donation'], $row['willing_to_donate'] ?? 'yes');
-            $badge  = getBadgeInfo((int)($row['total_donations'] ?? 0));
+    if($res){
+        while($row = $res->fetch_assoc()){
             $markers[] = [
-                'lat'   => (float)$m[1],
-                'lng'   => (float)$m[2],
-                'name'  => esc($row['name']),
-                'group' => esc($row['blood_group']),
-                'loc'   => esc($row['location']),
-                'status'=> $status,
-                'badge' => $badge['icon'].' '.$badge['level']
+                'id'         => (int)$row['id'],
+                'lat'        => (float)$row['hospital_lat'],
+                'lng'        => (float)$row['hospital_lng'],
+                'patient'    => esc($row['patient_name']),
+                'group'      => esc($row['blood_group']),
+                'hospital'   => esc($row['hospital']),
+                'contact'    => esc($row['contact']),
+                'urgency'    => esc($row['urgency']),
+                'bags'       => (int)$row['bags_needed'],
+                'note'       => esc($row['note']),
+                'verified'   => (int)$row['verified_location'],
+                'required_at'=> $row['required_at'] ? (int)$row['required_at'] : null,
+                'created_at' => $row['created_at']  ? (int)$row['created_at']  : null
             ];
         }
     }
-    $stmt->close();
-    echo json_encode($markers);
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+    echo json_encode($markers, JSON_UNESCAPED_UNICODE);
     exit();
 }
 
@@ -1844,9 +2203,18 @@ if(isset($_POST['submit_blood_request'])){
         $req_device_id = trim($_POST['device_id'] ?? '');
         $req_auth_uid  = currentAuthUid(); // signed-in account → tie request for account-owned management
 
+        // ── Hospital location (point #5) — autocomplete থেকে select করলে lat/lng +
+        //  verified_location=TRUE আসে; manually লিখলে coords নেই → verified=FALSE।
+        $h_lat_raw = trim($_POST['hospital_lat'] ?? '');
+        $h_lng_raw = trim($_POST['hospital_lng'] ?? '');
+        $h_lat = ($h_lat_raw !== '' && is_numeric($h_lat_raw)) ? (float)$h_lat_raw : null;
+        $h_lng = ($h_lng_raw !== '' && is_numeric($h_lng_raw)) ? (float)$h_lng_raw : null;
+        $verified_loc = (trim($_POST['verified_location'] ?? '0') === '1') ? 1 : 0;
+        if($h_lat === null || $h_lng === null) $verified_loc = 0; // coords ছাড়া verified হতে পারে না
+
         try {
-            $stmt = $conn->prepare("INSERT INTO blood_requests (patient_name,blood_group,hospital,contact,urgency,bags_needed,note,required_at,req_ip,auth_uid) VALUES (?,?,?,?,?,?,?,?,?,?)");
-            $stmt->bind_param("sssssissss",$patient,$blood_grp,$hospital,$contact,$urgency,$bags,$note,$required_sql,$ip,$req_auth_uid);
+            $stmt = $conn->prepare("INSERT INTO blood_requests (patient_name,blood_group,hospital,contact,urgency,bags_needed,note,required_at,req_ip,auth_uid,hospital_lat,hospital_lng,verified_location) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            $stmt->bind_param("sssssissssddi",$patient,$blood_grp,$hospital,$contact,$urgency,$bags,$note,$required_sql,$ip,$req_auth_uid,$h_lat,$h_lng,$verified_loc);
             if($stmt->execute()){
                 $new_id = $conn->insert_id;
                 // ── Optional document uploads (≤ REQ_DOC_MAX_FILES images) ──
@@ -2050,7 +2418,7 @@ if(isset($_POST['get_my_requests'])){
     mysqli_report(MYSQLI_REPORT_OFF);
     $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
     $rows = [];
-    $stmt = $conn->prepare("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,UNIX_TIMESTAMP(required_at) as required_at,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE auth_uid=? AND status='Active' ORDER BY created_at DESC LIMIT 20");
+    $stmt = $conn->prepare("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,verified_location,hospital_lat,hospital_lng,UNIX_TIMESTAMP(required_at) as required_at,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE auth_uid=? AND status='Active' ORDER BY created_at DESC LIMIT 20");
     if($stmt){
         $stmt->bind_param("s", $uid);
         $stmt->execute();
@@ -2125,7 +2493,7 @@ if(isset($_POST['get_blood_requests'])){
     $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
     // UNIX_TIMESTAMP = seconds since epoch, completely timezone-independent
     // DATE_FORMAT with 'Z' suffix failed on InfinityFree (MySQL timezone != UTC)
-    $res = $conn->query("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,UNIX_TIMESTAMP(required_at) as required_at,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE status='Active' ORDER BY FIELD(urgency,'Critical','High','Medium'), created_at DESC LIMIT 20");
+    $res = $conn->query("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,verified_location,hospital_lat,hospital_lng,UNIX_TIMESTAMP(required_at) as required_at,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE status='Active' ORDER BY FIELD(urgency,'Critical','High','Medium'), created_at DESC LIMIT 20");
     $requests=[];
     if($res) while($r=$res->fetch_assoc()) $requests[]=$r;
     $docmap = reqdoc_fetch_for($conn, array_column($requests, 'id'));
@@ -2156,16 +2524,24 @@ if(isset($_POST['get_nearby_donors'])){
 
     if($user_lat==0&&$user_lng==0){echo json_encode(["status"=>"error","msg"=>"Location পাওয়া যায়নি।"]);exit();}
 
-    $stmt = $conn->prepare("SELECT id,name,blood_group,location,last_donation,willing_to_donate,total_donations,reg_geo FROM donors WHERE reg_geo LIKE 'Lat:%'");
+    $stmt = $conn->prepare("SELECT id,name,blood_group,location,last_donation,willing_to_donate,total_donations,reg_geo,hide_me,allow_call FROM donors WHERE reg_geo LIKE 'Lat:%'");
     $stmt->execute();
     $res=$stmt->get_result();
     $nearby=[];
     while($row=$res->fetch_assoc()){
         preg_match('/Lat:\s*([\-0-9.]+),\s*Lon:\s*([\-0-9.]+)/',$row['reg_geo'],$m);
         if(count($m)!==3) continue;
-        $dlat=deg2rad((float)$m[1]-$user_lat);
-        $dlng=deg2rad((float)$m[2]-$user_lng);
-        $a=sin($dlat/2)*sin($dlat/2)+cos(deg2rad($user_lat))*cos(deg2rad((float)$m[1]))*sin($dlng/2)*sin($dlng/2);
+        // ── Location privacy (point #2): exact coordinate কখনো ব্যবহার করে দূরত্ব
+        //  পাঠানো হয় না। hide_me অনুযায়ী jitter করে, jittered coordinate থেকেই
+        //  distance হিসাব হয় — ফলে প্রকৃত proximity leak হয় না।
+        $hide_me    = (int)($row['hide_me'] ?? 0);
+        $allow_call = (int)($row['allow_call'] ?? 1);
+        $seed = (string)$row['id'];
+        if($hide_me){ [$jlat,$jlng] = applyLocationJitter((float)$m[1],(float)$m[2],500,1000,$seed); }
+        else        { [$jlat,$jlng] = applyLocationJitter((float)$m[1],(float)$m[2],100,500,$seed); }
+        $dlat=deg2rad($jlat-$user_lat);
+        $dlng=deg2rad($jlng-$user_lng);
+        $a=sin($dlat/2)*sin($dlat/2)+cos(deg2rad($user_lat))*cos(deg2rad($jlat))*sin($dlng/2)*sin($dlng/2);
         $dist=6371*2*atan2(sqrt($a),sqrt(1-$a));
         if($dist>$radius_km) continue;
         if($f_group!=='All'&&$row['blood_group']!==$f_group) continue;
@@ -2173,20 +2549,33 @@ if(isset($_POST['get_nearby_donors'])){
         // Filter by live status
         if($f_status!=='All'&&$status!==$f_status) continue;
         $badge=getBadgeInfo((int)($row['total_donations']??0));
+        // Address text: hidden → শুধু broad area (সবচেয়ে শেষ অংশ = জেলা/শহর), কখনো
+        //  পুরো reg-location text নয়; comma না থাকলে কিছুই দেখাবে না (শুধু "Location Hidden")।
+        //  visible → full text।
+        $loc_full = (string)$row['location'];
+        if($hide_me){
+            $parts = array_values(array_filter(array_map('trim', explode(',', $loc_full)), fn($p)=>$p!==''));
+            $loc_show = count($parts) >= 2 ? $parts[count($parts)-1] : '';
+        } else {
+            $loc_show = $loc_full;
+        }
         $nearby[]=[
             'id'        =>$row['id'],
             'name'      =>esc($row['name']),
             'group'     =>esc($row['blood_group']),
-            'loc'       =>esc($row['location']),
+            'loc'       =>esc($loc_show),
             'status'    =>$status,
             'badge'     =>$badge['icon'].' '.$badge['level'],
             'badge_icon'=>$badge['icon'],
-            'dist'      =>round($dist,2)
+            'dist'      =>round($dist,1),
+            'allow_call'=>$allow_call,
+            'hidden'    =>$hide_me ? 1 : 0,
+            'loc_label' =>$hide_me ? '📍 Location Hidden · আনুমানিক' : ''
         ];
     }
     $stmt->close();
     usort($nearby,fn($a,$b)=>$a['dist']<=>$b['dist']);
-    echo json_encode(["status"=>"success","donors"=>array_slice($nearby,0,30)]);
+    echo json_encode(["status"=>"success","donors"=>array_slice($nearby,0,30)], JSON_UNESCAPED_UNICODE);
     exit();
 }
 

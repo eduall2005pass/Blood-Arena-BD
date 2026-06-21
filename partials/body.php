@@ -205,6 +205,21 @@ HTML;
     </div>
 </div>
 
+<!-- Contact Request modal (Allow Call OFF → Request flow, point #3) -->
+<div class="popup-overlay" id="contactReqModal">
+    <div class="popup">
+        <div class="tick" style="background:rgba(99,102,241,0.12);color:#6366f1;">✉️</div>
+        <h2 style="color:var(--text-main);margin-bottom:8px;font-family:var(--font-heading);">দাতাকে Request পাঠান</h2>
+        <p style="font-size:0.86em;color:var(--text-muted);margin-bottom:16px;line-height:1.6;">এই দাতা সরাসরি কল গ্রহণ করেন না। আপনার নাম ও নম্বরসহ একটি অনুরোধ পাঠানো হবে — দাতা Accept করলে নিজে আপনার সাথে যোগাযোগ করবেন।</p>
+        <input type="hidden" id="contactReqDonorId" value="">
+        <textarea id="contactReqMsg" maxlength="500" placeholder="আপনার বার্তা (ঐচ্ছিক) — রোগীর অবস্থা, হাসপাতাল ইত্যাদি..." style="width:100%;height:80px;resize:none;"></textarea>
+        <div style="display:flex;gap:12px;margin-top:15px;">
+            <button onclick="closeContactReqModal()" style="background:transparent;border:1px solid var(--border-color);color:var(--text-main);margin-top:0;box-shadow:none;">বাতিল</button>
+            <button id="contactReqSendBtn" onclick="sendContactRequest()" style="background:var(--primary-red);color:#fff;margin-top:0;">✉️ Request পাঠান</button>
+        </div>
+    </div>
+</div>
+
 <div class="popup-overlay" id="warningPopupOverlay">
     <div class="popup">
         <div class="tick warning-tick">⚠️</div>
@@ -235,6 +250,7 @@ HTML;
             
             <h4>৪. ডাটাবেস পরিবর্তন</h4>
             <p>কর্তৃপক্ষ চাইলে যেকোনো সময় ভুল বা ভুয়া তথ্য ডিলিট করার অধিকার রাখে।</p>
+            <p style="margin-top:14px;font-size:0.9em;opacity:0.85;">আপনি যেকোনো সময় সাইন ইন করে নিজের তথ্য সংশোধন, আড়াল বা সম্পূর্ণ মুছে ফেলতে পারবেন। বিস্তারিত গোপনীয়তা নীতি ও শর্তাবলী দেখুন: মেনু → 🔒 Privacy।</p>
         </div>
         <button onclick="dismissAllPopups()">Agree & Continue</button>
     </div>
@@ -467,22 +483,77 @@ HTML;
       <!-- Privacy & Policy -->
       <section class="info-panel" data-info="privacy" style="display:none;">
         <div class="scroll-content" id="infoPrivacyContent">
-          <h2 style="color:var(--primary-red); margin-bottom: 10px; font-family:var(--font-heading);">গোপনীয়তা ও নীতিমালা</h2>
-          <p>এই পোর্টালে রক্তদাতা হিসেবে নিবন্ধিত হওয়ার পূর্বে দয়া করে নিচের শর্তাবলীগুলো মনোযোগ দিয়ে পড়ুন। নিবন্ধন সম্পন্ন করার অর্থ হলো আপনি এই নীতিমালের সাথে একমত পোষণ করেছেন।</p>
+          <h2 style="color:var(--primary-red); margin-bottom: 6px; font-family:var(--font-heading);">গোপনীয়তা নীতি ও শর্তাবলী</h2>
+          <p style="font-size:0.82em;color:var(--text-muted);margin-bottom:16px;">সর্বশেষ হালনাগাদ: ২১ জুন, ২০২৬ &nbsp;|&nbsp; Blood Arena — Privacy Policy &amp; Terms of Service</p>
 
-          <h4>১. তথ্যের সঠিকতা ও দায়বদ্ধতা</h4>
-          <p><strong>সঠিক তথ্য প্রদান:</strong> রক্তদাতা হিসেবে আপনাকে অবশ্যই আপনার নাম, ফোন নম্বর, রক্ত গ্রুপ এবং সর্বশেষ রক্তদানের তারিখ সঠিকভাবে প্রদান করতে হবে।</p>
-          <p><strong>সতর্কবার্তা:</strong> ভুল তথ্য প্রদান করে কোনো মুমূর্ষু রোগীর জীবনকে ঝুঁকির মুখে ফেলবেন না। আপনার দেওয়া ভুল তথ্যের কারণে জরুরি মুহূর্তে রক্ত সংগ্রহে বিলম্ব হলে তার দায়ভার আপনার ওপর বর্তাবে।</p>
+          <p>Blood Arena (<a href="https://bloodarenabd.tech" style="color:var(--primary-red);">bloodarenabd.tech</a>) একটি সম্পূর্ণ অলাভজনক (non-profit) স্বেচ্ছাসেবী রক্তদান প্ল্যাটফর্ম, যা একদল মেডিকেল শিক্ষার্থী পরিচালনা করে। আমাদের একমাত্র উদ্দেশ্য — জরুরি মুহূর্তে একজন রোগীকে দ্রুত একজন রক্তদাতার সাথে সংযুক্ত করা। এই পোর্টাল ব্যবহার বা রক্তদাতা হিসেবে নিবন্ধন করার অর্থ হলো আপনি নিচের গোপনীয়তা নীতি ও শর্তাবলীর সাথে সম্পূর্ণ একমত।</p>
 
-          <h4>২. গোপনীয়তা ও যোগাযোগ</h4>
-          <p><strong>ফোন নম্বর দৃশ্যমানতা:</strong> আপনি রক্তদাতা হিসেবে নিবন্ধিত হওয়ার সাথে সাথে আপনার ফোন নম্বরটি আমাদের ডাটাবেসে সাধারণ মানুষের জন্য উন্মুক্ত (Public) হবে।</p>
-          <p><strong>অযাচিত কল:</strong> জনসমক্ষে নম্বর থাকায় কোনো অপ্রাসঙ্গিক বা বিরক্তিকর কলের জন্য পোর্টাল কর্তৃপক্ষ দায়ী থাকবে না।</p>
+          <p style="margin-top:8px;padding:10px 12px;background:rgba(220,38,38,0.08);border-left:3px solid var(--primary-red);border-radius:0 8px 8px 0;"><strong>সংক্ষেপে:</strong> আমরা আপনার তথ্য কখনো বিক্রি করি না। রক্তদাতা হিসেবে দেওয়া নাম, রক্তের গ্রুপ ও ফোন নম্বর জনসমক্ষে দেখানো হয় — যাতে রোগীর স্বজন সরাসরি যোগাযোগ করতে পারেন। আপনি চাইলে নিজেই যেকোনো সময় আপনার সব তথ্য মুছে ফেলতে পারবেন।</p>
 
-          <h4>৩. রক্তদান প্রক্রিয়া</h4>
-          <p><strong>স্বেচ্ছাসেবী মনোভাব:</strong> এখানে নিবন্ধন করা মানে আপনি একজন স্বেচ্ছাসেবী রক্তদাতা। রক্তদানের বিনিময়ে কোনো আর্থিক লেনদেন বা অনৈতিক দাবি করা সম্পূর্ণ নিষিদ্ধ।</p>
+          <h4>১. আমরা কী কী তথ্য সংগ্রহ করি</h4>
+          <p><strong>ক) আপনি নিজে যে তথ্য দেন (রক্তদাতা নিবন্ধন):</strong></p>
+          <p>• নাম, রক্তের গ্রুপ, মোবাইল নম্বর, এলাকা/ঠিকানা।<br>
+          • সর্বশেষ রক্তদানের তারিখ ও মোট রক্তদানের সংখ্যা।<br>
+          • availability (রক্ত দিতে ইচ্ছুক কিনা)।</p>
+          <p><strong>খ) Emergency Blood Request করার সময়:</strong> রোগীর রক্তের গ্রুপ, প্রয়োজনীয় ব্যাগ সংখ্যা, হাসপাতাল/এলাকা ও যোগাযোগ নম্বর।</p>
+          <p><strong>গ) সাইন ইন করার সময়:</strong> Google দিয়ে লগইন করলে আপনার নাম ও ই-মেইল, অথবা ফোন নম্বর দিয়ে লগইন করলে আপনার ফোন নম্বর — এগুলো <strong>Firebase Authentication</strong> (Google)-এর মাধ্যমে যাচাই হয়।</p>
+          <p><strong>ঘ) স্বয়ংক্রিয়ভাবে সংগৃহীত:</strong> আনুমানিক GPS লোকেশন (অনুমতি দিলে), IP ঠিকানা, একটি anonymous Device ID, browser/device তথ্য এবং নিবন্ধন/request-এর সময় ও তারিখ।</p>
 
-          <h4>৪. ডাটাবেস পরিবর্তন</h4>
-          <p>কর্তৃপক্ষ চাইলে যেকোনো সময় ভুল বা ভুয়া তথ্য ডিলিট করার অধিকার রাখে।</p>
+          <h4>২. এই তথ্য কীভাবে ব্যবহার করা হয়</h4>
+          <p>• রক্তদাতা ও রক্তগ্রহীতার মধ্যে সরাসরি সংযোগ তৈরি করতে।<br>
+          • Nearby Donors ও Map-এ কাছের দাতা দেখাতে (লোকেশন ব্যবহার করে)।<br>
+          • নতুন Emergency Request-এর push notification পাঠাতে (Device ID ব্যবহার করে)।<br>
+          • জালিয়াতি, ভুয়া তথ্য ও স্প্যাম প্রতিরোধ করতে (IP/Location log)।<br>
+          • donation count ও Badge হিসাব রাখতে এবং পরিষেবার মান উন্নত করতে।</p>
+          <p><strong>আমরা কখনোই</strong> আপনার তথ্য বিজ্ঞাপন বা বাণিজ্যিক উদ্দেশ্যে ব্যবহার করি না এবং কোনো তৃতীয় পক্ষের কাছে <strong>বিক্রি করি না</strong>।</p>
+
+          <h4>৩. কোন তথ্য জনসমক্ষে দেখা যায়</h4>
+          <p><strong>ফোন নম্বর দৃশ্যমানতা:</strong> রক্তদাতা হিসেবে নিবন্ধিত হলে আপনার <strong>নাম, রক্তের গ্রুপ, এলাকা ও ফোন নম্বর</strong> Donor list-এ সবার জন্য উন্মুক্ত (Public) হবে — এটাই এই পোর্টালের মূল উদ্দেশ্য, যাতে রোগীর স্বজন সরাসরি কল করতে পারেন।</p>
+          <p><strong>যা গোপন থাকে:</strong> আপনার ই-মেইল, exact GPS coordinates, IP ঠিকানা ও Device ID কখনো জনসমক্ষে দেখানো হয় না — এগুলো শুধু সিস্টেম ও নিরাপত্তার কাজে ব্যবহৃত হয়।</p>
+          <p><strong>অযাচিত কল:</strong> নম্বর Public থাকায় কোনো অপ্রাসঙ্গিক বা বিরক্তিকর কলের দায় পোর্টাল কর্তৃপক্ষ নেবে না। আপনি চাইলে যেকোনো সময় availability "⛔ এখন দিতে পারব না" করে নিজেকে list থেকে আড়াল করতে পারবেন।</p>
+
+          <h4>৪. তৃতীয় পক্ষের পরিষেবা</h4>
+          <p>আমরা নির্ভরযোগ্য কিছু পরিষেবা ব্যবহার করি, যাদের নিজস্ব গোপনীয়তা নীতি রয়েছে:</p>
+          <p>• <strong>Google Firebase</strong> — সাইন ইন (Authentication), ডাটাবেস ও push notification-এর জন্য।<br>
+          • <strong>Google Maps / OpenStreetMap</strong> — Map ও লোকেশন দেখানোর জন্য।</p>
+          <p>আপনার তথ্য এই পরিষেবাগুলোর সার্ভারে নিরাপদে সংরক্ষিত হতে পারে। আমরা শুধুমাত্র পরিষেবা পরিচালনার প্রয়োজনে এই তথ্য তাদের সাথে ব্যবহার করি।</p>
+
+          <h4>৫. localStorage, Cookie ও Device ID</h4>
+          <p>আপনার সুবিধার জন্য আমরা browser-এর localStorage-এ কিছু তথ্য রাখি — যেমন আপনার login token, theme (dark/light), settings ও একটি anonymous Device ID। এগুলো আপনার device-এই থাকে।</p>
+          <p><strong>মুছতে চাইলে:</strong> Settings → <strong>🧹 Clear App Data</strong> চাপলেই Device ID সহ সব local data মুছে যাবে।</p>
+
+          <h4>৬. তথ্য সংরক্ষণ ও মেয়াদ</h4>
+          <p>• রক্তদাতার তথ্য আপনি নিজে না মোছা পর্যন্ত সংরক্ষিত থাকে।<br>
+          • Emergency Request <strong>৭২ ঘণ্টা</strong> পর স্বয়ংক্রিয়ভাবে Expire হয়ে যায়।<br>
+          • কর্তৃপক্ষ যেকোনো সময় ভুল, ভুয়া বা ক্ষতিকর তথ্য মুছে ফেলার অধিকার রাখে।</p>
+
+          <h4>৭. আপনার অধিকার — তথ্য নিয়ন্ত্রণ</h4>
+          <p>আপনার তথ্যের উপর আপনার সম্পূর্ণ নিয়ন্ত্রণ আছে:</p>
+          <p>• <strong>দেখা ও সংশোধন:</strong> Register → "Update My Info"-এ সাইন ইন করে যেকোনো সময় তথ্য বদলাতে পারবেন।<br>
+          • <strong>আড়াল করা:</strong> availability বন্ধ করে list থেকে নিজেকে সরাতে পারবেন।<br>
+          • <strong>সম্পূর্ণ মুছে ফেলা:</strong> Update My Info → সাইন ইন → নিচে "🗑️ আমার সকল তথ্য মুছে ফেলুন" → DELETE লিখে confirm করলেই আপনার সব তথ্য চিরতরে মুছে যাবে।</p>
+
+          <h4>৮. তথ্যের নিরাপত্তা</h4>
+          <p>আমরা আপনার তথ্য সুরক্ষিত রাখতে HTTPS এনক্রিপশন ও Firebase-এর নিরাপত্তা ব্যবস্থা ব্যবহার করি। তবে ইন্টারনেটে কোনো ব্যবস্থাই ১০০% নিরাপদ নয় — তাই আপনি যে তথ্য (বিশেষত ফোন নম্বর) public করছেন তা বুঝেশুনে দিন।</p>
+
+          <h4>৯. শর্তাবলী — ব্যবহারের নিয়ম</h4>
+          <p><strong>সঠিক তথ্য:</strong> নাম, ফোন নম্বর, রক্তের গ্রুপ ও সর্বশেষ রক্তদানের তারিখ অবশ্যই সঠিকভাবে দিতে হবে।</p>
+          <p><strong>⚠️ সতর্কবার্তা:</strong> ভুল তথ্য দিয়ে কোনো মুমূর্ষু রোগীর জীবনকে ঝুঁকিতে ফেলবেন না। আপনার ভুল তথ্যের কারণে জরুরি মুহূর্তে রক্ত সংগ্রহে বিলম্ব হলে তার দায় আপনার।</p>
+          <p><strong>স্বেচ্ছাসেবী মনোভাব:</strong> এখানে নিবন্ধন মানে আপনি একজন স্বেচ্ছাসেবী রক্তদাতা। রক্তদানের বিনিময়ে কোনো আর্থিক লেনদেন বা অনৈতিক দাবি সম্পূর্ণ নিষিদ্ধ।</p>
+          <p><strong>অপব্যবহার নিষেধ:</strong> ভুয়া request, স্প্যাম, হয়রানি বা অন্য কাউকে বিরক্ত করার জন্য এই প্ল্যাটফর্ম ব্যবহার করা যাবে না। এমন করলে কর্তৃপক্ষ তথ্য মুছে দিতে ও access বন্ধ করতে পারে।</p>
+
+          <h4>১০. দায়বদ্ধতার সীমা (Disclaimer)</h4>
+          <p>Blood Arena শুধুমাত্র রক্তদাতা ও রক্তগ্রহীতার মধ্যে একটি <strong>সংযোগ মাধ্যম</strong>। আমরা কোনো রক্ত সংগ্রহ, পরীক্ষা বা সরবরাহ করি না। রক্তদাতার সুস্থতা, রক্তের মান বা যেকোনো লেনদেনের দায় সংশ্লিষ্ট ব্যক্তিদের নিজেদের। রক্ত নেওয়ার আগে অনুগ্রহ করে হাসপাতাল/ব্লাড ব্যাংকের মাধ্যমে প্রয়োজনীয় পরীক্ষা নিশ্চিত করুন।</p>
+
+          <h4>১১. শিশুদের গোপনীয়তা</h4>
+          <p>এই প্ল্যাটফর্ম রক্তদানের উপযুক্ত বয়সী (সাধারণত ১৮ বছর বা তদূর্ধ্ব) ব্যক্তিদের জন্য। আমরা জেনেশুনে শিশুদের তথ্য সংগ্রহ করি না।</p>
+
+          <h4>১২. নীতিতে পরিবর্তন</h4>
+          <p>প্রয়োজনে আমরা এই নীতি হালনাগাদ করতে পারি। গুরুত্বপূর্ণ পরিবর্তন হলে এই পেজে "সর্বশেষ হালনাগাদ" তারিখটি পরিবর্তিত হবে। নিয়মিত এই পেজটি দেখে নেওয়ার অনুরোধ রইল।</p>
+
+          <h4>১৩. যোগাযোগ</h4>
+          <p>গোপনীয়তা, তথ্য বা শর্তাবলী সংক্রান্ত যেকোনো প্রশ্নে যোগাযোগ করুন: <span class="highlight-number"><a href="tel:01518981827" style="color:var(--primary-red);font-weight:700;">০১৫১৮৯৮১৮২৭</a></span></p>
+          <p style="text-align:center;margin-top:18px;opacity:0.55;font-size:0.8em;">— Blood Arena Team (মেডিকেল শিক্ষার্থীবৃন্দ) 🩸</p>
         </div>
       </section>
 
@@ -547,6 +618,12 @@ HTML;
     </div>
     <!-- Services tab -->
     <div id="nTabSvcContent" style="display:none;">
+      <!-- Incoming contact requests (Allow Call OFF → Request flow, point #3/#8) -->
+      <div id="nContactReqSection" style="display:none;">
+        <div class="notif-panel-subhdr"><span>✉️ আপনার কাছে আসা Request</span><span id="nContactReqCount" style="color:var(--text-muted);font-size:0.82em;"></span></div>
+        <div id="nContactReqList"></div>
+        <div style="height:10px;"></div>
+      </div>
       <div class="notif-panel-subhdr">
         <span>⚙️ Service Notifications</span>
         <span id="nSvcCount" style="color:var(--text-muted);font-size:0.82em;"></span>
@@ -789,15 +866,17 @@ HTML;
                 <input type="tel" name="phone" value="+880" placeholder="Enter your number" required pattern="^\+8801\d{9}$" title="Must start with +8801 followed by 9 digits">  
             </div>
             
-            <!-- NEW: Location with Map Picker Only (No dropdown) -->
+            <!-- Location: type-to-autocomplete + Map Picker (point #3) -->
             <div>
-                <label style="font-size: 0.85em; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; display: block; padding-left: 4px;">📍 Donor Location</label>  
-                
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <input type="text" id="regExactLocation" placeholder="✍️ Your Area, House, Road... অথবা 🗺️ Map থেকে Pin করুন" style="margin:0;flex:1;" required>
-                    <button type="button" onclick="openMapPicker()" title="Google Map থেকে Location বেছে নিন" style="margin:0;padding:10px 13px;min-height:unset;width:auto;background:rgba(66,133,244,0.12);border:1.5px solid rgba(66,133,244,0.35);color:#4285f4;border-radius:10px;font-size:1.25rem;flex-shrink:0;box-shadow:none;cursor:pointer;" aria-label="Map Picker">🗺️</button>
+                <label style="font-size: 0.85em; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; display: block; padding-left: 4px;">📍 Donor Location</label>
+                <div style="position:relative;">
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="text" id="regExactLocation" placeholder="✍️ এলাকা/জায়গা টাইপ করুন অথবা 🗺️ Map থেকে Pin করুন" autocomplete="off" oninput="regLocAutocomplete(this.value)" onblur="setTimeout(hideRegLocSuggest,200)" style="margin:0;flex:1;" required>
+                        <button type="button" onclick="openMapPicker()" title="Map থেকে Location বেছে নিন" style="margin:0;padding:10px 13px;min-height:unset;width:auto;background:rgba(66,133,244,0.12);border:1.5px solid rgba(66,133,244,0.35);color:#4285f4;border-radius:10px;font-size:1.25rem;flex-shrink:0;box-shadow:none;cursor:pointer;" aria-label="Map Picker">🗺️</button>
+                    </div>
+                    <div id="regLocSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:50;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border-color);border-radius:10px;margin-top:4px;max-height:230px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.18);"></div>
                 </div>
-                <p style="font-size:0.71em;color:var(--text-muted);margin:4px 0 0;padding-left:2px;">💡 🗺️ বাটনে ক্লিক করে Map থেকে সরাসরি লোকেশন পিন করুন</p>
+                <p style="font-size:0.71em;color:var(--text-muted);margin:4px 0 0;padding-left:2px;">💡 টাইপ করলে suggestion আসবে, অথবা 🗺️ বাটনে Map থেকে pin করুন</p>
             </div>
             
             <div class="input-row">
@@ -827,6 +906,36 @@ HTML;
                         <div id="sdNeverMsg" style="margin-top:8px;padding:9px 12px;background:rgba(239,68,68,0.07);border-radius:8px;font-size:0.82em;color:var(--text-muted);">আপনি আগে কখনো রক্তদান করেননি — স্বয়ংক্রিয়ভাবে "no" সেট হবে।</div>
                     </div>
                 </div>  
+            </div>
+
+            <!-- Gender + Privacy (point #1) -->
+            <div class="input-row">
+                <div>
+                    <label style="font-size: 0.85em; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; display: block; padding-left: 4px;">লিঙ্গ / Gender <span style="color:#ef4444;">*</span></label>
+                    <select name="gender" id="regGender" required style="margin-top:0;" onchange="applyGenderPrivacyDefaults(this.value)">
+                        <option value="" disabled selected>Select Gender</option>
+                        <option value="Male">পুরুষ / Male</option>
+                        <option value="Female">নারী / Female</option>
+                    </select>
+                    <p style="font-size:0.72em;color:#f59e0b;margin:5px 0 0;padding-left:2px;font-weight:600;line-height:1.5;">⚠️ <strong>N.B.</strong> লিঙ্গ একবার নির্বাচন করে রেজিস্টার করলে পরে আর পরিবর্তন করা যাবে না — সাবধানে নির্বাচন করুন।</p>
+                </div>
+                <div></div>
+            </div>
+
+            <!-- Privacy toggles: Hide Me + Allow Call (gender অনুযায়ী default, override করা যায়) -->
+            <div style="margin-top:6px;padding:13px 15px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.18);border-radius:12px;">
+                <div style="font-size:0.82em;font-weight:700;color:var(--text-main);margin-bottom:10px;">🔐 প্রাইভেসি</div>
+                <input type="hidden" name="hide_me" id="regHideMeVal" value="0">
+                <input type="hidden" name="allow_call" id="regAllowCallVal" value="1">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px;">
+                    <input type="checkbox" id="regHideMe" onchange="syncPrivacyChk('hide')" style="width:18px;height:18px;flex-shrink:0;accent-color:var(--primary-red);">
+                    <span style="font-size:0.84em;color:var(--text-main);">🙈 <strong>Hide Me</strong> — map/list-এ আমার অবস্থান শুধু আনুমানিক দেখাও</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                    <input type="checkbox" id="regAllowCall" checked onchange="syncPrivacyChk('call')" style="width:18px;height:18px;flex-shrink:0;accent-color:var(--primary-red);">
+                    <span style="font-size:0.84em;color:var(--text-main);">📞 <strong>Allow Call</strong> — দাতারা সরাসরি আমাকে কল করতে পারবে</span>
+                </label>
+                <p style="font-size:0.72em;color:var(--text-muted);margin:9px 0 0;line-height:1.6;">💡 নারী নির্বাচন করলে নিরাপত্তার জন্য default-ভাবে <b>Hide Me</b> চালু ও <b>Allow Call</b> বন্ধ থাকে — চাইলে নিজে বদলাতে পারেন।</p>
             </div>
 
             <!-- How many times donated — optional -->
@@ -912,12 +1021,15 @@ HTML;
             
             <div>
                 <label style="font-size: 0.85em; font-weight: 500; color: var(--text-muted); margin-bottom: 4px; display: block;">Update Location</label>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <input type="text" id="u_location" placeholder="✍️ Your Area, House, Road, Landmark..." required style="margin:0;flex:1;">
-                    <button type="button" onclick="openUpdateMapPicker()" title="Map থেকে Location বেছে নিন" style="margin:0;padding:10px 13px;min-height:unset;width:auto;background:rgba(66,133,244,0.12);border:1.5px solid rgba(66,133,244,0.35);color:#4285f4;border-radius:10px;font-size:1.25rem;flex-shrink:0;box-shadow:none;cursor:pointer;" aria-label="Map Picker">🗺️</button>
+                <div style="position:relative;">
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input type="text" id="u_location" placeholder="✍️ এলাকা/জায়গা টাইপ করুন অথবা 🗺️ Map থেকে Pin করুন" autocomplete="off" oninput="uLocAutocomplete(this.value)" onblur="setTimeout(hideULocSuggest,200)" required style="margin:0;flex:1;">
+                        <button type="button" onclick="openUpdateMapPicker()" title="Map থেকে Location বেছে নিন" style="margin:0;padding:10px 13px;min-height:unset;width:auto;background:rgba(66,133,244,0.12);border:1.5px solid rgba(66,133,244,0.35);color:#4285f4;border-radius:10px;font-size:1.25rem;flex-shrink:0;box-shadow:none;cursor:pointer;" aria-label="Map Picker">🗺️</button>
+                    </div>
+                    <div id="uLocSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:50;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border-color);border-radius:10px;margin-top:4px;max-height:230px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.18);"></div>
                 </div>
                 <input type="hidden" id="u_reg_geo" value="">
-                <p style="font-size:0.71em;color:var(--text-muted);margin:4px 0 0;padding-left:2px;">💡 🗺️ বাটনে ক্লিক করে Map থেকে সরাসরি লোকেশন পিন করুন</p>
+                <p style="font-size:0.71em;color:var(--text-muted);margin:4px 0 0;padding-left:2px;">💡 টাইপ করলে suggestion আসবে, অথবা 🗺️ বাটনে Map থেকে pin করুন</p>
             </div>
 
             <div>
@@ -945,6 +1057,19 @@ HTML;
                 </div>
                 <input type="hidden" id="u_willing" value="yes">
                 <p class="willing-note" id="willingNote">আপনি Available হিসেবে তালিকায় থাকবেন।</p>
+            </div>
+
+            <!-- Privacy: Hide Me + Allow Call (point #1) -->
+            <div style="margin-top:14px;padding:13px 15px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.18);border-radius:12px;">
+                <div style="font-size:0.82em;font-weight:700;color:var(--text-main);margin-bottom:10px;">🔐 প্রাইভেসি</div>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px;">
+                    <input type="checkbox" id="u_hide_me">
+                    <span style="font-size:0.84em;color:var(--text-main);">🙈 <strong>Hide Me</strong> — map/list-এ আমার অবস্থান শুধু আনুমানিক দেখাও</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                    <input type="checkbox" id="u_allow_call" checked>
+                    <span style="font-size:0.84em;color:var(--text-main);">📞 <strong>Allow Call</strong> — দাতারা সরাসরি আমাকে কল করতে পারবে (বন্ধ থাকলে Request আসবে)</span>
+                </label>
             </div>
 
         </div>
@@ -1173,6 +1298,11 @@ HTML;
             </select>
         </div>
     </div>
+    <!-- GPS notice — approximate distance (point #2) -->
+    <div style="margin:12px 0 0;padding:10px 13px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:10px;display:flex;align-items:center;gap:9px;">
+        <span style="font-size:1.1rem;flex-shrink:0;">📍</span>
+        <span style="font-size:0.8em;color:var(--text-muted);line-height:1.5;">আনুমানিক দূরত্ব দেখতে আপনার <strong style="color:var(--text-main);">GPS / Location permission</strong> চালু করুন। privacy-র জন্য দাতার অবস্থান ও দূরত্ব সবসময় <strong style="color:var(--text-main);">আনুমানিক</strong> দেখানো হয়।</span>
+    </div>
     <div class="nearby-results donor-cards-container" id="nearbyResults">
         <div class="nearby-empty" style="grid-column:1/-1;">
             <div style="font-size:3rem;margin-bottom:10px;">📡</div>
@@ -1186,13 +1316,13 @@ HTML;
 <div class="container map-section" id="mapSection">
     <div class="section-header-row">
         <div>
-            <h3 class="section-title">🗺️ Donor Map</h3>
-            <p class="section-sub">রক্তদাতারা কোথায় আছেন</p>
+            <h3 class="section-title">🆘 Nearby Requests Map</h3>
+            <p class="section-sub">জরুরি রক্তের অনুরোধ কোথায় (হাসপাতাল / ওয়ার্ড)</p>
         </div>
         <button class="analytics-refresh-btn" onclick="loadMap()">📍 Load Map</button>
     </div>
 
-    <!-- MAP FILTERS -->
+    <!-- MAP FILTERS (blood group only — এখানে request দেখায়, donor status নয়) -->
     <div class="map-filter-bar" id="mapFilterBar">
         <div class="map-filter-group">
             <label class="map-filter-label">🩸 Blood Group</label>
@@ -1203,15 +1333,6 @@ HTML;
                 <?php endforeach; ?>
             </div>
         </div>
-        <div class="map-filter-group">
-            <label class="map-filter-label">🟢 Live Status</label>
-            <div class="map-filter-pills" id="mapStatusPills">
-                <button class="map-pill active" data-val="All" onclick="setMapFilter('status','All',this)">All</button>
-                <button class="map-pill map-pill-avail" data-val="Available" onclick="setMapFilter('status','Available',this)">✔ Available</button>
-                <button class="map-pill map-pill-notavail" data-val="Not Available" onclick="setMapFilter('status','Not Available',this)">✖ Not Available</button>
-                <button class="map-pill map-pill-unwill" data-val="Unavailable" onclick="setMapFilter('status','Unavailable',this)">⛔ Not Willing</button>
-            </div>
-        </div>
         <div id="mapFilterInfo" class="map-filter-info" style="display:none;"></div>
     </div>
 
@@ -1219,14 +1340,14 @@ HTML;
         <div class="map-placeholder" id="mapPlaceholder">
             <div style="font-size:3rem;">🗺️</div>
             <p style="font-weight:600; margin:10px 0 5px;">Map লোড করতে উপরের বাটনে ক্লিক করুন</p>
-            <p style="font-size:0.82em; color:var(--text-muted);">শুধুমাত্র যেসব donors location permission দিয়েছেন তারা map-এ দেখাবে</p>
+            <p style="font-size:0.82em; color:var(--text-muted);">Active emergency request-গুলো হাসপাতাল/ওয়ার্ডের অবস্থান অনুযায়ী map-এ দেখাবে</p>
         </div>
         <div id="leafletMap" style="display:none; width:100%; height:100%; border-radius:16px;"></div>
     </div>
     <div id="mapLegend" class="map-legend" style="display:none;">
-        <span class="map-legend-item"><span style="color:#10b981; font-size:1.2em;">●</span> Available</span>
-        <span class="map-legend-item"><span style="color:#ef4444; font-size:1.2em;">●</span> Not Available</span>
-        <span class="map-legend-item"><span style="color:#6b7280; font-size:1.2em;">●</span> Not Willing</span>
+        <span class="map-legend-item"><span style="color:#dc2626; font-size:1.2em;">●</span> Critical</span>
+        <span class="map-legend-item"><span style="color:#f59e0b; font-size:1.2em;">●</span> High</span>
+        <span class="map-legend-item"><span style="color:#3b82f6; font-size:1.2em;">●</span> Medium</span>
     </div>
 </div>
 <?php render_social_bar(); ?>
@@ -1383,6 +1504,45 @@ HTML;
         </div>
         <button id="authEntryBtn" onclick="openAuthModal()" type="button"
           style="width:auto;min-height:unset;margin:0;padding:8px 14px;border-radius:20px;font-size:0.78em;font-weight:700;background:var(--primary-red);color:#fff;box-shadow:none;white-space:nowrap;">🔐 সাইন ইন</button>
+      </div>
+
+      <!-- 🔐 Privacy & Gender (donor profile, point #1) -->
+      <div id="privacySettingsGroup" style="margin-bottom:12px;padding:6px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.18);border-radius:12px;">
+        <div style="font-size:0.82em;font-weight:800;color:var(--text-main);margin:10px 0 2px;">🔐 প্রাইভেসি ও লিঙ্গ</div>
+        <div id="privacyNeedSignin" style="font-size:0.76em;color:var(--text-muted);margin:4px 0 8px;display:none;">এই সেটিংস donor profile-এর জন্য। <a href="#" onclick="closeSettingsPanel();setTimeout(openAuthModal,300);return false;" style="color:var(--primary-red);font-weight:700;">সাইন ইন করুন</a></div>
+
+        <div class="settings-item" style="cursor:default;">
+          <div class="settings-item-left">
+            <div class="settings-item-icon">⚧</div>
+            <div class="settings-item-text">
+              <span class="settings-item-label">লিঙ্গ / Gender</span>
+              <span class="settings-item-sub" id="genderSettingSub">—</span>
+            </div>
+          </div>
+          <span id="genderLockedBadge" style="flex-shrink:0;font-size:0.74em;font-weight:700;color:var(--text-muted);background:var(--input-bg);border:1px solid var(--border-color);border-radius:16px;padding:6px 12px;white-space:nowrap;">🔒 Locked</span>
+        </div>
+
+        <div class="settings-item si-hideme" onclick="togglePrivacySetting('hide_me')">
+          <div class="settings-item-left">
+            <div class="settings-item-icon">🙈</div>
+            <div class="settings-item-text">
+              <span class="settings-item-label">Hide Me</span>
+              <span class="settings-item-sub">map/list-এ অবস্থান শুধু আনুমানিক দেখাবে</span>
+            </div>
+          </div>
+          <div class="settings-toggle" id="settingsHideMeToggle"></div>
+        </div>
+
+        <div class="settings-item si-allowcall" onclick="togglePrivacySetting('allow_call')">
+          <div class="settings-item-left">
+            <div class="settings-item-icon">📞</div>
+            <div class="settings-item-text">
+              <span class="settings-item-label">Allow Call</span>
+              <span class="settings-item-sub">বন্ধ থাকলে দাতারা সরাসরি কল না করে Request পাঠাবে</span>
+            </div>
+          </div>
+          <div class="settings-toggle on" id="settingsAllowCallToggle"></div>
+        </div>
       </div>
 
       <!-- Donation reminder hint card -->
@@ -1572,11 +1732,17 @@ HTML;
                 </div>
             </div>
 
-            <!-- Hospital -->
-            <div style="margin-bottom:14px;">
+            <!-- Hospital + map autocomplete (point #5) -->
+            <div style="margin-bottom:14px;position:relative;">
                 <label style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;">হাসপাতাল / Ward <span style="color:#ef4444;">*</span></label>
-                <input type="text" id="req_hospital" placeholder="যেমন: DMCH, Ward 5" autocomplete="off"
+                <input type="text" id="req_hospital" placeholder="হাসপাতালের নাম টাইপ করুন (যেমন: DMCH)" autocomplete="off"
+                    oninput="hospitalAutocomplete(this.value)" onblur="setTimeout(hideHospitalSuggest,200)"
                     style="margin:0;height:46px;font-size:0.92rem;padding:0 14px;border-radius:12px;">
+                <input type="hidden" id="req_hospital_lat" value="">
+                <input type="hidden" id="req_hospital_lng" value="">
+                <input type="hidden" id="req_verified_loc" value="0">
+                <div id="hospitalSuggest" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:50;background:var(--bg-card);color:var(--text-main);border:1px solid var(--border-color);border-radius:10px;margin-top:4px;max-height:230px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.18);"></div>
+                <div id="hospitalLocStatus" style="font-size:0.72em;margin:5px 2px 0;color:var(--text-muted);">📍 list থেকে select করলে location <b>Verified</b> হবে; নিজে টাইপ করলে <b>Unverified</b>।</div>
             </div>
 
             <!-- Contact + Urgency -->
@@ -2339,9 +2505,106 @@ HTML;
             </div>
 
 
+            <!-- Category: About & General -->
+            <p style="font-size:0.7em;text-transform:uppercase;letter-spacing:2px;color:var(--primary-red);font-weight:700;margin:18px 0 10px;">Blood Arena সম্পর্কে</p>
+
+            <div class="faq-item">
+                <div class="faq-q" onclick="toggleFaq(this)">
+                    <span>💰 এই সেবা কি সম্পূর্ণ বিনামূল্যে?</span>
+                    <span class="faq-arrow">›</span>
+                </div>
+                <div class="faq-a">
+                    <p>হ্যাঁ, সম্পূর্ণ বিনামূল্যে। Blood Arena একটি অলাভজনক (non-profit) প্ল্যাটফর্ম — Register, Donor খোঁজা, Emergency Request পাঠানো — সবকিছুই ১০০% ফ্রি। রক্তদানের বিনিময়ে কোনো টাকা চাওয়া বা দেওয়া এখানে সম্পূর্ণ নিষিদ্ধ।</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q" onclick="toggleFaq(this)">
+                    <span>👥 Blood Arena কারা চালায়?</span>
+                    <span class="faq-arrow">›</span>
+                </div>
+                <div class="faq-a">
+                    <p>Blood Arena একদল <strong>স্বেচ্ছাসেবী মেডিকেল শিক্ষার্থী</strong> দ্বারা পরিচালিত। শহীদ সোহরাওয়ার্দী মেডিকেল কলেজ কেন্দ্রিক যাত্রা শুরু হলেও আমাদের লক্ষ্য পুরো বাংলাদেশে ছড়িয়ে দেওয়া। বিস্তারিত জানতে মেনু → ℹ️ About দেখুন।</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q" onclick="toggleFaq(this)">
+                    <span>🔐 আমার তথ্য কি নিরাপদ? বিক্রি হয় কি?</span>
+                    <span class="faq-arrow">›</span>
+                </div>
+                <div class="faq-a">
+                    <p>আপনার তথ্য <strong>কখনোই বিক্রি বা বিজ্ঞাপনে ব্যবহার করা হয় না</strong>। শুধু নাম, রক্তের গ্রুপ ও ফোন নম্বর Donor list-এ public থাকে যাতে রোগীর স্বজন যোগাযোগ করতে পারেন। ই-মেইল, exact GPS ও Device ID গোপন থাকে। সব তথ্য HTTPS এনক্রিপশনে সুরক্ষিত। বিস্তারিত: মেনু → 🔒 Privacy।</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q" onclick="toggleFaq(this)">
+                    <span>📏 Nearby Donors কতটুকু দূরত্বের মধ্যে দেখায়?</span>
+                    <span class="faq-arrow">›</span>
+                </div>
+                <div class="faq-a">
+                    <p>Nearby ট্যাবে আপনার বর্তমান অবস্থান থেকে নির্দিষ্ট km ব্যাসার্ধের মধ্যে থাকা donors দূরত্ব অনুযায়ী (কাছ থেকে দূরে) সাজিয়ে দেখানো হয়। এর জন্য Location permission চালু থাকতে হবে।</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q" onclick="toggleFaq(this)">
+                    <span>📊 Account Dashboard-এ কী থাকে?</span>
+                    <span class="faq-arrow">›</span>
+                </div>
+                <div class="faq-a">
+                    <p>সাইন ইন করার পর Account Dashboard-এ পাবেন: আপনার donor profile, Badge ও donation count, আপনার পাঠানো 🆘 Emergency Requests (এখান থেকে মুছতে পারবেন) এবং দ্রুত profile update-এর সুবিধা।</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q" onclick="toggleFaq(this)">
+                    <span>🚩 ভুয়া donor বা request দেখলে কী করবো?</span>
+                    <span class="faq-arrow">›</span>
+                </div>
+                <div class="faq-a">
+                    <p>কোনো ভুয়া তথ্য, প্রতারণা বা হয়রানি চোখে পড়লে donor card বা request-এর <strong>Report (⚠️)</strong> অপশন ব্যবহার করুন, অথবা সরাসরি <a href="tel:01518981827" style="color:var(--primary-red);font-weight:700;">০১৫১৮৯৮১৮২৭</a> নম্বরে জানান। কর্তৃপক্ষ যাচাই করে ভুয়া তথ্য মুছে দেবে।</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q" onclick="toggleFaq(this)">
+                    <span>🌐 ভাষা (বাংলা/English) পরিবর্তন করবো কীভাবে?</span>
+                    <span class="faq-arrow">›</span>
+                </div>
+                <div class="faq-a">
+                    <p>Settings panel থেকে ভাষা পরিবর্তন করতে পারবেন। নির্বাচন করা ভাষা আপনার device-এ সংরক্ষিত থাকবে, পরের বার খুললেও একই ভাষায় খুলবে।</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q" onclick="toggleFaq(this)">
+                    <span>📲 App হিসেবে install করবো কীভাবে?</span>
+                    <span class="faq-arrow">›</span>
+                </div>
+                <div class="faq-a">
+                    <p>Blood Arena একটি PWA — তাই আলাদা Play Store লাগে না।</p>
+                    <p>• <strong>Android (Chrome):</strong> মেনু (⋮) → "Add to Home screen" / "Install app"।</p>
+                    <p>• <strong>iPhone (Safari):</strong> Share (⬆️) → "Add to Home Screen"।</p>
+                    <p>• <strong>Desktop:</strong> উপরে 🖥️ Install বাটন অথবা address bar-এর install আইকন।</p>
+                    <p>Install করলে অ্যাপের মতো full-screen-এ খুলবে এবং দ্রুত লোড হবে।</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="faq-q" onclick="toggleFaq(this)">
+                    <span>❤️ Blood Arena-কে সাহায্য করতে চাইলে?</span>
+                    <span class="faq-arrow">›</span>
+                </div>
+                <div class="faq-a">
+                    <p>সার্ভার ও ডোমেইনের খরচ চালাতে আপনার ছোট সহযোগিতাও অনেক বড় ভূমিকা রাখে। অনুদান দিতে মেনু → ❤️ Donate Us-এ যান (bKash)। এছাড়া নিজে রক্তদাতা হিসেবে register করে এবং বন্ধুদের শেয়ার করেও সাহায্য করতে পারেন।</p>
+                </div>
+            </div>
+
             <div style="text-align:center;padding:20px 0 5px;color:var(--text-muted);font-size:0.8em;">
                 <p>আরও প্রশ্ন থাকলে: <a href="tel:01518981827" style="color:var(--primary-red);font-weight:700;">০১৫১৮৯৮১৮২৭</a></p>
-                <p style="margin-top:4px;opacity:0.5;">Blood Arena — v2.7.0</p>
+                <p style="margin-top:4px;opacity:0.5;">Blood Arena — v2.8.0</p>
             </div>
         </div>
     </div>

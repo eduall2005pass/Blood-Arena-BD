@@ -144,6 +144,24 @@ app.post('/send', async (req, res) => {
   }
 });
 
+// PHP backend → donor notification (contact-request / blood-request alerts)
+// /send-এর মতই কাজ, তবে আলাদা endpoint যাতে OTP আর notification আলাদা থাকে।
+// PHP-এর notifyDonorTelegram() এটি call করে। নম্বর linked না থাকলে 404 → PHP best-effort skip করে।
+app.post('/notify', async (req, res) => {
+  const { secret, phone, message } = req.body || {};
+  if (secret !== SECRET) return res.status(403).json({ ok: false, error: 'Forbidden' });
+  if (!phone || !message) return res.status(400).json({ ok: false, error: 'phone & message required' });
+  const chatId = phoneMap[phone];
+  if (!chatId) return res.status(404).json({ ok: false, error: 'Phone not linked' });
+  try {
+    const r = await sendTelegram(chatId, message);
+    if (r && r.ok) return res.json({ ok: true });
+    return res.status(500).json({ ok: false, error: (r && r.description) || 'send failed' });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/health', (req, res) => res.json({ ok: true, linked: Object.keys(phoneMap).length }));
 
 app.listen(PORT, HOST, () => {

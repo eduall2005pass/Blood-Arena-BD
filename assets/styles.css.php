@@ -193,6 +193,21 @@ input, select, textarea{
     cursor: text; -webkit-appearance: none; appearance: none; 
 }  
 input::placeholder, textarea::placeholder { color: var(--text-muted); }
+/* Checkboxes / radios must keep native rendering. The global input{} rule
+   (width:100%, padding, appearance:none) AND the GitHub-field media block
+   (border/background !important) otherwise turn them into blank full-width
+   boxes with no tick — this resets them back to real checkboxes. */
+input[type="checkbox"], input[type="radio"]{
+    width:18px !important; height:18px !important; min-height:0 !important;
+    margin:0 !important; padding:0 !important; border:none !important;
+    border-radius:0 !important; background:transparent !important;
+    box-shadow:none !important; -webkit-appearance:auto !important;
+    appearance:auto !important; accent-color:var(--primary-red);
+    cursor:pointer; flex:0 0 auto; vertical-align:middle;
+}
+input[type="checkbox"]:focus, input[type="radio"]:focus{
+    border:none !important; box-shadow:none !important; background:transparent !important;
+}
 input.locked-field {
     background: var(--input-bg);
     opacity: 0.72;

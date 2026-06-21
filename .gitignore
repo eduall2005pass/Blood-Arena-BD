@@ -5,3 +5,4 @@
 .claude/_ogimg.py
 .env.depoly
 .deploy_backup/
+.deploy_rollback/

@@ -396,6 +396,95 @@ function showValidationError(msg) {
     else overlay.classList.add("active");
 }
 
+// ── Gender-based privacy defaults (point #1) ──────────────────
+//  Female → Hide Me ON + Allow Call OFF (default)। Male → Hide Me OFF + Allow Call ON।
+//  User কোনো toggle একবার ছুঁলে gender পরিবর্তনে সেটি আর auto-reset হয় না (manual override)।
+var _privTouched = { hide:false, call:false };
+function syncPrivacyChk(which){
+    if(which === 'hide'){
+        _privTouched.hide = true;
+        var c = document.getElementById('regHideMe');
+        document.getElementById('regHideMeVal').value = (c && c.checked) ? '1' : '0';
+    } else {
+        _privTouched.call = true;
+        var c2 = document.getElementById('regAllowCall');
+        document.getElementById('regAllowCallVal').value = (c2 && c2.checked) ? '1' : '0';
+    }
+}
+function applyGenderPrivacyDefaults(gender){
+    var female = (gender === 'Female');
+    if(!_privTouched.hide){
+        var h = document.getElementById('regHideMe');
+        if(h){ h.checked = female; document.getElementById('regHideMeVal').value = female ? '1' : '0'; }
+    }
+    if(!_privTouched.call){
+        var a = document.getElementById('regAllowCall');
+        if(a){ a.checked = !female; document.getElementById('regAllowCallVal').value = female ? '0' : '1'; }
+    }
+}
+
+// ── Registration location autocomplete (point #3) ─────────────
+//  Hospital autocomplete-এর মতো একই OSM/Nominatim provider। Select করলে location
+//  field পূরণ হয় (map pick-এর মতোই text সেট করে)।
+var _regLocTimer = null;
+var _regLocResults = [];
+function hideRegLocSuggest(){ var b=document.getElementById('regLocSuggest'); if(b){ b.style.display='none'; b.innerHTML=''; } }
+function regLocAutocomplete(q){
+    q=(q||'').trim();
+    var box=document.getElementById('regLocSuggest');
+    if(!box) return;
+    if(q.length<3){ hideRegLocSuggest(); return; }
+    clearTimeout(_regLocTimer);
+    _regLocTimer=setTimeout(function(){
+        fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=bd&accept-language=bn,en&q='+encodeURIComponent(q),{headers:{'Accept-Language':'bn,en'}})
+        .then(function(r){return r.json();})
+        .then(function(results){
+            _regLocResults=results||[];
+            if(!_regLocResults.length){ box.innerHTML='<div style="padding:10px 12px;font-size:0.82em;color:var(--text-muted);">কোনো ফলাফল নেই — নিজে লিখুন।</div>'; box.style.display='block'; return; }
+            var esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+            box.innerHTML=_regLocResults.map(function(r,i){ var full=r.display_name||''; var sh=full.length>72?full.slice(0,72)+'…':full; return '<div style="padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border-color);font-size:0.84em;line-height:1.4;" onmousedown="selectRegLoc('+i+')">📍 '+esc(sh)+'</div>'; }).join('');
+            box.style.display='block';
+        })
+        .catch(function(){ hideRegLocSuggest(); });
+    },450);
+}
+function selectRegLoc(i){
+    var r=_regLocResults[i]; if(!r) return;
+    var inp=document.getElementById('regExactLocation');
+    if(inp) inp.value = r.display_name || inp.value;
+    hideRegLocSuggest();
+}
+
+// ── Update-form location autocomplete (point #3) — same provider ──
+var _uLocTimer = null;
+var _uLocResults = [];
+function hideULocSuggest(){ var b=document.getElementById('uLocSuggest'); if(b){ b.style.display='none'; b.innerHTML=''; } }
+function uLocAutocomplete(q){
+    q=(q||'').trim();
+    var box=document.getElementById('uLocSuggest');
+    if(!box) return;
+    if(q.length<3){ hideULocSuggest(); return; }
+    clearTimeout(_uLocTimer);
+    _uLocTimer=setTimeout(function(){
+        fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=bd&accept-language=bn,en&q='+encodeURIComponent(q),{headers:{'Accept-Language':'bn,en'}})
+        .then(function(r){return r.json();})
+        .then(function(results){
+            _uLocResults=results||[];
+            if(!_uLocResults.length){ box.innerHTML='<div style="padding:10px 12px;font-size:0.82em;color:var(--text-muted);">কোনো ফলাফল নেই — নিজে লিখুন।</div>'; box.style.display='block'; return; }
+            var esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+            box.innerHTML=_uLocResults.map(function(r,i){ var full=r.display_name||''; var sh=full.length>72?full.slice(0,72)+'…':full; return '<div style="padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border-color);font-size:0.84em;line-height:1.4;" onmousedown="selectULoc('+i+')">📍 '+esc(sh)+'</div>'; }).join('');
+            box.style.display='block';
+        })
+        .catch(function(){ hideULocSuggest(); });
+    },450);
+}
+function selectULoc(i){
+    var r=_uLocResults[i]; if(!r) return;
+    var inp=document.getElementById('u_location');
+    if(inp) inp.value = r.display_name || inp.value;
+    hideULocSuggest();
+}
+
 // REGISTRATION
 function submitRegistration() {
     const name = document.querySelector('input[name="name"]').value.trim();
@@ -403,12 +492,14 @@ function submitRegistration() {
     const locExact = document.getElementById('regExactLocation').value.trim();
     const group = document.querySelector('select[name="group"]').value;
     const lastDonation = document.getElementById('lastDonationHidden').value.trim();
+    const gender = (document.getElementById('regGender') || {}).value || '';
 
     if (!name) return showValidationError("নাম দিতে হবে");
     if (/[^a-zA-Z\u0980-\u09FF\s]/.test(name)) return showValidationError("নামে শুধুমাত্র অক্ষর ও স্পেস থাকতে পারবে");
     if (!phone || !/^\+8801\d{9}$/.test(phone)) return showValidationError("সঠিক ফোন নম্বর দিন (+8801XXXXXXXXX)");
     if (!locExact) return showValidationError("Location লিখুন অথবা Map থেকে Pin করুন");
     if (!group) return showValidationError("রক্তের গ্রুপ নির্বাচন করুন");
+    if (!gender) return showValidationError("লিঙ্গ (Male / Female) নির্বাচন করুন");
     if (!lastDonation) return showValidationError("Last Blood Donation Date দিতে হবে");
 
     // Use exact location directly (no dropdown)
@@ -462,6 +553,7 @@ function submitRegistration() {
                 confetti({ particleCount: 200, spread: 120, origin: { y: 0.6 }, colors:['#dc2626', '#f59e0b', '#10b981'] });
                 
                 form.reset();
+                _privTouched = { hide:false, call:false }; // privacy toggles → gender-default আবার সক্রিয়
                 document.getElementsByName('phone')[0].value = "+880";
                 setDonationNever();
                 closeRegForm();
@@ -633,6 +725,8 @@ function submitUpdate() {
     fd.append('location',         finalLocation);
     fd.append('last_donation',    last);
     fd.append('willing_to_donate',willing);
+    fd.append('hide_me',    (document.getElementById('u_hide_me')    && document.getElementById('u_hide_me').checked)    ? '1' : '0');
+    fd.append('allow_call', (document.getElementById('u_allow_call') && document.getElementById('u_allow_call').checked) ? '1' : '0');
     fd.append('just_donated',     justDonated);
     if(regGeo)     fd.append('reg_geo_update', regGeo);
     fd.append('device_id',        (typeof getDeviceId === 'function') ? getDeviceId() : '');
@@ -1144,6 +1238,12 @@ function showConfirmPopup(callerName, callerPhone) {
                 if (typeof openVerifyModal === 'function') openVerifyModal();
                 return;
             }
+            // Allow Call OFF → নম্বর দেওয়া হয় না; Request flow-এ পাঠাও (point #3)
+            if (phone === 'request_only') {
+                document.getElementById("callConfirmPopup").classList.remove("active");
+                prepRequest(tempDonorId);
+                return;
+            }
             if (!phone || !/^\+8801\d{9}$/.test(phone)) {
                 showToast('দাতার তথ্য পাওয়া যায়নি। আবার চেষ্টা করুন।', 'error'); return;
             }
@@ -1196,6 +1296,55 @@ function showConfirmPopup(callerName, callerPhone) {
 
     document.getElementById("finalCallBtn").onclick = function(){ execContact('call'); };
     document.getElementById("finalWaBtn").onclick   = function(){ execContact('wa'); };
+}
+
+// ── Request flow (Allow Call OFF → contact request, point #3) ──
+function prepRequest(donorId){
+    if (typeof vibrateIfOn === 'function') vibrateIfOn([30,15,30]);
+    if (!_isSignedIn()) {
+        showToast('✉️ Request পাঠাতে আগে সাইন ইন করুন।', 'info');
+        if (typeof openAuthModal === 'function') openAuthModal();
+        return;
+    }
+    if (!_isVerified()) {
+        showToast('🔒 Request পাঠাতে Telegram বা WhatsApp দিয়ে অ্যাকাউন্ট verify করুন।', 'info');
+        if (typeof openVerifyModal === 'function') openVerifyModal();
+        return;
+    }
+    document.getElementById('contactReqDonorId').value = String(donorId);
+    document.getElementById('contactReqMsg').value = '';
+    var btn = document.getElementById('contactReqSendBtn');
+    if(btn){ btn.disabled = false; btn.innerHTML = '✉️ Request পাঠান'; }
+    document.getElementById('contactReqModal').classList.add('active');
+}
+function closeContactReqModal(){
+    var m = document.getElementById('contactReqModal');
+    if(m) m.classList.remove('active');
+}
+function sendContactRequest(){
+    var donorId = document.getElementById('contactReqDonorId').value;
+    var msg = document.getElementById('contactReqMsg').value.trim();
+    if(!donorId) return;
+    var btn = document.getElementById('contactReqSendBtn');
+    if(btn){ btn.disabled = true; btn.innerHTML = '⏳ পাঠানো হচ্ছে...'; }
+    var fd = new FormData();
+    fd.append('send_contact_request','1');
+    fd.append('donor_id', donorId);
+    fd.append('message', msg);
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if(btn){ btn.disabled = false; btn.innerHTML = '✉️ Request পাঠান'; }
+        closeContactReqModal();
+        if(d && d.status === 'success'){ showToast(d.msg || '✅ Request পাঠানো হয়েছে।', 'info'); }
+        else if (d && d.code === 'need_profile'){ showToast(d.msg || 'Request পাঠাতে verified প্রোফাইল দরকার।', 'warning'); }
+        else { showToast((d && d.msg) || 'Request পাঠাতে ব্যর্থ।', 'error'); }
+    })
+    .catch(function(){
+        if(btn){ btn.disabled = false; btn.innerHTML = '✉️ Request পাঠান'; }
+        showToast('Network error। আবার চেষ্টা করুন।', 'error');
+    });
 }
 
 function openGeneralReportModal() {
@@ -1477,6 +1626,10 @@ function _loadUpdateFields(data) {
         document.getElementById('u_name').value = data.name;
         var _uPhone = document.getElementById('u_phone_display');
         if (_uPhone) _uPhone.value = data.phone || '';
+
+        // Privacy toggles — current saved state (point #1)
+        var _uh = document.getElementById('u_hide_me');    if(_uh) _uh.checked = (parseInt(data.hide_me) === 1);
+        var _ua = document.getElementById('u_allow_call'); if(_ua) _ua.checked = (data.allow_call !== 0 && data.allow_call !== '0');
 
         // Parse Location — defensive null check (uExactLocation may not exist in all builds)
         let fullLoc = data.location || '';
@@ -2042,6 +2195,33 @@ let _allMapMarkers = []; // store all fetched markers for client-side filtering
 let _mapFilterGroup  = 'All';
 let _mapFilterStatus = 'All';
 
+// ── Nearby Requests map helpers (point #4) ───────────────────
+//  Urgency অনুযায়ী রঙ + popup (verified badge + সরাসরি Call — point #4 অনুযায়ী
+//  request pin সবসময় direct Call দেখায়, request-এর contact number দিয়ে)।
+function _reqMapColor(urg){
+    return urg === 'Critical' ? '#dc2626' : (urg === 'Medium' ? '#3b82f6' : '#f59e0b');
+}
+function _reqMapPopup(m){
+    var color = _reqMapColor(m.urgency);
+    var esc = function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+    var verified = m.verified
+        ? '<span style="color:#10b981;font-weight:700;">✅ Verified Location</span>'
+        : '<span style="color:#f59e0b;font-weight:700;">⚠️ Unverified Location</span>';
+    var contact = String(m.contact||'').replace(/[^0-9+]/g,'');
+    var callBtn = /^\+8801\d{9}$/.test(contact)
+        ? '<a href="tel:' + contact + '" style="display:inline-block;margin-top:8px;padding:7px 14px;background:#dc2626;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">📞 Call করুন</a>'
+        : '';
+    return '<div style="font-family:sans-serif; min-width:200px;">' +
+        '<span style="display:inline-block;background:' + color + ';color:#fff;font-size:0.72em;font-weight:700;padding:2px 8px;border-radius:6px;">' + esc(m.urgency) + '</span> ' +
+        '<span style="color:' + color + '; font-weight:700;">🩸 ' + esc(m.group) + '</span><br>' +
+        '<strong style="font-size:1em;">🏥 ' + esc(m.hospital) + '</strong><br>' +
+        '<small>👤 রোগী: ' + esc(m.patient) + ' · ' + esc(m.bags) + ' ব্যাগ</small><br>' +
+        (m.note ? '<small>📝 ' + esc(m.note) + '</small><br>' : '') +
+        '<small>' + verified + '</small><br>' +
+        callBtn +
+        '</div>';
+}
+
 function setMapFilter(type, val, btn) {
     if (type === 'group') {
         _mapFilterGroup = val;
@@ -2064,35 +2244,24 @@ function applyMapFilter() {
         if (l instanceof L.CircleMarker) leafletMap.removeLayer(l);
     });
     const filtered = _allMapMarkers.filter(function(m) {
-        const groupOk  = _mapFilterGroup  === 'All' || m.group  === _mapFilterGroup;
-        const statusOk = _mapFilterStatus === 'All' || m.status === _mapFilterStatus;
-        return groupOk && statusOk;
+        return _mapFilterGroup === 'All' || m.group === _mapFilterGroup;
     });
     const infoEl = document.getElementById('mapFilterInfo');
     if (infoEl) {
-        if (_mapFilterGroup !== 'All' || _mapFilterStatus !== 'All') {
+        if (_mapFilterGroup !== 'All') {
             infoEl.style.display = 'block';
-            infoEl.textContent = '🔍 ' + filtered.length + ' জন donor দেখাচ্ছে (মোট ' + _allMapMarkers.length + ' জনের মধ্যে)';
+            infoEl.textContent = '🔍 ' + filtered.length + ' টি request দেখাচ্ছে (মোট ' + _allMapMarkers.length + ' টির মধ্যে)';
         } else {
             infoEl.style.display = 'none';
         }
     }
     const bounds = [];
     filtered.forEach(function(m) {
-        const color = m.status === 'Available' ? '#10b981' : m.status === 'Unavailable' ? '#6b7280' : '#ef4444';
         const circle = L.circleMarker([m.lat, m.lng], {
-            radius: 9, fillColor: color, color: '#fff',
+            radius: 10, fillColor: _reqMapColor(m.urgency), color: '#fff',
             weight: 2, opacity: 1, fillOpacity: 0.9
         }).addTo(leafletMap);
-        circle.bindPopup(
-            '<div style="font-family:sans-serif; min-width:160px;">' +
-            '<strong style="font-size:1em;">' + m.name + '</strong><br>' +
-            '<span style="color:' + color + '; font-weight:700;">🩸 ' + m.group + '</span>' +
-            '<span style="float:right; font-size:0.85em; color:#888;">' + m.badge + '</span><br>' +
-            '<small>📍 ' + m.loc + '</small><br>' +
-            '<small style="color:' + color + ';">' + (m.status === 'Available' ? '✔ Available' : m.status === 'Unavailable' ? '⛔ Not Willing' : '✖ Not Available') + '</small>' +
-            '</div>'
-        );
+        circle.bindPopup(_reqMapPopup(m));
         bounds.push([m.lat, m.lng]);
     });
     if (bounds.length && filtered.length !== _allMapMarkers.length) {
@@ -2121,7 +2290,7 @@ function loadMap() {
     .then(safeJSON)
     .then(markers => {
         if(!markers.length) {
-            placeholder.innerHTML = '<div style="font-size:2rem;">😞</div><p>Location data সহ কোনো donor নেই।</p>';
+            placeholder.innerHTML = '<div style="font-size:2rem;">🩸</div><p>এই মুহূর্তে map-এ দেখানোর মতো কোনো active request নেই।<br><small style="color:var(--text-muted);">(শুধু verified/geo-tagged request map-এ আসে)</small></p>';
             return;
         }
         placeholder.style.display = 'none';
@@ -2160,35 +2329,25 @@ function loadMap() {
             setTimeout(_doInvalidate, 500);
         }
 
-        // Render all markers (respecting any pre-set filter)
+        // Render all request markers (respecting any pre-set group filter)
         const bounds = [];
         markers.forEach(function(m) {
-            const color = m.status === 'Available' ? '#10b981' : m.status === 'Unavailable' ? '#6b7280' : '#ef4444';
-            const groupOk  = _mapFilterGroup  === 'All' || m.group  === _mapFilterGroup;
-            const statusOk = _mapFilterStatus === 'All' || m.status === _mapFilterStatus;
-            if (!groupOk || !statusOk) return;
+            const groupOk = _mapFilterGroup === 'All' || m.group === _mapFilterGroup;
+            if (!groupOk) return;
             const circle = L.circleMarker([m.lat, m.lng], {
-                radius: 9, fillColor: color, color: '#fff',
+                radius: 10, fillColor: _reqMapColor(m.urgency), color: '#fff',
                 weight: 2, opacity: 1, fillOpacity: 0.9
             }).addTo(leafletMap);
-            circle.bindPopup(
-                '<div style="font-family:sans-serif; min-width:160px;">' +
-                '<strong style="font-size:1em;">' + m.name + '</strong><br>' +
-                '<span style="color:' + color + '; font-weight:700;">🩸 ' + m.group + '</span>' +
-                '<span style="float:right; font-size:0.85em; color:#888;">' + m.badge + '</span><br>' +
-                '<small>📍 ' + m.loc + '</small><br>' +
-                '<small style="color:' + color + ';">' + (m.status === 'Available' ? '✔ Available' : m.status === 'Unavailable' ? '⛔ Not Willing' : '✖ Not Available') + '</small>' +
-                '</div>'
-            );
+            circle.bindPopup(_reqMapPopup(m));
             bounds.push([m.lat, m.lng]);
         });
         if(bounds.length) leafletMap.fitBounds(bounds, {padding:[30,30]});
 
         // Update filter info
         const infoEl = document.getElementById('mapFilterInfo');
-        if (infoEl && (_mapFilterGroup !== 'All' || _mapFilterStatus !== 'All')) {
+        if (infoEl && (_mapFilterGroup !== 'All')) {
             infoEl.style.display = 'block';
-            infoEl.textContent = '🔍 ' + bounds.length + ' জন donor দেখাচ্ছে (মোট ' + markers.length + ' জনের মধ্যে)';
+            infoEl.textContent = '🔍 ' + bounds.length + ' টি request দেখাচ্ছে (মোট ' + markers.length + ' টির মধ্যে)';
         }
     }).catch(() => {
         placeholder.innerHTML = '<p style="color:#ef4444;">Map লোড করতে সমস্যা হয়েছে।</p>';
@@ -2238,6 +2397,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const popupIds = [
         'callConfirmPopup',
         'reportPopup',
+        'contactReqModal',        // new: Allow Call OFF → Request flow
         'warningPopupOverlay',
         'termsPopupOverlay',
         'aboutUsPopupOverlay',
@@ -2476,6 +2636,9 @@ function openBloodRequestModal(){
     _resetReqUploadProgress();
     var _sb = document.querySelector('#bloodReqSheet button[onclick="submitBloodRequest()"]');
     if (_sb) { _sb.disabled = false; _sb.innerHTML = '🆘 Send Request'; }
+    var _hosp = document.getElementById('req_hospital'); if(_hosp) _hosp.value='';
+    if (typeof _resetHospitalLoc === 'function') _resetHospitalLoc();
+    if (typeof hideHospitalSuggest === 'function') hideHospitalSuggest();
     document.getElementById('bloodReqModal').classList.add('active');
 }
 
@@ -2505,6 +2668,66 @@ function selectReqGroup(btn, group){
     document.querySelectorAll('#reqGroupGrid button').forEach(function(b){ b.classList.remove('selected'); });
     btn.classList.add('selected');
     document.getElementById('req_group').value = group;
+}
+
+// ── Hospital location autocomplete (point #5) ─────────────────
+//  Nearby page-এর মতো একই Leaflet/OSM (Nominatim) provider। List থেকে select করলে
+//  hospital_lat/lng + verified_location=1 সেট হয়; নিজে টাইপ করলে coords থাকে না →
+//  verified_location=0 (Unverified)। অনুরোধ-প্রতি লুকানো hidden field-এ মান রাখা হয়।
+var _hospSearchTimer = null;
+var _hospResults = [];
+function _resetHospitalLoc(){
+    var la = document.getElementById('req_hospital_lat'); if(la) la.value='';
+    var ln = document.getElementById('req_hospital_lng'); if(ln) ln.value='';
+    var vf = document.getElementById('req_verified_loc'); if(vf) vf.value='0';
+    var st = document.getElementById('hospitalLocStatus');
+    if(st){ st.innerHTML='📍 list থেকে select করলে location <b>Verified</b> হবে; নিজে টাইপ করলে <b>Unverified</b>।'; st.style.color='var(--text-muted)'; }
+}
+function hideHospitalSuggest(){
+    var box = document.getElementById('hospitalSuggest');
+    if(box){ box.style.display='none'; box.innerHTML=''; }
+}
+function hospitalAutocomplete(q){
+    _resetHospitalLoc(); // টাইপ করা মানে আগের verified selection বাতিল
+    q = (q||'').trim();
+    var box = document.getElementById('hospitalSuggest');
+    if(!box) return;
+    if(q.length < 3){ hideHospitalSuggest(); return; }
+    clearTimeout(_hospSearchTimer);
+    _hospSearchTimer = setTimeout(function(){
+        fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=bd&accept-language=bn,en&q='+encodeURIComponent(q), {
+            headers: { 'Accept-Language':'bn,en' }
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(results){
+            _hospResults = results || [];
+            if(!_hospResults.length){
+                box.innerHTML = '<div style="padding:10px 12px;font-size:0.82em;color:var(--text-muted);">কোনো ফলাফল নেই — নিজে লিখুন (Unverified থাকবে)।</div>';
+                box.style.display='block'; return;
+            }
+            var esc = function(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+            box.innerHTML = _hospResults.map(function(r, i){
+                var full = r.display_name || '';
+                var short = full.length > 72 ? full.slice(0,72)+'…' : full;
+                return '<div class="hosp-opt" style="padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border-color);font-size:0.84em;line-height:1.4;" onmousedown="selectHospital('+i+')">🏥 '+esc(short)+'</div>';
+            }).join('');
+            box.style.display='block';
+        })
+        .catch(function(){ hideHospitalSuggest(); });
+    }, 450);
+}
+function selectHospital(i){
+    var r = _hospResults[i];
+    if(!r) return;
+    var inp = document.getElementById('req_hospital');
+    // POI name থাকলে concise নাম, নাহলে পুরো display_name
+    if(inp) inp.value = r.name ? r.name : (r.display_name || inp.value);
+    document.getElementById('req_hospital_lat').value = parseFloat(r.lat);
+    document.getElementById('req_hospital_lng').value = parseFloat(r.lon);
+    document.getElementById('req_verified_loc').value = '1';
+    var st = document.getElementById('hospitalLocStatus');
+    if(st){ st.innerHTML='✅ <b>Verified Location</b> — map থেকে নির্বাচিত।'; st.style.color='#10b981'; }
+    hideHospitalSuggest();
 }
 
 function submitBloodRequest(){
@@ -2567,6 +2790,9 @@ function submitBloodRequest(){
     fd.append('bags_needed', bags);
     fd.append('req_note', note);
     fd.append('required_at', requiredAt);
+    fd.append('hospital_lat', (document.getElementById('req_hospital_lat')||{}).value || '');
+    fd.append('hospital_lng', (document.getElementById('req_hospital_lng')||{}).value || '');
+    fd.append('verified_location', (document.getElementById('req_verified_loc')||{}).value || '0');
     fd.append('req_location', currentLocData);
     fd.append('device_id', (typeof getDeviceId === 'function') ? getDeviceId() : '');
     fd.append('csrf_token', CSRF_TOKEN);
@@ -2606,6 +2832,7 @@ function submitBloodRequest(){
             document.getElementById('req_patient').value = '';
             document.getElementById('req_group').value = '';
             document.getElementById('req_hospital').value = '';
+            if (typeof _resetHospitalLoc === 'function') _resetHospitalLoc();
             document.getElementById('req_contact').value = '+8801';
             document.getElementById('req_urgency').value = 'High';
             document.getElementById('req_bags').value = '1';
@@ -2825,6 +3052,7 @@ function renderReqGrid(reqs, showDeleteBtns) {
             +'<div class="req-card-group">🩸 '+escHtml(r.blood_group)+myBadge+'</div>'
             +'<div class="req-card-name">👤 '+escHtml(r.patient_name)+'</div>'
             +'<div class="req-card-hosp">🏥 '+escHtml(r.hospital)+'</div>'
+            +'<div style="font-size:0.74em;margin:3px 0 0;font-weight:700;color:'+(parseInt(r.verified_location)?'#10b981':'#f59e0b')+';">'+(parseInt(r.verified_location)?'✅ Verified Location':'⚠️ Unverified Location')+'</div>'
             +'<div class="req-card-meta">'
             +'<span class="req-tag">🩸 '+escHtml(r.bags_needed)+' ব্যাগ</span>'
             +(r.required_at ? '<span class="req-tag">⏰ '+escHtml(fmtRequiredAt(r.required_at))+'</span>' : '')
@@ -2919,10 +3147,18 @@ function loadNearbyDonors(){
             results.innerHTML = d.donors.map(dn=>{
                 const isAvail = dn.status === 'Available';
                 const bgClass = 'blood-' + (bgMap[dn.group] || dn.group.replace(/[^a-zA-Z]/g,''));
-                const callBtn = isAvail
-                    ? `<button class="dc-call-btn unselectable" onclick="prepCall('${dn.id}')" aria-label="Call donor">📞</button>`
-                    : `<button class="dc-call-btn-disabled" disabled title="দাতা এখন Available নেই" aria-label="Not available">🚫</button>`;
+                // Call / Request (point #3): available + allow_call → 📞; available + !allow_call → ✉️ Request; নাহলে 🚫
+                const callBtn = !isAvail
+                    ? `<button class="dc-call-btn-disabled" disabled title="দাতা এখন Available নেই" aria-label="Not available">🚫</button>`
+                    : (parseInt(dn.allow_call) === 0
+                        ? `<button class="dc-call-btn dc-req-btn unselectable" onclick="prepRequest('${dn.id}')" aria-label="Request donor">✉️</button>`
+                        : `<button class="dc-call-btn unselectable" onclick="prepCall('${dn.id}')" aria-label="Call donor">📞</button>`);
                 const stText = dn.status === 'Available' ? 'Available' : dn.status === 'Unavailable' ? 'Not Willing' : 'Not Available';
+                // Location line (point #2): hidden হলে এক লাইনেই "📍 Location Hidden · <broad area>"
+                //  — reg-location text আলাদা দেখানো হয় না; visible হলে full address।
+                const locLine = dn.hidden
+                    ? `<div class="dc-loc" style="color:#6366f1;">📍 Location Hidden${dn.loc ? ' · ' + dn.loc : ''}</div>`
+                    : `<div class="dc-loc">📍 ${dn.loc}</div>`;
                 return `<div class="dc">
                     <div class="dc-badge-wrap">
                         <span class="dc-badge ${bgClass}">${dn.group}</span>
@@ -2930,8 +3166,8 @@ function loadNearbyDonors(){
                     <div class="dc-info">
                         <div class="dc-name">${dn.name} <span style="font-size:0.85em;opacity:0.85;">${dn.badge_icon||''}</span></div>
                         <span class="${stCls[dn.status]||'available'} dc-status-badge">${stIcon[dn.status]||'✔'} ${stText}</span>
-                        <div class="dc-loc">📍 ${dn.loc}</div>
-                        <div class="dc-last">📍 ${dn.dist} km দূরে</div>
+                        ${locLine}
+                        <div class="dc-last">📏 ${dn.dist} km দূরে (আনুমানিক)</div>
                     </div>
                     ${callBtn}
                 </div>`;
@@ -2960,6 +3196,7 @@ function toggleNPanel() {
     p.classList.toggle('show');
     if(p.classList.contains('show')) {
         document.getElementById('nBadge').classList.remove('on');
+        if (typeof _loadContactRequests === 'function') _loadContactRequests();
         // Clear PWA app icon badge when user opens the panel
         if ('clearAppBadge' in navigator && Notification.permission === 'granted') {
             navigator.clearAppBadge().catch(function(){});
@@ -3252,6 +3489,7 @@ function startSvcNotifPoll() {
 }
 
 function _loadSvcNotifs() {
+    if (typeof _loadContactRequests === 'function') _loadContactRequests();
     var fd = new FormData();
     fd.append('get_service_notifs', '1');
     fd.append('device_id', getDeviceId());
@@ -3284,7 +3522,7 @@ function _renderSvcNotifs(notifs) {
     var iconMap = {
         'secret_reset':'🔑', 'location_on':'📍', 'notif_on':'🔔',
         'secret_code_ready':'✅', 'info':'ℹ️', 'warning':'⚠️', 'admin_reply':'💬',
-        'welcome':'🎉', 'donor_called':'📞', 'blood_request':'🆘'
+        'welcome':'🎉', 'donor_called':'📞', 'blood_request':'🆘', 'contact_request':'🩸'
     };
 
     list.innerHTML = notifs.map(function(n) {
@@ -3314,6 +3552,79 @@ function _renderSvcNotifs(notifs) {
     if (unread.length) {
         list.innerHTML += '<button class="notif-panel-mark-all" onclick="markAllSvcNotifsRead()" style="margin-top:4px;">✓ সব Read করুন</button>';
     }
+}
+
+// ── Incoming contact requests (donor side, point #3 / #8) ─────
+//  Allow Call OFF donor-এর কাছে আসা request। Accept করলে requester-এর নাম+phone
+//  দেখা যায় (server শুধু accepted হলেই phone পাঠায়), donor নিজে যোগাযোগ করে।
+var _contactReqData = [];
+function _loadContactRequests(){
+    var section = document.getElementById('nContactReqSection');
+    if(typeof _isSignedIn==='function' && !_isSignedIn()){ if(section) section.style.display='none'; return; }
+    var fd = new FormData();
+    fd.append('get_my_contact_requests','1');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL,{method:'POST',body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if(!d || d.status!=='success'){ if(section) section.style.display='none'; return; }
+        _contactReqData = d.requests || [];
+        _renderContactRequests();
+    }).catch(function(){});
+}
+function _renderContactRequests(){
+    var section = document.getElementById('nContactReqSection');
+    var list = document.getElementById('nContactReqList');
+    var cnt  = document.getElementById('nContactReqCount');
+    if(!section || !list) return;
+    if(!_contactReqData.length){ section.style.display='none'; list.innerHTML=''; if(cnt) cnt.textContent=''; return; }
+    section.style.display='block';
+    var pending = _contactReqData.filter(function(r){ return r.status==='pending'; }).length;
+    if(cnt) cnt.textContent = pending ? (pending+'টি নতুন') : '';
+    var esc = function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+    var timeAgo = function(ts){ var u=parseInt(ts,10); if(!u) return ''; var diff=Math.floor((Date.now()-u*1000)/60000); if(diff<1)return'এইমাত্র'; if(diff<60)return diff+'মি আগে'; if(diff<1440)return Math.floor(diff/60)+'ঘ আগে'; return Math.floor(diff/1440)+'দিন আগে'; };
+    list.innerHTML = _contactReqData.map(function(r){
+        var head = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
+            + '<strong style="font-size:0.9em;color:var(--text-main);">🩸 '+esc(r.blood_group||'')+' · '+esc(r.requester_name||'একজন')+'</strong>'
+            + '<span style="font-size:0.72em;color:var(--text-muted);">'+timeAgo(r.created_at)+'</span></div>';
+        var msg = r.message ? '<div style="font-size:0.8em;color:var(--text-muted);margin-top:3px;">📝 '+esc(r.message)+'</div>' : '';
+        var action;
+        if(r.status==='accepted' && r.requester_phone){
+            action = '<a href="tel:'+esc(r.requester_phone)+'" style="display:block;text-align:center;margin-top:8px;padding:8px;background:#10b981;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.84em;">📞 '+esc(r.requester_phone)+' — Call করুন</a>';
+        } else if(r.status==='accepted'){
+            action = '<div style="margin-top:8px;font-size:0.8em;color:#10b981;font-weight:700;">✅ Accepted</div>';
+        } else {
+            action = '<div style="margin-top:8px;display:flex;gap:8px;">'
+                + '<button onclick="acceptContactRequest('+r.id+')" style="flex:2;min-height:unset;margin:0;padding:8px;background:var(--primary-red);color:#fff;border-radius:8px;font-size:0.82em;font-weight:700;box-shadow:none;">✅ Accept ও যোগাযোগ</button>'
+                + '<button onclick="declineContactRequest('+r.id+')" style="flex:1;min-height:unset;margin:0;padding:8px;background:transparent;border:1px solid var(--border-color);color:var(--text-muted);border-radius:8px;font-size:0.82em;box-shadow:none;">✖</button></div>';
+        }
+        return '<div style="padding:11px 12px;border:1px solid var(--border-color);border-radius:10px;margin-bottom:8px;background:var(--bg-card);">'+head+msg+action+'</div>';
+    }).join('');
+}
+function acceptContactRequest(id){
+    var fd = new FormData();
+    fd.append('act_contact_request','1'); fd.append('request_id', id); fd.append('act','accept');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL,{method:'POST',body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if(d && d.status==='success'){
+            for(var i=0;i<_contactReqData.length;i++){ if(_contactReqData[i].id==id){ _contactReqData[i].status='accepted'; _contactReqData[i].requester_phone=d.requester_phone; break; } }
+            _renderContactRequests();
+            showToast(d.msg||'✅ Accept হয়েছে।','info');
+        } else { showToast((d&&d.msg)||'ব্যর্থ হয়েছে।','error'); }
+    }).catch(function(){ showToast('Network error।','error'); });
+}
+function declineContactRequest(id){
+    var fd = new FormData();
+    fd.append('act_contact_request','1'); fd.append('request_id', id); fd.append('act','decline');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL,{method:'POST',body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if(d && d.status==='success'){ _contactReqData = _contactReqData.filter(function(r){ return r.id != id; }); _renderContactRequests(); }
+        else { showToast((d&&d.msg)||'ব্যর্থ হয়েছে।','error'); }
+    }).catch(function(){ showToast('Network error।','error'); });
 }
 
 // Swipe to dismiss (touch + mouse)
@@ -3802,6 +4113,7 @@ function mbnGo(sectionId, key) { appSwitchPage(key); }
 function openSettingsPanel() {
     vibrateIfOn([15]);
     updateSettingsToggles();
+    if (typeof loadPrivacySettings === 'function') loadPrivacySettings();
     document.getElementById('settingsPanelOverlay').classList.add('active');
     // Mark settings button active without changing page
     document.querySelectorAll('.mbn-item').forEach(function(b){ b.classList.remove('mbn-active'); });
@@ -3815,6 +4127,84 @@ function closeSettingsPanel() {
     document.getElementById('settingsPanelOverlay').classList.remove('active');
     // Restore current page active state
     updateBottomNav(_currentPage);
+}
+
+// ── Privacy settings (point #1): Hide Me + Allow Call + Gender ──
+//  শুধু যে field বদলানো হয় সেটিই server-এ পাঠানো হয় (update_privacy) — gender
+//  বদলালেও hide_me/allow_call auto-reset হয় না।
+var _privacyState = { gender:null, hide_me:0, allow_call:1, loaded:false };
+function _renderPrivacyToggles(s){
+    var hm = document.getElementById('settingsHideMeToggle');
+    var ac = document.getElementById('settingsAllowCallToggle');
+    var gsub = document.getElementById('genderSettingSub');
+    var hide = s ? !!s.hide_me : false;
+    var call = s ? (s.allow_call !== 0) : true;
+    if(hm) hm.classList.toggle('on', hide);
+    if(ac) ac.classList.toggle('on', call);
+    // Gender is set once at registration and locked — display only (no change buttons)
+    if(gsub) gsub.textContent = (s && s.gender)
+        ? ((s.gender==='Female'?'নারী / Female':'পুরুষ / Male') + ' · registration-এ set')
+        : 'set করা নেই';
+}
+function loadPrivacySettings(){
+    var need = document.getElementById('privacyNeedSignin');
+    if(!_isSignedIn()){
+        if(need){ need.style.display='block'; }
+        _renderPrivacyToggles(null);
+        return;
+    }
+    var fd = new FormData();
+    fd.append('load_my_donor','1');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL,{method:'POST',body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if(d && d.status==='success'){
+            if(need) need.style.display='none';
+            _privacyState = {
+                gender: d.gender || null,
+                hide_me: parseInt(d.hide_me)||0,
+                allow_call: (d.allow_call===0 || d.allow_call==='0') ? 0 : 1,
+                loaded: true
+            };
+            _renderPrivacyToggles(_privacyState);
+        } else {
+            if(need){ need.style.display='block'; need.innerHTML='এই সেটিংস ব্যবহার করতে প্রথমে donor হিসেবে register করুন।'; }
+            _renderPrivacyToggles(null);
+        }
+    }).catch(function(){});
+}
+function togglePrivacySetting(field){
+    if(!_isSignedIn()){ showToast('এই সেটিংস বদলাতে সাইন ইন করুন।','info'); if(typeof openAuthModal==='function') openAuthModal(); return; }
+    var next = (field==='hide_me')
+        ? (_privacyState.hide_me ? 0 : 1)
+        : ((_privacyState.allow_call===0) ? 1 : 0);
+    var prev = { gender:_privacyState.gender, hide_me:_privacyState.hide_me, allow_call:_privacyState.allow_call, loaded:_privacyState.loaded };
+    _privacyState[field] = next;                  // optimistic
+    _renderPrivacyToggles(_privacyState);
+    var fd = new FormData();
+    fd.append('update_privacy','1');
+    fd.append(field, String(next));
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL,{method:'POST',body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if(d && d.status==='success'){
+            _privacyState.hide_me = parseInt(d.hide_me)||0;
+            _privacyState.allow_call = (d.allow_call===0||d.allow_call==='0')?0:1;
+            _renderPrivacyToggles(_privacyState);
+            showToast(d.msg || '✅ আপডেট হয়েছে।','info');
+        } else {
+            _privacyState = prev; _renderPrivacyToggles(prev);
+            if(d && d.code==='no_donor'){ showToast('প্রথমে donor হিসেবে register করুন।','warning'); }
+            else { showToast((d&&d.msg)||'আপডেট ব্যর্থ।','error'); }
+        }
+    }).catch(function(){ _privacyState=prev; _renderPrivacyToggles(prev); showToast('Network error।','error'); });
+}
+// Gender registration-এ একবার set হয় ও locked — পরিবর্তন করা যায় না।
+// (UI থেকে change button সরানো হয়েছে; পুরোনো cached HTML থেকে call এলে শুধু notice।)
+function setGenderSetting(g){
+    showToast('🔒 লিঙ্গ registration-এর সময় নির্ধারিত হয় ও পরে পরিবর্তন করা যায় না।','info');
 }
 
 // ── Header Quick Links dropdown (desktop/tablet) ──
