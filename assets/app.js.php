@@ -1387,8 +1387,16 @@ function fetchFilteredData(page = 1, doScroll = false) {
     })
     .catch(e => {
         if (e && e.name === 'AbortError') return; // ignore aborted requests
-        tableBody.innerHTML = `<tr><td colspan='7' class='no-data'>✖ লোড করতে সমস্যা হয়েছে। পেজ রিফ্রেশ করুন।</td></tr>`;
-        cardsBody.innerHTML = `<div class='no-data' style='text-align:center;padding:30px;'>✖ লোড করতে সমস্যা হয়েছে। পেজ রিফ্রেশ করুন।</div>`;
+        // List load fail → পুরো পেজ reload না করে শুধু list retry করার button
+        var _retryInner =
+            "<div style='text-align:center;padding:28px 16px;'>" +
+              "<div style='font-size:1.8rem;margin-bottom:8px;'>⚠️</div>" +
+              "<p style='margin:0 0 16px;color:var(--text-muted);line-height:1.6;'>রক্তদাতার তালিকা লোড করা যায়নি।<br>ইন্টারনেট চেক করে আবার চেষ্টা করুন।</p>" +
+              "<button type='button' onclick='fetchFilteredData(" + page + ")' " +
+                "style='background:linear-gradient(135deg,#e02424,#b91c1c);color:#fff;border:none;border-radius:12px;padding:11px 24px;font-size:.92rem;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(220,38,38,.35);'>🔄 আবার চেষ্টা করুন</button>" +
+            "</div>";
+        tableBody.innerHTML = "<tr><td colspan='7' style='padding:0;border:none;background:transparent;'>" + _retryInner + "</td></tr>";
+        cardsBody.innerHTML = _retryInner;
     });
 }
 
