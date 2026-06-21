@@ -92,7 +92,26 @@
       "Bash(php -r 'require \"config.php\"; echo \"BRAND_NAME=\".BRAND_NAME.\" SPLASH_ENABLED=\".var_export\\(SPLASH_ENABLED,true\\).\"\\\\n\";')",
       "Bash(php -l _reqdoc_check.php)",
       "Bash(php -v)",
-      "Bash(php -r 'var_dump\\(function_exists\\(\"random_bytes\"\\), function_exists\\(\"imagecreatefromstring\"\\), extension_loaded\\(\"gd\"\\)\\);')"
+      "Bash(php -r 'var_dump\\(function_exists\\(\"random_bytes\"\\), function_exists\\(\"imagecreatefromstring\"\\), extension_loaded\\(\"gd\"\\)\\);')",
+      "Bash(command -v sshpass)",
+      "Bash(command -v lftp)",
+      "Bash(command -v scp)",
+      "Bash(command -v sftp)",
+      "Bash(command -v python)",
+      "Bash(command -v php)",
+      "Bash(php -l assets/boot.js.php)",
+      "Bash(cp assets/boot.js.php /tmp/boot_check.js)",
+      "Bash(rm -f /tmp/boot_check.js)",
+      "Bash(sed -E 's/<\\\\?=[^?]*\\\\?>/0/g; s/<\\\\?php.*\\\\?>/0/g' assets/app.js.php)",
+      "Bash(rm -f /tmp/app_check.js)",
+      "Bash(perl -0777 -pe 's/<\\\\?php.*?\\\\?>/0/gs; s/<\\\\?=.*?\\\\?>/0/gs' assets/app.js.php)",
+      "Bash(python -m pip install --quiet --disable-pip-version-check paramiko)",
+      "Bash(python *)",
+      "Bash(curl -s \"https://bloodarenabd.tech/sw.js?cb=$\\(date +%s\\)\")",
+      "Bash(curl -s \"https://bloodarenabd.tech/?cb=$\\(date +%s\\)\")",
+      "Bash(awk '{printf \"%7.0f KB  %s\\\\n\", $5/1024, $9}')",
+      "Bash(awk '{print $5\" bytes\"}')",
+      "Bash(awk 'END{print NR}' assets/styles.css.php)"
     ]
   }
 }
