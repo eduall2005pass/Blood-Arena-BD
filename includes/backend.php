@@ -1896,6 +1896,19 @@ if(isset($_POST['ajax_filter'])){
         $is_available   = ($current_status == 'Available');
         $allow_call_row = (int)($row['allow_call'] ?? 1);
         $hide_me_row    = (int)($row['hide_me'] ?? 0);
+
+        // ── Location privacy (point #2): hide_me ON হলে full reg-address কখনো
+        //  দেখাব না — nearby card-এর মতো শুধু broad area (শেষ অংশ = জেলা/শহর)
+        //  + "Location Hidden" label। comma না থাকলে শুধু "Location Hidden"।
+        $loc_full_row = (string)($row['location'] ?? '');
+        if($hide_me_row){
+            $lp       = array_values(array_filter(array_map('trim', explode(',', $loc_full_row)), fn($p)=>$p!==''));
+            $loc_area = count($lp) >= 2 ? $lp[count($lp)-1] : '';
+            $loc_data = $loc_area !== '' ? 'Location Hidden · '.$loc_area : 'Location Hidden';
+        } else {
+            $loc_data = $loc_full_row;
+        }
+        $loc_hid_style = $hide_me_row ? 'color:#6366f1;' : '';
         if(!$is_available){
             $call_btn_desktop = "<button class='phone-link-disabled' disabled title='দাতা এখন Available নেই'>🚫 Unavailable</button>";
             $call_btn_mobile  = "<button class='dc-call-btn-disabled' disabled title='দাতা এখন Available নেই' aria-label='Not available'>🚫</button>";
@@ -1913,7 +1926,7 @@ if(isset($_POST['ajax_filter'])){
             <td style='text-align:left; font-weight:600;'>".esc($row['name'])." <span style='font-size:0.85em;opacity:0.85;' title='".$donor_badge['level']." Donor'>".$donor_badge['icon']."</span></td>
             <td><span class='blood-badge $bg_class'>".esc($row['blood_group'])."</span></td>
             <td><span class='$st_class'>$st_icon $st_text</span></td>
-            <td style='text-align:left; color:var(--text-muted); font-size:0.88em;'>📍 ".esc($row['location'])."</td>
+            <td style='text-align:left; color:var(--text-muted); font-size:0.88em; $loc_hid_style'>📍 ".esc($loc_data)."</td>
             <td style='color:var(--text-muted); font-size:0.88em;'>🗓 ".esc($display_last)."</td>
             <td class='unselectable' oncontextmenu='return false;' oncopy='return false;'>
                 $call_btn_desktop
@@ -1929,7 +1942,7 @@ if(isset($_POST['ajax_filter'])){
             ." data-status='".esc($st_text)."'"
             ." data-stclass='".esc($st_class)."'"
             ." data-sticon='".esc($st_icon)."'"
-            ." data-loc='".esc($row['location'])."'"
+            ." data-loc='".esc($loc_data)."'"
             ." data-last='".esc($display_last)."'"
             ." data-since='".esc($display_since)."'"
             ." data-total='".$total_don."'"
@@ -1947,7 +1960,7 @@ if(isset($_POST['ajax_filter'])){
             <div class='dc-info' onclick='openDonorDetail(this.parentNode)'>
                 <div class='dc-name'>".esc($row['name'])." <span style='font-size:0.85em;opacity:0.85;' title='".$donor_badge['level']." Donor'>".$donor_badge['icon']."</span></div>
                 <span class='$st_class dc-status-badge'>$st_icon $st_text</span>
-                <div class='dc-loc'>📍 ".esc($row['location'])."</div>
+                <div class='dc-loc' style='$loc_hid_style'>📍 ".esc($loc_data)."</div>
                 <div class='dc-last'>🗓 $display_last</div>
             </div>
             $call_btn_mobile
