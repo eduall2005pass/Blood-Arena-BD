@@ -4980,5 +4980,38 @@ body.fx-on .settings-item:hover .settings-item-icon {
   .home-hero-actions { flex-basis: 100% !important; margin-left: 0 !important; }
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   Network Lite mode — assets/net-lite.js.php (ধীর সংযোগে auto-চালু)
+   ════════════════════════════════════════════════════════════════════ */
+/* Motion guard: app-এর prefers-reduced-motion rule-এর হুবহু কপি, শুধু
+   html.net-lite-এ scoped — author-vetted ও নিরাপদ (loader/spinner 0.001ms-এ
+   instant হয়, freeze হয় না; end-state ঠিকঠাক পৌঁছায়)। */
+html.net-lite *, html.net-lite *::before, html.net-lite *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+}
+/* "Lite" superscript badge — brand name-এর পাশে (mobile = header h1, desktop = sidebar)।
+   inline flow-এ থাকে বলে কোনো overlap হয় না; শুধু net-lite-এ দেখায়। */
+.ba-lite-sup { display: none; }
+html.net-lite .ba-lite-sup {
+    display: inline-block;
+    vertical-align: super;
+    margin-left: 4px;
+    padding: 1px 4px;
+    font-size: 0.5em; font-weight: 800; letter-spacing: 0.5px; line-height: 1;
+    text-transform: uppercase; text-decoration: none;
+    color: #fff; -webkit-text-fill-color: #fff;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    border-radius: 5px;
+    box-shadow: 0 1px 3px rgba(217, 119, 6, 0.45);
+    white-space: nowrap;
+}
+/* cramped mobile header: lite-এ brand font একটু ছোট করি যাতে "Brand + Lite"
+   একসাথে ধরে — truncate বা overlap ছাড়াই। (lite mode-এই শুধু প্রযোজ্য) */
+html.net-lite header h1 { font-size: 1.3rem !important; }
+html.net-lite header .header-logo-left { height: 44px !important; width: 44px !important; }
+
 
 

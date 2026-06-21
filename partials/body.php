@@ -25,11 +25,11 @@ if (!function_exists('render_social_bar')) {
 if (!function_exists('render_dev_card')) {
     function render_dev_card() {
         echo '<div class="dev-card dev-card-horizontal dev-card-min">'
-           . '<div class="dev-half"><img src="siam.jpg" alt="Siam" class="dev-avatar">'
+           . '<div class="dev-half"><img src="siam.jpg" alt="Siam" class="dev-avatar" loading="lazy" decoding="async">'
            . '<div class="dev-half-info"><p class="dev-name">Siam<span class="dev-batch">(Sh-20)</span></p>'
            . '<span class="dev-role">Dev &amp; Planner</span></div></div>'
            . '<div class="dev-divider"></div>'
-           . '<div class="dev-half"><img src="rafi.jpg" alt="Rafi" class="dev-avatar">'
+           . '<div class="dev-half"><img src="rafi.jpg" alt="Rafi" class="dev-avatar" loading="lazy" decoding="async">'
            . '<div class="dev-half-info"><p class="dev-name">Rafi<span class="dev-batch">(Sh-20)</span></p>'
            . '<span class="dev-role">Planner</span></div></div>'
            . '</div>';
@@ -273,7 +273,7 @@ HTML;
     </svg>
   </button>
   <img src="<?= htmlspecialchars(LOGO_PATH) ?>" alt="<?= htmlspecialchars(BRAND_SHORT) ?>" class="header-logo-left" loading="eager" decoding="sync" fetchpriority="high" onclick="appSwitchPage('home')" style="cursor:pointer;">
-  <h1 onclick="appSwitchPage('home')" style="cursor:pointer;"><?= htmlspecialchars(BRAND_NAME) ?></h1>
+  <h1 onclick="appSwitchPage('home')" style="cursor:pointer;"><?= htmlspecialchars(BRAND_NAME) ?><sup class="ba-lite-sup" aria-hidden="true" title="ধীর সংযোগ — হালকা মোড">Lite</sup></h1>
   <div class="header-actions">
     <button class="header-install-btn desk-only" id="headerInstallBtn" onclick="sidebarInstallApp()" title="Install App" aria-label="Install App">
       <svg class="hi-icon hi-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -340,7 +340,7 @@ HTML;
     <div class="side-drawer-head">
       <img src="<?= htmlspecialchars(LOGO_PATH) ?>" alt="<?= htmlspecialchars(BRAND_SHORT) ?>" class="side-drawer-logo">
       <div class="side-drawer-brand">
-        <span class="side-drawer-brand-name"><?= htmlspecialchars(BRAND_NAME) ?></span>
+        <span class="side-drawer-brand-name"><?= htmlspecialchars(BRAND_NAME) ?><sup class="ba-lite-sup" aria-hidden="true" title="ধীর সংযোগ — হালকা মোড">Lite</sup></span>
         <span class="side-drawer-brand-sub">রক্তের জন্য আর নয় অস্থিরতা</span>
       </div>
       <button class="side-drawer-close" onclick="closeSideDrawer()" type="button" aria-label="Close" title="Close">✕</button>
@@ -1276,12 +1276,12 @@ HTML;
         <p class="sf-heading">Developed By</p>
         <div class="sf-dev-cards">
           <div class="sf-dev-card" role="button" tabindex="0" onclick="openInfoPage('about')">
-            <img src="siam.jpg" alt="Siam" class="sf-dev-ava sf-dev-ava-img">
+            <img src="siam.jpg" alt="Siam" class="sf-dev-ava sf-dev-ava-img" loading="lazy" decoding="async">
             <span class="sf-dev-name">Siam <span class="sf-dev-batch">(Sh-20)</span></span>
             <span class="sf-dev-role">Dev &amp; Planner</span>
           </div>
           <div class="sf-dev-card" role="button" tabindex="0" onclick="openInfoPage('about')">
-            <img src="rafi.jpg" alt="Rafi" class="sf-dev-ava sf-dev-ava-img">
+            <img src="rafi.jpg" alt="Rafi" class="sf-dev-ava sf-dev-ava-img" loading="lazy" decoding="async">
             <span class="sf-dev-name">Rafi <span class="sf-dev-batch">(Sh-20)</span></span>
             <span class="sf-dev-role">Planner</span>
           </div>
@@ -1306,7 +1306,7 @@ HTML;
       <!-- Android / Chrome: compact single row -->
       <div id="pwaAndroidContent">
         <div class="pwa-top-row">
-          <img src="icon.png" alt="Blood Arena" class="pwa-app-icon">
+          <img src="icon.png" alt="Blood Arena" class="pwa-app-icon" loading="lazy" decoding="async">
           <div class="pwa-install-titles">
             <strong><?= htmlspecialchars(BRAND_NAME) ?></strong>
             <span>Home Screen-এ Add করুন</span>
@@ -1327,7 +1327,7 @@ HTML;
       <!-- iOS Safari: step instructions -->
       <div id="pwaIOSContent" style="display:none;">
         <div class="pwa-top-row">
-          <img src="icon.png" alt="Blood Arena" class="pwa-app-icon">
+          <img src="icon.png" alt="Blood Arena" class="pwa-app-icon" loading="lazy" decoding="async">
           <div class="pwa-install-titles">
             <strong>Home Screen-এ Add করুন</strong>
             <span>Blood Arena · iOS Safari</span>
@@ -2456,3 +2456,4 @@ HTML;
 
 <script><?php include __DIR__ . '/../assets/i18n-dict.js.php'; ?></script>
 <script><?php include __DIR__ . '/../assets/boot.js.php'; ?></script>
+<script><?php include __DIR__ . '/../assets/net-lite.js.php'; ?></script>

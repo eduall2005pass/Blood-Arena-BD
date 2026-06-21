@@ -1,5 +1,7 @@
 <head>
 <meta charset="UTF-8">
+<!-- Net-Lite early hint: গত session-এ lite থাকলে paint-এর আগেই apply করি (flash এড়াতে); net-lite.js.php পরে আসল সংযোগ দেখে correct করে -->
+<script>try{if(localStorage.getItem('_ba_lite')==='1')document.documentElement.classList.add('net-lite');}catch(e){}</script>
 <link rel="preload" as="image" href="logo.png">
 <link rel="preload" as="image" href="logo1.png">
  
