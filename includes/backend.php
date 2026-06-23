@@ -578,6 +578,22 @@ if(!file_exists($_schema_v15) && isset($conn)){
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     @file_put_contents($_schema_v15, date('Y-m-d H:i:s'));
 }
+// ── Schema v16: off-platform (self-reported) donations ───────────────
+//  donation_history.source দিয়ে রক্তদানের উৎস আলাদা করি:
+//   - 'code' : requester-এর Code দিয়ে যাচাইকৃত (পুরোনো সব row — default)
+//   - 'self' : প্ল্যাটফর্মের বাইরে দেওয়া রক্তদান, ব্যবহারকারী নিজে রিপোর্ট করেছেন
+//              (120-দিনের medical eligibility gate দিয়ে সীমিত — abuse capped)
+//  note        : স্থান/হাসপাতাল (admin audit-এর জন্য)
+//  reported_ip : self-report-এর IP (abuse forensics)
+$_schema_v16 = dirname(__DIR__) . '/.schema_v16_done';
+if(!file_exists($_schema_v16) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("ALTER TABLE donation_history ADD COLUMN IF NOT EXISTS source VARCHAR(12) NOT NULL DEFAULT 'code'");
+    $conn->query("ALTER TABLE donation_history ADD COLUMN IF NOT EXISTS note VARCHAR(140) DEFAULT NULL");
+    $conn->query("ALTER TABLE donation_history ADD COLUMN IF NOT EXISTS reported_ip VARCHAR(45) DEFAULT NULL");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v16, date('Y-m-d H:i:s'));
+}
 // === ENHANCED SECURITY HEADERS (XSS + Clickjacking + HSTS + Permissions) ===
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
@@ -746,6 +762,25 @@ function _refresh_auth_verified($conn) {
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 }
 
+// === ACTIVE-REQUEST GATE ============================================
+//  signed-in account-এর কোনো Active blood_request আছে কিনা।
+//  Donor-কে Call / নম্বর reveal / contact-request পাঠানোর আগে অবশ্যই একটি
+//  active emergency request থাকতে হবে — কারণ ওই request-ই donation
+//  verification code তৈরি করে (code ছাড়া donation যাচাই করা যায় না)।
+function _has_active_blood_request($conn) {
+    $uid = currentAuthUid();
+    if (!$uid) return false;
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $has = false;
+    $st = $conn->prepare("SELECT 1 FROM blood_requests WHERE auth_uid=? AND status='Active' LIMIT 1");
+    if ($st) {
+        $st->bind_param("s", $uid); $st->execute();
+        $has = (bool)$st->get_result()->fetch_row(); $st->close();
+    }
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    return $has;
+}
+
 // bot-এর /send endpoint-এ কোড পাঠানোর curl helper (WhatsApp ও Telegram দুটোই ব্যবহার করে)
 //  $base = bot base URL, $payload = ["secret"=>..,"phone"=>..,"message"=>..], $insecure = self-signed হলে true
 //  ফেরত দেয়: ["http"=>int, "body"=>string]  (http===0 মানে সংযোগই হয়নি)
@@ -907,6 +942,7 @@ $_is_ajax = !empty($_POST['log_call']) || !empty($_POST['get_phone'])
          || !empty($_POST['delete_donor'])
          || !empty($_POST['get_analytics']) || !empty($_POST['get_map_data'])
          || !empty($_POST['get_nearby_donors'])
+         || !empty($_POST['get_nearby_requests'])
          || !empty($_POST['get_service_notifs'])
          || !empty($_POST['mark_service_notif_read'])
          || !empty($_POST['delete_service_notif'])
@@ -961,6 +997,8 @@ if(isset($_POST['log_call'])){
     checkRateLimit('log_call', 20, 60);
     // ── Verification gate — unverified account call log করতে পারবে না ──
     if(!_auth_is_verified()){ ob_clean(); echo "unverified"; exit(); }
+    // ── Active-request gate (defense-in-depth; get_phone is the primary block) ──
+    if(!_has_active_blood_request($conn)){ ob_clean(); echo "need_request"; exit(); }
     $d_id = (int)$_POST['donor_id'];
     // ── Caller identity = signed-in verified account, never client-supplied ──
     //  verified number (Telegram/WhatsApp bind) অগ্রাধিকার; নইলে phone-OTP নম্বর।
@@ -1107,6 +1145,11 @@ if(isset($_POST['get_phone'])){
     if(!_auth_is_verified()){
         while(ob_get_level()) ob_end_clean(); ob_start();
         echo "unverified"; exit();
+    }
+    // ── Active-request gate: active emergency request ছাড়া দাতার নম্বর দেওয়া হয় না ──
+    if(!_has_active_blood_request($conn)){
+        while(ob_get_level()) ob_end_clean(); ob_start();
+        echo "need_request"; exit();
     }
     $id = (int)$_POST['id'];
     $stmt = $conn->prepare("SELECT phone, allow_call FROM donors WHERE id=?");
@@ -1486,6 +1529,10 @@ if(isset($_POST['send_contact_request'])){
     $uid = requireAuth(); // শুধু logged-in user request পাঠাতে পারবে
     if(!_auth_is_verified()){
         echo json_encode(["status"=>"error","msg"=>"Request পাঠাতে হলে প্রথমে আপনার ফোন নম্বর verify করুন।"]); exit();
+    }
+    // ── Active-request gate: active emergency request ছাড়া contact-request পাঠানো যায় না ──
+    if(!_has_active_blood_request($conn)){
+        echo json_encode(["status"=>"error","code"=>"need_request","msg"=>"🆘 Donor-কে request পাঠাতে আগে একটি Emergency Request তৈরি করুন।"]); exit();
     }
     $donor_id = (int)($_POST['donor_id'] ?? 0);
     $message  = mb_substr(trim($_POST['message'] ?? ''), 0, 500, 'UTF-8');
@@ -2816,6 +2863,111 @@ if(isset($_POST['redeem_donation_code'])){
     exit();
 }
 
+// ── Add an OFF-PLATFORM (self-reported) donation ─────────────────────
+//  Code নেই এমন রক্তদান (অন্য হাসপাতাল/ক্যাম্প/প্ল্যাটফর্মের বাইরে দেওয়া)।
+//  যাচাই হয় 120-দিনের medical eligibility rule দিয়ে: শেষ রেকর্ডকৃত রক্তদানের
+//  ≥120 দিন পরেই নতুন একটি যোগ করা যায় (একজন সুস্থ মানুষ এর চেয়ে ঘন ঘন রক্ত
+//  দিতে পারেন না — তাই এটিই "verification")। সফল হলে count +1, last_donation=
+//  ঐ তারিখ, 120 দিন "Not Available", এবং donation_history-তে source='self' +
+//  স্থান + IP রাখা হয় (admin audit/revoke-এর জন্য)।
+if(isset($_POST['add_offplatform_donation'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('offplat_donate', 5, 3600);
+    $uid   = requireAuth();
+    $phone = $_SESSION['auth_phone'] ?? null;
+
+    // ── date validate (YYYY-MM-DD, বৈধ, ভবিষ্যৎ নয়, গত ১২০ দিনের মধ্যে) ──
+    //  '!Y-m-d' → সময় ফিল্ড midnight-এ reset হয় যাতে diff সঠিক দিনে হয়।
+    $date_in = trim($_POST['donation_date'] ?? '');
+    $d = DateTime::createFromFormat('!Y-m-d', $date_in);
+    if(!$d || $d->format('Y-m-d') !== $date_in){
+        echo json_encode(["status"=>"error","msg"=>"⚠️ সঠিক তারিখ দিন।"]); exit();
+    }
+    $today = new DateTime('today');
+    if($d > $today){
+        echo json_encode(["status"=>"error","msg"=>"⚠️ ভবিষ্যতের তারিখ দেওয়া যাবে না।"]); exit();
+    }
+    if((int)$today->diff($d)->days > 120){
+        echo json_encode(["status"=>"error","msg"=>"⚠️ শুধু গত ১২০ দিনের মধ্যের রক্তদান যোগ করা যাবে।"]); exit();
+    }
+    // স্থান/হাসপাতাল (ঐচ্ছিক) — raw store, output-এ escape হয় (admin esc() + client _esc())
+    $place = strip_tags(trim($_POST['place'] ?? ''));
+    if(mb_strlen($place) > 140) $place = mb_substr($place, 0, 140);
+    if($place === '') $place = null;
+
+    // ── দাতার donor row (auth_uid; legacy phone হলে এই account-এ claim) ──
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $find = $conn->prepare("SELECT id, last_donation FROM donors WHERE auth_uid=? LIMIT 1");
+    $find->bind_param("s", $uid); $find->execute();
+    $drow = $find->get_result()->fetch_assoc(); $find->close();
+    if(!$drow && $phone){
+        $f2 = $conn->prepare("SELECT id, last_donation FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
+        $f2->bind_param("s", $phone); $f2->execute();
+        $drow = $f2->get_result()->fetch_assoc(); $f2->close();
+        if($drow){
+            $email = $_SESSION['auth_email'] ?? null;
+            $cl = $conn->prepare("UPDATE donors SET auth_uid=?, auth_email=? WHERE id=?");
+            $cl->bind_param("ssi", $uid, $email, $drow['id']); $cl->execute(); $cl->close();
+        }
+    }
+    if(!$drow){
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"error","code"=>"no_donor","msg"=>"⚠️ আপনার donor profile পাওয়া যায়নি। প্রথমে রেজিস্ট্রেশন করুন।"]); exit();
+    }
+    $donor_id = (int)$drow['id'];
+
+    // ── 120-দিনের medical gate: নতুন তারিখ শেষ রক্তদানের ≥120 দিন পরে হতে হবে ──
+    $last = $drow['last_donation'] ?? '';
+    $has_last = !($last === 'no' || $last === '' || $last === '0000-00-00' || $last === null);
+    if($has_last){
+        $lastDT = DateTime::createFromFormat('!Y-m-d', $last);
+        if($lastDT){
+            $gap = (int)$lastDT->diff($d)->days;
+            if(!($d > $lastDT) || $gap < 120){
+                mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+                $ld_disp = date('d/m/Y', strtotime($last));
+                echo json_encode(["status"=>"error","msg"=>"⚠️ আপনার শেষ রেকর্ডকৃত রক্তদান ({$ld_disp})-এর ১২০ দিনের মধ্যে নতুন রক্তদান যোগ করা যাবে না। একজন সুস্থ মানুষ ~৪ মাস পরপর রক্ত দিতে পারেন।"]); exit();
+            }
+        }
+    }
+
+    // ── count +1, badge, last_donation=ঐ তারিখ, willing=no (redeem flow-এর মতো) ──
+    $date_sql = $d->format('Y-m-d');
+    $badge_expr_inc = "CASE WHEN total_donations+1>=10 THEN 'Legend' WHEN total_donations+1>=5 THEN 'Hero' WHEN total_donations+1>=2 THEN 'Active' ELSE 'New' END";
+    $bump = $conn->prepare("UPDATE donors SET total_donations=total_donations+1, badge_level=$badge_expr_inc, last_donation=?, willing_to_donate='no' WHERE id=?");
+    $bump->bind_param("si", $date_sql, $donor_id);
+    $bump->execute(); $bump->close();
+
+    $tot = 0;
+    if($ts = $conn->prepare("SELECT total_donations FROM donors WHERE id=?")){
+        $ts->bind_param("i", $donor_id); $ts->execute();
+        $tr = $ts->get_result()->fetch_assoc(); $ts->close();
+        $tot = (int)($tr['total_donations'] ?? 0);
+    }
+    $badge = getBadgeInfo($tot);
+
+    // ── history (source='self' + স্থান + IP — audit) + persistent analytics counter ──
+    $ip = substr($_SERVER['REMOTE_ADDR'] ?? '', 0, 45);
+    if($dh = $conn->prepare("INSERT INTO donation_history (auth_uid, donor_id, donation_date, source, note, reported_ip) VALUES (?,?,?,'self',?,?)")){
+        $dh->bind_param("sisss", $uid, $donor_id, $date_sql, $place, $ip);
+        $dh->execute(); $dh->close();
+    }
+    $conn->query("INSERT INTO analytics_counters (counter_name, counter_value) VALUES ('total_donations_ever', 1)
+        ON DUPLICATE KEY UPDATE counter_value = counter_value + 1");
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+
+    echo json_encode([
+        "status"          => "success",
+        "msg"             => "🎉 ধন্যবাদ! আপনার রক্তদান যোগ হয়েছে — মোট donation এখন {$tot}টি। (নিজে রিপোর্ট করা — তথ্য যাচাই/নিরীক্ষা হতে পারে)",
+        "total_donations" => $tot,
+        "badge_level"     => $badge['level'],
+        "badge_icon"      => $badge['icon']
+    ], JSON_UNESCAPED_UNICODE);
+    exit();
+}
+
 // Get active blood requests
 if(isset($_POST['get_blood_requests'])){
     checkCSRF();
@@ -2923,6 +3075,80 @@ if(isset($_POST['get_nearby_donors'])){
     $stmt->close();
     usort($nearby,fn($a,$b)=>$a['dist']<=>$b['dist']);
     echo json_encode(["status"=>"success","donors"=>array_slice($nearby,0,30)], JSON_UNESCAPED_UNICODE);
+    exit();
+}
+
+// ============================================================
+// FEATURE: NEARBY REQUESTS (Haversine over active blood_requests)
+//  Nearby Donors-এর সমান্তরাল: GPS দিলে hospital coordinate অনুযায়ী
+//  দূরত্ব-ভিত্তিক sort; GPS না থাকলে বা কাছে কিছু না থাকলে সব active
+//  request fallback হিসেবে দেখায় (fallback=true)।
+// ============================================================
+if(isset($_POST['get_nearby_requests'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('nearby_req',20,60);
+    $user_lat  = (float)($_POST['lat'] ?? 0);
+    $user_lng  = (float)($_POST['lng'] ?? 0);
+    $radius_km = min(50, max(1, (float)($_POST['radius'] ?? 5)));
+    $f_group   = trim($_POST['filter_group'] ?? 'All');
+    $valid_groups=["A+","A-","B+","B-","AB+","AB-","O+","O-","All"];
+    if(!in_array($f_group,$valid_groups,true)) $f_group='All';
+    $has_gps = !($user_lat==0 && $user_lng==0);
+
+    mysqli_report(MYSQLI_REPORT_OFF);
+    // Auto-expire: any Active request older than 72 hours → Expired (mirror get_blood_requests)
+    $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
+    $rows=[];
+    $res = $conn->query("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,verified_location,hospital_lat,hospital_lng,UNIX_TIMESTAMP(required_at) as required_at,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE status='Active' ORDER BY FIELD(urgency,'Critical','High','Medium'), created_at DESC LIMIT 200");
+    if($res) while($r=$res->fetch_assoc()) $rows[]=$r;
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+
+    // Blood-group filter applies to both nearby + fallback lists
+    if($f_group!=='All') $rows = array_values(array_filter($rows, fn($r)=>$r['blood_group']===$f_group));
+
+    $nearby=[];
+    if($has_gps){
+        foreach($rows as $r){
+            if($r['hospital_lat']===null || $r['hospital_lng']===null) continue;
+            $rlat=(float)$r['hospital_lat']; $rlng=(float)$r['hospital_lng'];
+            $dlat=deg2rad($rlat-$user_lat);
+            $dlng=deg2rad($rlng-$user_lng);
+            $a=sin($dlat/2)*sin($dlat/2)+cos(deg2rad($user_lat))*cos(deg2rad($rlat))*sin($dlng/2)*sin($dlng/2);
+            $dist=6371*2*atan2(sqrt($a),sqrt(1-$a));
+            if($dist>$radius_km) continue;
+            $r['dist']=round($dist,1);
+            $nearby[]=$r;
+        }
+        usort($nearby,fn($a,$b)=>$a['dist']<=>$b['dist']);
+    }
+
+    // Fallback: no GPS, or nothing within radius → all active (group-filtered), no distance
+    $fallback=false;
+    if(!$nearby){
+        $fallback=true;
+        foreach($rows as $r){ $r['dist']=null; $nearby[]=$r; }
+    }
+
+    $out=array_map(function($r){
+        return [
+            'id'                => (int)$r['id'],
+            'patient_name'      => esc($r['patient_name']),
+            'blood_group'       => esc($r['blood_group']),
+            'hospital'          => esc($r['hospital']),
+            'contact'           => esc($r['contact']),
+            'urgency'           => esc($r['urgency']),
+            'bags_needed'       => (int)$r['bags_needed'],
+            'note'              => esc($r['note']),
+            'verified_location' => (int)$r['verified_location'],
+            'required_at'       => $r['required_at']!==null ? (int)$r['required_at'] : null,
+            'created_at'        => $r['created_at']!==null ? (int)$r['created_at'] : null,
+            'dist'              => $r['dist'] ?? null,
+        ];
+    }, array_slice($nearby,0,30));
+
+    echo json_encode(["status"=>"success","requests"=>$out,"fallback"=>$fallback], JSON_UNESCAPED_UNICODE);
     exit();
 }
 
@@ -3682,13 +3908,25 @@ if(isset($_POST['get_my_donations'])){
 
     // Recorded donation history rows (by account, or by resolved donor_id for legacy)
     $history = [];
-    $hq = $conn->prepare("SELECT UNIX_TIMESTAMP(donation_date) as ts FROM donation_history
+    //  source/note থাকতে পারে (schema v16); পুরোনো column-হীন DB-তে COALESCE fallback
+    //  কাজ করবে না বলে দুটি কুয়েরি — নতুন schema ব্যর্থ হলে পুরোনোটিতে ফিরি।
+    $hq = $conn->prepare("SELECT UNIX_TIMESTAMP(donation_date) as ts, source, note FROM donation_history
         WHERE auth_uid=? OR (donor_id=? AND ?>0) ORDER BY donation_date DESC, id DESC LIMIT 50");
+    if(!$hq){
+        $hq = $conn->prepare("SELECT UNIX_TIMESTAMP(donation_date) as ts FROM donation_history
+            WHERE auth_uid=? OR (donor_id=? AND ?>0) ORDER BY donation_date DESC, id DESC LIMIT 50");
+    }
     if($hq){
         $hq->bind_param("sii", $uid, $donor_id, $donor_id);
         $hq->execute();
         $hres = $hq->get_result();
-        while($r = $hres->fetch_assoc()) $history[] = ["ts"=>(int)$r['ts']];
+        while($r = $hres->fetch_assoc()){
+            $history[] = [
+                "ts"     => (int)$r['ts'],
+                "source" => $r['source'] ?? 'code',
+                "note"   => $r['note'] ?? null,
+            ];
+        }
         $hq->close();
     }
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);

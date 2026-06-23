@@ -280,6 +280,7 @@ if($logged_in && isset($_POST['act'])){
         'send_fcm_push',
         'get_inbox','reply_inbox_msg','mark_inbox_read',
         'del_inbox_msg','clear_inbox',
+        'get_self_reports','revoke_self_report',
         'add_moderator','del_moderator','list_moderators',
         'get_admin_poll',
         'clear_service_notifs',
@@ -294,6 +295,7 @@ if($logged_in && isset($_POST['act'])){
         'change_password','toggle_ip_whitelist',
         'add_token','add_ip',
         'reply_inbox_msg',  // moderator cannot reply messages
+        'revoke_self_report',  // moderator cannot revoke a donation count
         'add_moderator','del_moderator',
         'cfg_unlock','cfg_get','cfg_save','cfg_change_pass','cfg_reset'  // Site Config = super admin only
     ];
@@ -1014,6 +1016,44 @@ if($logged_in && isset($_POST['act'])){
         echo json_encode(['ok'=>true,'deleted'=>$aff,'msg'=>"✅ $aff টি message মুছে ফেলা হয়েছে।"]); exit();
     }
 
+    // ── Self-Reported (off-platform) Donations: list for audit ───
+    //  source='self' rows = ব্যবহারকারীর নিজে যোগ করা off-platform রক্তদান।
+    //  schema v16-এর column গুলো না থাকলে (পুরোনো DB) খালি list ফেরাই।
+    if($act==='get_self_reports' && $conn){
+        $rows=[];
+        try {
+            $res=$conn->query("SELECT dh.id, dh.donation_date, dh.note, dh.reported_ip,
+                    UNIX_TIMESTAMP(dh.created_at) AS ts, dh.donor_id,
+                    d.name, d.phone, d.total_donations
+                FROM donation_history dh LEFT JOIN donors d ON d.id=dh.donor_id
+                WHERE dh.source='self' ORDER BY dh.created_at DESC, dh.id DESC LIMIT 100");
+            if($res) while($r=$res->fetch_assoc()) $rows[]=$r;
+        } catch (\Throwable $e) { $rows=[]; }
+        echo json_encode(['ok'=>true,'rows'=>$rows]); exit();
+    }
+
+    // ── Revoke a self-reported donation (super admin only) ───────
+    //  history row delete + donor count −1 + badge পুনরায় হিসাব + analytics −1।
+    if($act==='revoke_self_report' && $conn && $id>0){
+        $did=0;
+        try {
+            $q=$conn->prepare("SELECT donor_id FROM donation_history WHERE id=? AND source='self'");
+            $q->bind_param("i",$id); $q->execute();
+            $hr=$q->get_result()->fetch_assoc(); $q->close();
+            if(!$hr){ echo json_encode(['ok'=>false,'msg'=>'Self-reported entry পাওয়া যায়নি।']); exit(); }
+            $did=(int)$hr['donor_id'];
+            $del=$conn->prepare("DELETE FROM donation_history WHERE id=?");
+            $del->bind_param("i",$id); $del->execute(); $del->close();
+            if($did>0){
+                $conn->query("UPDATE donors SET total_donations=GREATEST(0,total_donations-1) WHERE id=$did");
+                $conn->query("UPDATE donors SET badge_level=CASE WHEN total_donations>=10 THEN 'Legend' WHEN total_donations>=5 THEN 'Hero' WHEN total_donations>=2 THEN 'Active' ELSE 'New' END WHERE id=$did");
+            }
+            $conn->query("UPDATE analytics_counters SET counter_value=GREATEST(0,counter_value-1) WHERE counter_name='total_donations_ever'");
+        } catch (\Throwable $e) { echo json_encode(['ok'=>false,'msg'=>'DB error।']); exit(); }
+        auditLog($conn,'REVOKE_SELF_REPORT',"hist:$id donor:$did");
+        echo json_encode(['ok'=>true,'msg'=>'✅ Self-reported রক্তদান বাতিল — donation count −১ করা হয়েছে।']); exit();
+    }
+
     // ── Moderator Management ─────────────────────────────
     if($act==='list_moderators' && $conn){
         ensureAdminTables($conn);
@@ -1540,6 +1580,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
   <div class="mt"     onclick="go('tokens',this)">🪙 Tokens</div>
   <div class="mt"     onclick="go('advsearch',this)">🔍 Search</div>
   <div class="mt"     onclick="go('audit',this)">📋 Audit</div>
+  <?php if($is_super):?><div class="mt" onclick="go('selfreports',this); loadSelfReports();">🩸 Self-Rep</div><?php endif;?>
   <div class="mt"     onclick="go('settings',this)">⚙️ Settings</div>
 </div>
 
@@ -1563,6 +1604,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
     <div class="ni-sep"></div>
     <div class="ni-label">System</div>
     <div class="ni"    onclick="go('audit',this)">📋 Audit Log</div>
+    <?php if($is_super):?><div class="ni" onclick="go('selfreports',this); loadSelfReports();">🩸 Self-Reported Donations</div><?php endif;?>
     <div class="ni"    onclick="go('settings',this)">⚙️ Settings <span id="adminNotifDot" style="display:none;width:7px;height:7px;background:var(--green);border-radius:50%;margin-left:auto;flex-shrink:0;"></span></div>
     <div style="padding:12px 16px;margin-top:6px;border-top:1px solid var(--bdr);">
       <a href="index.php" style="font-size:.78em;color:var(--muted);display:block;margin-bottom:6px;">🌐 Site দেখুন</a>
@@ -1967,6 +2009,22 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
     </div>
 
     <?php endif; // end inbox super only ?>
+
+    <!-- ══ SELF-REPORTED (OFF-PLATFORM) DONATIONS (Super Admin only) ══ -->
+    <?php if($is_super):?>
+    <div class="tab" id="tab-selfreports">
+      <div class="stitle" style="display:flex;align-items:center;justify-content:space-between;">🩸 Self-Reported Donations<button class="tab-refresh-btn" onclick="loadSelfReports()" title="Refresh">🔄</button></div>
+      <div class="tbox">
+        <div class="tbar" style="flex-wrap:wrap;gap:8px;">
+          <h3>Off-platform (নিজে রিপোর্ট করা) রক্তদান</h3>
+          <span style="font-size:.74em;color:var(--muted);">120-দিনের medical gate দিয়ে সীমিত। সন্দেহজনক হলে Revoke করুন (count −১)।</span>
+        </div>
+        <div id="selfReportsList" style="padding:8px 0;">
+          <div style="text-align:center;padding:40px;color:var(--muted);font-size:.85em;">⏳ লোড হচ্ছে...</div>
+        </div>
+      </div>
+    </div>
+    <?php endif; // end self-reports super only ?>
 
     <!-- ══ MODERATOR MANAGEMENT (Super Admin only) ══ -->
     <?php if($is_super):?>
@@ -2447,6 +2505,48 @@ function bulkDelete(table){
 
 // ── INBOX ─────────────────────────────────────────────────
 var _inboxFilter='all';
+// ── Self-Reported (off-platform) donations: list + revoke (super admin) ──
+function _sresc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function loadSelfReports(){
+    var list=document.getElementById('selfReportsList');
+    if(!list) return;
+    list.innerHTML='<div style="text-align:center;padding:30px;color:var(--muted);">⏳ লোড হচ্ছে...</div>';
+    var fd=new FormData(); fd.append('act','get_self_reports'); fd.append('csrf',CSRF);
+    fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json()).then(d=>{
+        if(!d.ok){ list.innerHTML='<div style="text-align:center;padding:30px;color:var(--red);">❌ Load করতে সমস্যা।</div>'; return; }
+        if(!d.rows||!d.rows.length){ list.innerHTML='<div style="text-align:center;padding:30px;color:var(--muted);font-size:.85em;">📭 কোনো self-reported রক্তদান নেই</div>'; return; }
+        var h='<div class="ow"><table><thead><tr><th>#</th><th>নাম</th><th>ফোন</th><th>তারিখ</th><th>স্থান</th><th>IP</th><th>যোগ হয়েছে</th><th>মোট</th><th></th></tr></thead><tbody>';
+        d.rows.forEach(function(r,i){
+            var added = r.ts ? new Date(r.ts*1000).toLocaleString() : '—';
+            h+='<tr>'+
+               '<td>'+(i+1)+'</td>'+
+               '<td>'+_sresc(r.name||'—')+'</td>'+
+               '<td>'+_sresc(r.phone||'—')+'</td>'+
+               '<td>'+_sresc(r.donation_date||'—')+'</td>'+
+               '<td>'+_sresc(r.note||'—')+'</td>'+
+               '<td style="font-size:.8em;color:var(--muted);">'+_sresc(r.reported_ip||'—')+'</td>'+
+               '<td style="font-size:.8em;color:var(--muted);">'+_sresc(added)+'</td>'+
+               '<td style="text-align:center;">'+(r.total_donations!=null?parseInt(r.total_donations):'—')+'</td>'+
+               '<td><button onclick="revokeSelfReport('+parseInt(r.id)+',this)" style="padding:4px 10px;border-radius:8px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.3);font-size:.76em;font-weight:700;cursor:pointer;white-space:nowrap;">Revoke −1</button></td>'+
+               '</tr>';
+        });
+        h+='</tbody></table></div>';
+        list.innerHTML=h;
+    }).catch(function(){ list.innerHTML='<div style="text-align:center;padding:30px;color:var(--red);">❌ Network error।</div>'; });
+}
+function revokeSelfReport(id, btn){
+    if(!confirm('এই self-reported রক্তদানটি বাতিল করবেন? Donor-এর donation count −১ হবে।')) return;
+    if(btn){ btn.disabled=true; btn.textContent='⏳'; }
+    var fd=new FormData(); fd.append('act','revoke_self_report'); fd.append('id',id); fd.append('csrf',CSRF);
+    fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json()).then(d=>{
+        showToast(d.msg || (d.ok?'✅ Done':'❌ ব্যর্থ'), d.ok?'#10b981':'#ef4444');
+        if(d.ok) loadSelfReports();
+        else if(btn){ btn.disabled=false; btn.textContent='Revoke −1'; }
+    }).catch(function(){ if(btn){ btn.disabled=false; btn.textContent='Revoke −1'; } showToast('❌ Network error','#ef4444'); });
+}
+
 function loadInbox(filter){
     _inboxFilter=filter||'all';
     ['all','unread','replied'].forEach(function(f){

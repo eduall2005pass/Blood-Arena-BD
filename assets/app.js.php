@@ -1151,6 +1151,13 @@ function prepCall(donorId) {
         if (typeof openVerifyModal === 'function') openVerifyModal();
         return;
     }
+    // ── Active-request gate: active emergency request ছাড়া call করা যাবে না।
+    //  না থাকলে prefilled request form খোলে; submit-এর পর এই donor-এ ফিরে আসে।
+    requireActiveRequest('call', donorId, function(){ _prepCallProceed(donorId); });
+}
+
+// Continuation of prepCall — runs only after the active-request gate passes.
+function _prepCallProceed(donorId) {
     tempDonorId = donorId;
     tempCallSourceEl = null;
 
@@ -1238,6 +1245,12 @@ function showConfirmPopup(callerName, callerPhone) {
                 if (typeof openVerifyModal === 'function') openVerifyModal();
                 return;
             }
+            // server active-request gate — stale client state হলে এখানে ধরা পড়ে
+            if (phone === 'need_request') {
+                document.getElementById("callConfirmPopup").classList.remove("active");
+                _openRequestFormForDonor('call', tempDonorId);
+                return;
+            }
             // Allow Call OFF → নম্বর দেওয়া হয় না; Request flow-এ পাঠাও (point #3)
             if (phone === 'request_only') {
                 document.getElementById("callConfirmPopup").classList.remove("active");
@@ -1311,6 +1324,11 @@ function prepRequest(donorId){
         if (typeof openVerifyModal === 'function') openVerifyModal();
         return;
     }
+    // ── Active-request gate (Call-এর মতোই) ──
+    requireActiveRequest('request', donorId, function(){ _prepRequestProceed(donorId); });
+}
+
+function _prepRequestProceed(donorId){
     document.getElementById('contactReqDonorId').value = String(donorId);
     document.getElementById('contactReqMsg').value = '';
     var btn = document.getElementById('contactReqSendBtn');
@@ -1338,6 +1356,7 @@ function sendContactRequest(){
         if(btn){ btn.disabled = false; btn.innerHTML = '✉️ Request পাঠান'; }
         closeContactReqModal();
         if(d && d.status === 'success'){ showToast(d.msg || '✅ Request পাঠানো হয়েছে।', 'info'); }
+        else if (d && d.code === 'need_request'){ _openRequestFormForDonor('request', donorId); }
         else if (d && d.code === 'need_profile'){ showToast(d.msg || 'Request পাঠাতে verified প্রোফাইল দরকার।', 'warning'); }
         else { showToast((d && d.msg) || 'Request পাঠাতে ব্যর্থ।', 'error'); }
     })
@@ -1898,6 +1917,70 @@ function submitDonationCode() {
     })
     .catch(function(){
         if(btn){ btn.disabled = false; btn.innerHTML = '✅ যাচাই করুন'; }
+        showErr('❌ Network error। আবার চেষ্টা করুন।');
+    });
+}
+
+// ── Off-platform (self-reported) donation ───────────────────────────
+//  Code নেই এমন রক্তদান যোগ করার modal। backend 120-দিনের medical gate দিয়ে
+//  যাচাই করে; এখানে শুধু তারিখ খালি/ভবিষ্যৎ কিনা সেটুকু client-side চেক।
+function openOffDonateModal() {
+    var m   = document.getElementById('offDonateModal');
+    if(!m) return;
+    var dt  = document.getElementById('offDonateDate');
+    var pl  = document.getElementById('offDonatePlace');
+    var err = document.getElementById('offDonateErr');
+    var btn = document.getElementById('offDonateSubmitBtn');
+    // default value = আজ; max = আজ (ভবিষ্যৎ আটকাই)
+    var todayStr = new Date().toISOString().slice(0, 10);
+    if(dt){ dt.max = todayStr; dt.value = todayStr; }
+    if(pl) pl.value = '';
+    if(err){ err.style.display = 'none'; err.textContent = ''; }
+    if(btn){ btn.disabled = false; btn.innerHTML = '✅ যোগ করুন'; }
+    m.style.display = 'flex';
+    if(typeof lockBodyScroll === 'function') lockBodyScroll();
+}
+function closeOffDonateModal() {
+    var m = document.getElementById('offDonateModal');
+    if(m) m.style.display = 'none';
+    if(typeof unlockBodyScroll === 'function') unlockBodyScroll();
+}
+function submitOffDonation() {
+    var dt  = document.getElementById('offDonateDate');
+    var pl  = document.getElementById('offDonatePlace');
+    var err = document.getElementById('offDonateErr');
+    var btn = document.getElementById('offDonateSubmitBtn');
+    var date  = dt ? dt.value : '';
+    var place = pl ? pl.value.trim() : '';
+    function showErr(msg){ if(err){ err.textContent = msg; err.style.display = 'block'; } }
+    if(!date){ showErr('⚠️ রক্তদানের তারিখ দিন।'); if(dt) dt.focus(); return; }
+    var todayStr = new Date().toISOString().slice(0, 10);
+    if(date > todayStr){ showErr('⚠️ ভবিষ্যতের তারিখ দেওয়া যাবে না।'); return; }
+    if(err) err.style.display = 'none';
+    if(btn){ btn.disabled = true; btn.innerHTML = '⏳ যোগ হচ্ছে...'; }
+    var fd = new FormData();
+    fd.append('add_offplatform_donation', '1');
+    fd.append('donation_date', date);
+    fd.append('place', place);
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if(d && d.status === 'success'){
+            if(typeof updateBadgeCard === 'function' && d.total_donations !== undefined){
+                updateBadgeCard(d.total_donations, d.badge_icon, d.badge_level);
+            }
+            closeOffDonateModal();
+            showToast(d.msg || '🎉 ধন্যবাদ! Donation যোগ হয়েছে।', 'success');
+            // availability / history / badge সব reflect করতে হালকা reload
+            setTimeout(function(){ location.reload(); }, 1400);
+        } else {
+            if(btn){ btn.disabled = false; btn.innerHTML = '✅ যোগ করুন'; }
+            showErr((d && d.msg) ? d.msg : '❌ যোগ করা যায়নি।');
+        }
+    })
+    .catch(function(){
+        if(btn){ btn.disabled = false; btn.innerHTML = '✅ যোগ করুন'; }
         showErr('❌ Network error। আবার চেষ্টা করুন।');
     });
 }
@@ -2672,7 +2755,7 @@ function onReqDocsChange(input){
 // Set when a signed-out user taps Emergency Request — after they sign in, the
 // request form auto-reopens so they continue seamlessly.
 var _pendingEmergencyRequest = false;
-function openBloodRequestModal(){
+function openBloodRequestModal(opts){
     // Require sign-in BEFORE showing the form. The backend enforces requireAuth()
     // anyway, so without this the user fills the whole form + uploads images and
     // only then fails. Gate here, prompt Google/phone sign-in, then auto-resume.
@@ -2698,6 +2781,19 @@ function openBloodRequestModal(){
     var _hosp = document.getElementById('req_hospital'); if(_hosp) _hosp.value='';
     if (typeof _resetHospitalLoc === 'function') _resetHospitalLoc();
     if (typeof hideHospitalSuggest === 'function') hideHospitalSuggest();
+    // ── Prefill (gate flow only): donor card-এর blood group + verified phone ──
+    if (opts && opts.prefillGroup) {
+        var _wantG = String(opts.prefillGroup);
+        document.querySelectorAll('#reqGroupGrid button').forEach(function(b){
+            if ((b.textContent || '').trim() === _wantG) selectReqGroup(b, _wantG);
+        });
+    }
+    if (opts) {
+        var _a = (typeof _authState === 'function') ? _authState() : null;
+        var _ph = (_a && (_a.verify_phone || _a.phone)) || '';
+        var _ct = document.getElementById('req_contact');
+        if (_ct && /^\+8801\d{9}$/.test(_ph) && (!_ct.value || _ct.value === '+8801')) _ct.value = _ph;
+    }
     document.getElementById('bloodReqModal').classList.add('active');
 }
 
@@ -2900,11 +2996,23 @@ function submitBloodRequest(){
             var _di = document.getElementById('req_docs');
             if (_di) { _di.value = ''; var _dh = document.getElementById('req_docs_hint'); if (_dh) _dh.textContent = 'JPG / PNG / WEBP / HEIC · প্রতিটি ৫MB পর্যন্ত · server-এ compress হবে'; }
             document.querySelectorAll('#reqGroupGrid .req-group-btn').forEach(function(b){ b.classList.remove('selected'); });
-            appSwitchPage('requests');   // jump to the Active Requests page (reloads the list)
-            // Request is tied to the signed-in account — manage/delete it from the
-            // "👤 আমার Request" tab here or the Account Dashboard. No token needed.
-            showToast('✅ Emergency request পাঠানো হয়েছে! "👤 আমার Request" tab থেকে যেকোনো সময় মুছতে পারবেন।', 'success');
+            _hasActiveReq = true;
             if (typeof refreshMyReqIds === 'function') refreshMyReqIds();
+            if (_pendingDonorAction) {
+                // Gate flow: don't jump to the Requests page — return to the donor
+                // card still on screen and re-run Call/Request (gate now passes).
+                var _resume = _pendingDonorAction; _pendingDonorAction = null;
+                showToast('✅ Request পাঠানো হয়েছে — এখন donor-কে যোগাযোগ করা হচ্ছে…', 'success');
+                setTimeout(function(){
+                    if (_resume.action === 'call') prepCall(_resume.donorId);
+                    else prepRequest(_resume.donorId);
+                }, 400);
+            } else {
+                appSwitchPage('requests');   // jump to the Active Requests page (reloads the list)
+                // Request is tied to the signed-in account — manage/delete it from the
+                // "👤 আমার Request" tab here or the Account Dashboard. No token needed.
+                showToast('✅ Emergency request পাঠানো হয়েছে! "👤 আমার Request" tab থেকে যেকোনো সময় মুছতে পারবেন।', 'success');
+            }
         } else {
             showValidationError(d.msg||'ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
         }
@@ -2927,10 +3035,17 @@ function toggleRequestSection(){
 // get_my_requests endpoint — no client-side token storage.
 var _myReqIds = new Set();
 function isMyRequest(id){ return _myReqIds.has(String(id)); }
+// ── Active-request gate state ──────────────────────────────────
+//  Donor-কে Call/Request করার আগে signed-in user-এর অন্তত একটি Active
+//  emergency request থাকতে হবে (server-ও enforce করে)। null = এখনো অজানা।
+var _hasActiveReq = null;
+//  গেট আটকালে request form submit-এর পরে এই donor-এ auto-return করা হয়।
+var _pendingDonorAction = null; // {action:'call'|'request', donorId, group}
 // Refresh the set of request IDs owned by the signed-in account, then re-filter.
 function refreshMyReqIds(cb){
     if (typeof _isSignedIn === 'function' && !_isSignedIn()) {
         _myReqIds = new Set();
+        _hasActiveReq = false;
         if (typeof applyReqFilter === 'function') applyReqFilter();
         if (cb) cb();
         return;
@@ -2943,12 +3058,52 @@ function refreshMyReqIds(cb){
         .then(function(res){
             var rows = (res && res.status === 'success' && Array.isArray(res.requests)) ? res.requests : [];
             _myReqIds = new Set(rows.map(function(r){ return String(r.id); }));
+            _hasActiveReq = _myReqIds.size > 0;
         })
         .catch(function(){ /* keep previous set on error */ })
         .then(function(){
             if (typeof applyReqFilter === 'function') applyReqFilter();
             if (cb) cb();
         });
+}
+
+// ── Donor blood group from the visible card/row (prefill the request form) ──
+//  Desktop row → .blood-badge ; mobile/nearby card → .dc-badge। regex দিয়ে
+//  "A+ / O- …" normalize করা হয় যাতে অতিরিক্ত text/whitespace থাকলেও ঠিক থাকে।
+function _donorGroupFromCard(donorId){
+    var id = String(donorId);
+    var btns = document.querySelectorAll(
+        'button[onclick="prepCall(\'' + id + '\')"], button[onclick="prepRequest(\'' + id + '\')"]');
+    var btn = null;
+    for (var i = 0; i < btns.length; i++){ if (btns[i].offsetParent !== null){ btn = btns[i]; break; } }
+    if (!btn && btns.length) btn = btns[0];
+    if (!btn) return '';
+    var card = btn.closest('.dc') || btn.closest('.nearby-card') || btn.closest('tr');
+    if (!card) return '';
+    var badge = card.querySelector('.dc-badge, .blood-badge');
+    var txt = badge ? (badge.textContent || '') : '';
+    var m = txt.replace(/\s+/g, '').match(/(AB|A|B|O)([+\-])/i);
+    return m ? (m[1].toUpperCase() + m[2]) : '';
+}
+
+// ── Active-request gate ────────────────────────────────────────
+//  onOk() চলবে কেবল active request থাকলে; নাহলে prefilled emergency form
+//  খোলে আর submit-এর পরে auto-return করার জন্য donor মনে রাখে।
+//  (sign-in + verified caller আগেই যাচাই করে।)
+function requireActiveRequest(action, donorId, onOk){
+    if (_hasActiveReq === true){ onOk(); return; }
+    refreshMyReqIds(function(){           // block করার আগে server থেকে fresh truth
+        if (_hasActiveReq === true){ onOk(); return; }
+        _openRequestFormForDonor(action, donorId);
+    });
+}
+
+function _openRequestFormForDonor(action, donorId){
+    _pendingDonorAction = { action: action, donorId: String(donorId), group: _donorGroupFromCard(donorId) };
+    if (typeof showToast === 'function')
+        showToast('🆘 Donor-কে যোগাযোগ করতে আগে একটি Emergency Request পাঠান।', 'info');
+    if (typeof openBloodRequestModal === 'function')
+        openBloodRequestModal({ prefillGroup: _pendingDonorAction.group });
 }
 
 // ── Active filter state ────────────────────────────────────────
@@ -3242,6 +3397,108 @@ function loadNearbyDonors(){
             <button class="req-call-btn" style="margin-top:12px;" onclick="loadNearbyDonors()">🔄 আবার চেষ্টা করুন</button>
         </div>`;
     },{timeout:15000, enableHighAccuracy:true});
+}
+
+// ============================================================
+// FEATURE: NEARBY REQUESTS (GPS) — কাছের জরুরি রক্তের অনুরোধ
+//  Nearby Donors-এর সমান্তরাল। GPS দিলে দূরত্ব-ভিত্তিক; denied/no-GPS হলে
+//  server সব active request fallback হিসেবে দেয় (fallback=true)।
+// ============================================================
+function loadNearbyRequests(){
+    const btn = document.getElementById('nearbyReqLoadBtn');
+    const results = document.getElementById('nearbyReqResults');
+    if(!results) return;
+    if(btn){ btn.textContent = '⏳ Location নিচ্ছে...'; btn.disabled = true; }
+
+    var _run = function(lat, lng){
+        if(btn){ btn.textContent = '⏳ Requests খুঁজছে...'; }
+        const fd = new FormData();
+        fd.append('get_nearby_requests','1');
+        if(lat != null && lng != null){ fd.append('lat', lat); fd.append('lng', lng); }
+        fd.append('radius', (document.getElementById('nearbyReqRadius')||{}).value || '5');
+        fd.append('filter_group', (document.getElementById('nearbyReqGroupFilter')||{}).value || 'All');
+        fd.append('csrf_token', CSRF_TOKEN);
+        fetch(_AJAX_URL,{method:'POST',body:fd})
+        .then(safeJSON)
+        .then(function(d){
+            if(btn){ btn.textContent = '🔄 আবার খুঁজুন'; btn.disabled = false; }
+            if(!d || d.status !== 'success'){
+                results.innerHTML = '<div class="nearby-empty" style="grid-column:1/-1;">❌ '+((d&&d.msg)||'লোড করতে সমস্যা')+'</div>';
+                return;
+            }
+            _renderNearbyRequests(d.requests || [], !!d.fallback, (lat != null));
+        })
+        .catch(function(){
+            if(btn){ btn.textContent = '📡 খুঁজুন'; btn.disabled = false; }
+            results.innerHTML = '<div class="nearby-empty" style="grid-column:1/-1;">❌ Network error. আবার চেষ্টা করুন।</div>';
+        });
+    };
+
+    if(!navigator.geolocation){ _run(null, null); return; } // GPS নেই → fallback
+    navigator.geolocation.getCurrentPosition(
+        function(pos){ _run(pos.coords.latitude, pos.coords.longitude); },
+        function(){ _run(null, null); },   // denied/unavailable → server fallback (সব active)
+        { timeout:15000, enableHighAccuracy:true }
+    );
+}
+
+// Render nearby-request cards (reuses .req-card look). Data is server-escaped
+// (esc()) — injected directly, same trust model as Nearby Donors.
+function _renderNearbyRequests(reqs, fallback, hadGps){
+    const results = document.getElementById('nearbyReqResults');
+    if(!results) return;
+    if(!reqs.length){
+        results.innerHTML = '<div class="nearby-empty" style="grid-column:1/-1;">'
+            + '<div style="font-size:2.5rem;margin-bottom:10px;">🕊️</div>'
+            + '<p style="font-weight:600;">এই মুহূর্তে কোনো active request নেই</p>'
+            + '<p style="font-size:0.85em;color:var(--text-muted);margin-top:5px;">পরে আবার দেখুন</p></div>';
+        return;
+    }
+    const urgencyClass = {Critical:'critical', High:'high', Medium:'medium'};
+    const urgencyIcon  = {Critical:'🔴', High:'🟠', Medium:'🔵'};
+    const timeAgo = function(dt){
+        var unix = parseInt(dt,10);
+        var ms = isNaN(unix) ? Date.parse(dt) : unix*1000;
+        var diff = Math.floor((Date.now()-ms)/60000);
+        if(isNaN(diff) || diff < 1) return 'এইমাত্র';
+        if(diff < 60)   return diff+'মিনিট আগে';
+        if(diff < 1440) return Math.floor(diff/60)+'ঘণ্টা আগে';
+        return Math.floor(diff/1440)+'দিন আগে';
+    };
+    const fmtReq = function(ts){
+        var unix = parseInt(ts,10);
+        if(!unix || isNaN(unix)) return '';
+        try { return new Date(unix*1000).toLocaleString('bn-BD',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
+        catch(e){ return new Date(unix*1000).toLocaleString(); }
+    };
+    var note = fallback
+        ? '<div style="grid-column:1/-1;font-size:0.8em;color:var(--text-muted);background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:9px 12px;margin-bottom:2px;line-height:1.5;">📍 '
+          + (hadGps ? 'কাছাকাছি geo-tagged request নেই — সব active request দেখানো হচ্ছে।' : 'Location ছাড়া — সব active request দেখানো হচ্ছে।')
+          + '</div>'
+        : '';
+    results.innerHTML = note + reqs.map(function(r){
+        var uc = urgencyClass[r.urgency] || 'high';
+        var distLine = (r.dist != null)
+            ? '<div class="req-card-hosp">📏 '+r.dist+' km দূরে (আনুমানিক)</div>'
+            : '';
+        return '<div class="req-card '+uc+'">'
+            + '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+            +   '<span class="req-card-urgency '+uc+'">'+(urgencyIcon[r.urgency]||'')+' '+r.urgency+'</span>'
+            +   '<span style="font-size:0.75em;color:var(--text-muted);">'+timeAgo(r.created_at)+'</span>'
+            + '</div>'
+            + '<div class="req-card-group">🩸 '+r.blood_group+'</div>'
+            + '<div class="req-card-name">👤 '+r.patient_name+'</div>'
+            + '<div class="req-card-hosp">🏥 '+r.hospital+'</div>'
+            + distLine
+            + '<div style="font-size:0.74em;margin:3px 0 0;font-weight:700;color:'+(parseInt(r.verified_location)?'#10b981':'#f59e0b')+';">'+(parseInt(r.verified_location)?'✅ Verified Location':'⚠️ Unverified Location')+'</div>'
+            + '<div class="req-card-meta">'
+            +   '<span class="req-tag">🩸 '+r.bags_needed+' ব্যাগ</span>'
+            +   (r.required_at ? '<span class="req-tag">⏰ '+fmtReq(r.required_at)+'</span>' : '')
+            +   (r.note ? '<span class="req-tag">📝 '+r.note+'</span>' : '')
+            + '</div>'
+            + '<button class="req-call-btn" onclick="window.location=\'tel:'+r.contact+'\'">📞 '+r.contact+' — এখনই Call করুন</button>'
+            + '</div>';
+    }).join('');
 }
 
 // ============================================================
@@ -4726,6 +4983,9 @@ document.addEventListener('click', function(e){
 // data load happens via _loadAccountDashboard(), called both here and from
 // appSwitchPage('account') so nav/deep-link refreshes too.
 function openAccountDashboard() {
+    // ইতিমধ্যে account page-এ থাকলে শুধু data reload করো। appSwitchPage একই
+    // page-এ early-return করে, ফলে toggle/delete-এর পর refresh skip হয়ে যেত।
+    if (_currentPage === 'account') { _loadAccountDashboard(); return; }
     if (typeof appSwitchPage === 'function') appSwitchPage('account');
     else _loadAccountDashboard();
 }
@@ -4871,6 +5131,7 @@ function deleteMyAccountRequest(reqId, btn) {
                 showToast(d.msg || '✅ Request মুছে ফেলা হয়েছে।', 'success');
                 // Drop from the account-owned ID set so the Emergency "mine" tab updates
                 try { if (typeof _myReqIds !== 'undefined') _myReqIds.delete(String(reqId)); } catch(e){}
+                try { _hasActiveReq = _myReqIds.size > 0; } catch(e){} // deleting the last one re-gates Call/Request
                 // Vanish from the bell panel + badge immediately — don't wait for
                 // the next 30s poll (deleted requests should disappear right away).
                 try {
@@ -4981,10 +5242,17 @@ function _renderMyDonations(res) {
         history.forEach(function(h){
             var dt = h.ts ? new Date(h.ts * 1000) : null;
             var ds = dt ? dt.toLocaleDateString('bn-BD', {year:'numeric', month:'long', day:'numeric'}) : '—';
+            // source: 'self' = নিজে রিপোর্ট করা (off-platform), অন্যথায় code-যাচাইকৃত
+            var isSelf = (h.source === 'self');
+            var tag = isSelf
+                ? '<span class="acc-don-tag acc-don-tag-self">নিজে রিপোর্ট করা</span>'
+                : '<span class="acc-don-tag acc-don-tag-verified">✅ যাচাইকৃত</span>';
+            var place = (isSelf && h.note) ? ' · ' + _esc(h.note) : '';
             rows +=
                 '<div class="acc-tl-item">' +
                   '<div class="acc-tl-marker"><span class="acc-tl-dot">🩸</span></div>' +
-                  '<div class="acc-tl-body"><strong>' + _esc(ds) + '</strong><br><span>রক্তদান করেছেন</span></div>' +
+                  '<div class="acc-tl-body"><strong>' + _esc(ds) + '</strong> ' + tag +
+                    '<br><span>রক্তদান করেছেন' + place + '</span></div>' +
                 '</div>';
         });
     } else if (res.last_donation && res.last_donation !== 'no') {
@@ -5000,8 +5268,8 @@ function _renderMyDonations(res) {
             '<div class="acc-empty">' +
               '<span class="acc-empty-ico">🩸</span>' +
               'এখনো কোনো রক্তদানের রেকর্ড নেই' +
-              '<div class="acc-empty-sub">রক্ত দেওয়ার পর নিচের বাটনে চাপুন</div>' +
-              '<button class="acc-empty-btn" onclick="closeAccountModal(); appSwitchPage(\'register\'); setTimeout(function(){ try{switchTab(1); loadMyDonorInfo();}catch(e){} },220);">🩸 আমি এইমাত্র রক্ত দিয়েছি</button>' +
+              '<div class="acc-empty-sub">প্ল্যাটফর্মের বাইরে রক্ত দিয়ে থাকলে নিচে যোগ করুন</div>' +
+              '<button class="acc-empty-btn" onclick="openOffDonateModal()">✚ বাইরের রক্তদান যোগ করুন</button>' +
             '</div>';
         return;
     }
@@ -5098,7 +5366,7 @@ function _renderAccountDashboard(res) {
                   '<span class="acc-empty-ico">🩸</span>' +
                   '<span style="color:var(--text-main);font-weight:500;">আপনি এখনো রক্তদাতা হিসেবে নিবন্ধিত নন</span>' +
                   '<div class="acc-empty-sub">রক্তদাতা হিসেবে যুক্ত হয়ে জীবন বাঁচাতে সাহায্য করুন</div>' +
-                  '<button class="acc-empty-btn" style="background:var(--success);" onclick="closeAccountModal(); appSwitchPage(\'register\'); setTimeout(function(){ try{switchTab(0);}catch(e){} },220);">📝 রক্তদাতা হিসেবে যুক্ত হোন</button>' +
+                  '<button class="acc-empty-btn" style="background:var(--success);" onclick="appSwitchPage(\'register\'); setTimeout(function(){ try{switchTab(0);}catch(e){} },220);">📝 রক্তদাতা হিসেবে যুক্ত হোন</button>' +
                 '</div>';
             cta.style.display = '';
         }
@@ -5146,8 +5414,11 @@ function _renderEligibilityRing(lastStr) {
 
 // ── Account Dashboard থেকে এক ট্যাপে willing/not-willing toggle ──
 function setMyWilling(val) {
-    var btn = document.getElementById('accWillBtn');
-    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+    var segYes = document.getElementById('accSegYes');
+    var segNo  = document.getElementById('accSegNo');
+    // double-tap রোধে request চলাকালীন দুটো segment-ই disable
+    if (segYes) segYes.disabled = true;
+    if (segNo)  segNo.disabled = true;
     var fd = new FormData();
     fd.append('set_willing', '1');
     fd.append('willing', val);
@@ -5155,17 +5426,23 @@ function setMyWilling(val) {
     fetch(_AJAX_URL, {method:'POST', body:fd})
         .then(safeJSON)
         .then(function(res){
+            if (segYes) segYes.disabled = false;
+            if (segNo)  segNo.disabled = false;
             if (res && res.status === 'success') {
-                showToast(val === 'no' ? '⛔ আপনি এখন রক্তদানে অনিচ্ছুক হিসেবে চিহ্নিত।'
-                                       : '✅ আপনি আবার রক্তদানে ইচ্ছুক হিসেবে চিহ্নিত।', 'success');
-                openAccountDashboard(); // refresh card with new state
+                // server যা সেভ করল সেটাই authoritative — segmented control সাথে সাথে update
+                // (full reload ছাড়াই, _renderAccountDashboard-এর একই logic)
+                var notWilling = (res.willing === 'no');
+                if (segYes) segYes.className = 'acc-seg-btn seg-yes' + (notWilling ? '' : ' is-active');
+                if (segNo)  segNo.className  = 'acc-seg-btn seg-no'  + (notWilling ? ' is-active' : '');
+                showToast(notWilling ? '🚫 ঠিক আছে — এখন আপনি "এখন পারছি না" হিসেবে দেখাবেন।'
+                                     : '✅ এখন থেকে আপনি "রক্ত দিতে পারি" হিসেবে দেখাবেন।', 'success');
             } else {
-                if (btn) { btn.disabled = false; btn.style.opacity = ''; }
                 showToast((res && res.msg) ? res.msg : 'পরিবর্তন করা যায়নি।', 'error');
             }
         })
         .catch(function(){
-            if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            if (segYes) segYes.disabled = false;
+            if (segNo)  segNo.disabled = false;
             showToast('Network error। আবার চেষ্টা করুন।', 'error');
         });
 }

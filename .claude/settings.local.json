@@ -111,7 +111,32 @@
       "Bash(curl -s \"https://bloodarenabd.tech/?cb=$\\(date +%s\\)\")",
       "Bash(awk '{printf \"%7.0f KB  %s\\\\n\", $5/1024, $9}')",
       "Bash(awk '{print $5\" bytes\"}')",
-      "Bash(awk 'END{print NR}' assets/styles.css.php)"
+      "Bash(awk 'END{print NR}' assets/styles.css.php)",
+      "Bash(awk '/CREATE TABLE IF NOT EXISTS `auth_users`/{f=1} f{print} f&&/\\\\\\);/{c++; if\\(c>=1\\) exit}' includes/backend.php)",
+      "Bash(awk '/CREATE TABLE IF NOT EXISTS `donation_history`/{f=1} f{print} f&&/ENGINE=/{exit}' includes/backend.php)",
+      "Bash(awk '/CREATE TABLE IF NOT EXISTS `blood_requests`/{f=1} f{print} f&&/ENGINE=/{exit}' includes/backend.php)",
+      "Bash(awk '/CREATE TABLE IF NOT EXISTS .service_notifications./{f=1} f{print} f&&/ENGINE=/{exit}' includes/backend.php)",
+      "Bash(curl -s https://bloodarenabd.tech/)",
+      "Bash(php assets/app.js.php)",
+      "Bash(php -m)",
+      "Bash(npm install *)",
+      "Bash(where mysql *)",
+      "Bash(where winget *)",
+      "Bash(winget --version)",
+      "Bash(where choco *)",
+      "Bash(where scoop *)",
+      "Bash(winget search *)",
+      "Bash(winget install *)",
+      "Bash(curl -s \"https://bloodarenabd.tech/assets/styles.css.php\" -w \"\\\\n[HTTP %{http_code}] %{size_download} bytes\\\\n\" -o /tmp/live.css)",
+      "Bash(curl -s \"https://bloodarenabd.tech/\" -o /tmp/h.html -w \"[HTTP %{http_code}] %{size_download} bytes\\\\n\")",
+      "Bash(echo \"=== exit=$? ===\")",
+      "Bash(awk 'NR>=1790 && NR<=1875 && /SELECT|FROM donors|while *\\\\\\(|fetch_assoc|\\\\$query|get_result/' includes/backend.php)",
+      "Bash(awk -F: '$1>1790 && $1<1880')",
+      "Bash(php -r 'define\\(\"COLOR_BG_MAIN\",\"#fff\"\\);define\\(\"COLOR_PRIMARY\",\"#dc2743\"\\);define\\(\"COLOR_PRIMARY_HOVER\",\"#b71d38\"\\); ob_start\\(\\); include \"assets/styles.css.php\"; $c=ob_get_clean\\(\\); $o=substr_count\\($c,\"{\"\\); $cl=substr_count\\($c,\"}\"\\); echo \"open={$o} close={$cl} balanced=\".\\($o===$cl?\"YES\":\"NO\"\\).\"\\\\n\"; echo \"acc-classes: \".substr_count\\($c,\"#page-account .acc-\"\\).\" rules\\\\n\"; echo \"has ring/seg/timeline/settings: \".\\(strpos\\($c,\".acc-ring\"\\)!==false?\"ring \":\"\"\\).\\(strpos\\($c,\".acc-seg-btn\"\\)!==false?\"seg \":\"\"\\).\\(strpos\\($c,\".acc-timeline\"\\)!==false?\"tl \":\"\"\\).\\(strpos\\($c,\".acc-settings\"\\)!==false?\"set\":\"\"\\).\"\\\\n\";')",
+      "Bash(awk 'NR>=2057 && NR<=2204' partials/body.php)",
+      "Bash(sed 's/\\\\\\(PASS\\\\|PASSWORD\\\\|PWD\\\\\\)=.*/\\\\1=***REDACTED***/I')",
+      "Bash(command -v python python3)",
+      "Bash(php *)"
     ]
   }
 }

@@ -1417,6 +1417,10 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
 #page-account .acc-tl-body { flex: 1; padding-top: 3px; font-size: 0.84em; line-height: 1.5; }
 #page-account .acc-tl-body strong { color: var(--text-main); font-weight: 500; }
 #page-account .acc-tl-body span { color: var(--text-muted); }
+/* donation source tag — verified-by-code vs self-reported (off-platform) */
+#page-account .acc-don-tag { display: inline-block; font-size: 0.66em; font-weight: 500; padding: 1px 7px; border-radius: 12px; vertical-align: middle; white-space: nowrap; }
+#page-account .acc-don-tag-verified { background: rgba(16,185,129,0.12); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+#page-account .acc-don-tag-self { background: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
 
 /* ── empty states ── */
 #page-account .acc-empty { background: var(--input-bg); border: 1px dashed var(--border-color); border-radius: 12px; padding: 18px 14px; text-align: center; color: var(--text-muted); font-size: 0.82em; margin-bottom: 18px; line-height: 1.6; }
@@ -2565,6 +2569,23 @@ body.npanel-scroll-lock { position: fixed; width: 100%; overflow: hidden; }
 }
 .dcode-modal-submit:disabled { opacity:0.7; cursor:not-allowed; }
 .dcode-modal-note { font-size:0.7em; color:var(--text-muted); margin-top:12px; line-height:1.6; }
+/* Secondary link inside #dcodeModal → opens the off-platform modal.
+   !important defeats the global button{} red-bar rule (same as .dcode-modal-x). */
+.dcode-modal-alt {
+    width:100% !important; margin:10px 0 0 !important; padding:9px !important; min-height:unset !important;
+    background:transparent !important; border:1px dashed var(--border-color) !important; box-shadow:none !important;
+    color:var(--text-muted); font-size:0.74em; font-weight:600; line-height:1.5; cursor:pointer;
+    border-radius:10px; transition:color 0.15s, border-color 0.15s;
+}
+.dcode-modal-alt:hover { color:var(--accent-orange); border-color:var(--accent-orange) !important; transform:none !important; }
+/* Off-platform modal: normal (non-OTP) inputs — override the wide letter-spacing
+   monospace look of .dcode-modal-input for a plain date + text field. */
+.off-donate-label { display:block; text-align:left; font-size:0.76em; font-weight:600; color:var(--text-muted); margin:12px 0 5px; }
+.off-donate-input {
+    font-family:var(--font-body) !important; font-size:1em !important; font-weight:500 !important;
+    letter-spacing:normal !important; text-align:left !important; padding:11px 13px !important;
+}
+.off-donate-input::-webkit-calendar-picker-indicator { filter:invert(0.6); cursor:pointer; }
 .notif-row { padding:9px; border-radius:10px; cursor:pointer; transition:background 0.12s; margin-bottom:3px; display:flex; align-items:flex-start; justify-content:space-between; gap:6px; }
 .notif-row:hover { background:rgba(220,38,38,0.08); }
 .notif-row-grp { font-size:1.3em; font-weight:900; color:var(--primary-red); font-family:var(--font-heading); }

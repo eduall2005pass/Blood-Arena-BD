@@ -1337,6 +1337,43 @@ HTML;
     </div>
 </div>
 
+<!-- ==================== NEARBY REQUESTS SECTION ==================== -->
+<div class="container nearby-section" id="nearbyReqSection">
+    <div class="section-header-row">
+        <div>
+            <h3 class="section-title">🆘 কাছের Requests</h3>
+            <p class="section-sub">GPS দিয়ে কাছের জরুরি রক্তের অনুরোধ</p>
+        </div>
+        <button class="analytics-refresh-btn" id="nearbyReqLoadBtn" onclick="loadNearbyRequests()">📡 খুঁজুন</button>
+    </div>
+    <div class="nearby-controls">
+        <div style="flex:1;min-width:120px;">
+            <label style="font-size:0.8em;color:var(--text-muted);display:block;margin-bottom:4px;">🩸 Blood Group</label>
+            <select id="nearbyReqGroupFilter" style="margin:0;" onchange="if(document.getElementById('nearbyReqResults').querySelector('.req-card')) loadNearbyRequests();">
+                <option value="All">All Groups</option>
+                <?php foreach(["A+","A-","B+","B-","AB+","AB-","O+","O-"] as $g) echo "<option>$g</option>"; ?>
+            </select>
+        </div>
+        <div style="flex:1;min-width:120px;">
+            <label style="font-size:0.8em;color:var(--text-muted);display:block;margin-bottom:4px;">📍 Radius (km)</label>
+            <select id="nearbyReqRadius" style="margin:0;">
+                <option value="2">2 km</option>
+                <option value="5" selected>5 km</option>
+                <option value="10">10 km</option>
+                <option value="20">20 km</option>
+                <option value="50">50 km</option>
+            </select>
+        </div>
+    </div>
+    <div class="req-grid" id="nearbyReqResults">
+        <div class="nearby-empty" style="grid-column:1/-1;">
+            <div style="font-size:3rem;margin-bottom:10px;">🆘</div>
+            <p style="font-weight:600;margin-bottom:5px;">কাছের জরুরি রক্তের অনুরোধ দেখুন</p>
+            <p style="font-size:0.85em;color:var(--text-muted);">উপরের বাটনে ক্লিক করুন</p>
+        </div>
+    </div>
+</div>
+
 <!-- ==================== MAP SECTION ==================== -->
 <div class="container map-section" id="mapSection">
     <div class="section-header-row">
@@ -1401,48 +1438,6 @@ HTML;
   </div>
   <span class="fab-live" title="Live"><span class="fab-live-dot"></span>LIVE</span>
 </div>
-
-<!-- ===== PROFESSIONAL SITE FOOTER (desktop/tablet only) ===== -->
-<footer class="site-footer desk-only" id="siteFooter">
-  <div class="site-footer-inner">
-    <div class="sf-top">
-      <!-- Quick links -->
-      <div class="sf-col sf-links-col">
-        <p class="sf-heading">Quick Links</p>
-        <div class="sf-links-grid">
-          <button class="sf-link" type="button" onclick="openInfoPage('about')"><span class="sf-link-ic">ⓘ</span> About</button>
-          <button class="sf-link" type="button" onclick="openInfoPage('privacy')"><span class="sf-link-ic">🔒</span> Privacy</button>
-          <button class="sf-link" type="button" onclick="openInfoPage('faq')"><span class="sf-link-ic">❓</span> FAQ</button>
-          <button class="sf-link" type="button" onclick="openInfoPage('sponsor')"><span class="sf-link-ic">⭐</span> Sponsors</button>
-        </div>
-        <button class="sf-link sf-link-wide" type="button" onclick="openInfoPage('donate')"><span class="sf-link-ic">❤️</span> Donate Us</button>
-      </div>
-      <!-- Developed by -->
-      <div class="sf-col sf-dev-col">
-        <p class="sf-heading">Developed By</p>
-        <div class="sf-dev-cards">
-          <div class="sf-dev-card" role="button" tabindex="0" onclick="openInfoPage('about')">
-            <img src="siam.jpg" alt="Siam" class="sf-dev-ava sf-dev-ava-img" loading="lazy" decoding="async">
-            <span class="sf-dev-name">Siam <span class="sf-dev-batch">(Sh-20)</span></span>
-            <span class="sf-dev-role">Dev &amp; Planner</span>
-          </div>
-          <div class="sf-dev-card" role="button" tabindex="0" onclick="openInfoPage('about')">
-            <img src="rafi.jpg" alt="Rafi" class="sf-dev-ava sf-dev-ava-img" loading="lazy" decoding="async">
-            <span class="sf-dev-name">Rafi <span class="sf-dev-batch">(Sh-20)</span></span>
-            <span class="sf-dev-role">Planner</span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <!-- Wide CTAs -->
-    <div class="sf-cta-row">
-      <button class="sf-cta" type="button" onclick="openInfoPage('privacy')">📄 শর্তাবলী ও নীতিমালা</button>
-      <button class="sf-cta" type="button" onclick="openInfoPage('about')">ⓘ আমাদের কথা (About Us)</button>
-    </div>
-    <div class="site-footer-copy">&copy; <?php echo date("Y"); ?> <?= htmlspecialchars(BRAND_NAME) ?> — All Rights Reserved. <span class="sf-ver">v2.5.8</span></div>
-    <div class="site-footer-powered">Powered by Siam Innovations</div>
-  </div>
-</footer>
 
 <!-- PWA INSTALL PROMPT -->
 <div id="pwaInstallOverlay" role="dialog" aria-modal="true" aria-label="App Install Prompt">
@@ -1701,7 +1696,27 @@ HTML;
         <input type="tel" id="dcodeInput" class="dcode-modal-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="০ ০ ০ ০ ০ ০" autocomplete="one-time-code" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
         <div id="dcodeModalErr" class="dcode-modal-err" style="display:none;"></div>
         <button type="button" id="dcodeSubmitBtn" class="dcode-modal-submit" onclick="submitDonationCode()">✅ যাচাই করুন</button>
+        <button type="button" class="dcode-modal-alt" onclick="closeDcodeModal(); openOffDonateModal();">Code নেই? প্ল্যাটফর্মের বাইরে রক্ত দিয়েছেন? — এখানে যোগ করুন</button>
         <p class="dcode-modal-note">⚠️ একটি Code একজন দাতা একবারই ব্যবহার করতে পারবেন। নিজের Request-এর Code ব্যবহার করা যাবে না।</p>
+    </div>
+</div>
+
+<!-- ── Off-platform (self-reported) donation modal — body-level like #dcodeModal ──
+     Code নেই এমন রক্তদান (অন্য হাসপাতাল/ক্যাম্প)। যাচাই: 120-দিনের medical gate
+     (backend: add_offplatform_donation)। position:fixed → app-page-এর বাইরে রাখা। -->
+<div id="offDonateModal" class="dcode-modal-overlay" style="display:none;" onclick="if(event.target===this)closeOffDonateModal()">
+    <div class="dcode-modal" role="dialog" aria-modal="true" aria-labelledby="offDonateTitle">
+        <button type="button" class="dcode-modal-x" onclick="closeOffDonateModal()" aria-label="Close">✕</button>
+        <div class="dcode-modal-icon">🩸</div>
+        <h3 class="dcode-modal-title" id="offDonateTitle">বাইরের রক্তদান যোগ করুন</h3>
+        <p class="dcode-modal-sub">অন্য কোথাও (হাসপাতাল/ক্যাম্প) রক্ত দিয়েছেন যেখানে কোনো Code পাননি? এখানে যোগ করুন। এটি <strong>নিজে রিপোর্ট করা</strong> হিসেবে চিহ্নিত হবে ও যাচাই/নিরীক্ষা হতে পারে।</p>
+        <label class="off-donate-label" for="offDonateDate">রক্তদানের তারিখ</label>
+        <input type="date" id="offDonateDate" class="dcode-modal-input off-donate-input">
+        <label class="off-donate-label" for="offDonatePlace">স্থান / হাসপাতাল (ঐচ্ছিক)</label>
+        <input type="text" id="offDonatePlace" class="dcode-modal-input off-donate-input" maxlength="140" placeholder="যেমন: ঢাকা মেডিকেল কলেজ">
+        <div id="offDonateErr" class="dcode-modal-err" style="display:none;"></div>
+        <button type="button" id="offDonateSubmitBtn" class="dcode-modal-submit" onclick="submitOffDonation()">✅ যোগ করুন</button>
+        <p class="dcode-modal-note">⚠️ একজন সুস্থ মানুষ ~৪ মাস (১২০ দিন) পরপর রক্ত দিতে পারেন — তাই শেষ রক্তদানের ১২০ দিনের মধ্যে নতুন রক্তদান যোগ করা যাবে না।</p>
     </div>
 </div>
 
@@ -2103,7 +2118,7 @@ HTML;
             <div id="accVerifyBanner" style="display:none;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.28);border-radius:12px;padding:12px 14px;margin-bottom:16px;">
                 <p style="font-size:0.82em;color:#f59e0b;font-weight:500;margin:0 0 3px;">⚠️ আপনার অ্যাকাউন্ট unverified</p>
                 <p style="font-size:0.76em;color:var(--text-muted);margin:0 0 10px;line-height:1.6;">দাতাকে <strong>call</strong> করতে Telegram বা WhatsApp দিয়ে নম্বর verify করুন। (blood request এখনই করা যাবে)</p>
-                <button onclick="closeAccountModal(); openVerifyModal();" type="button"
+                <button onclick="openVerifyModal();" type="button"
                     style="width:100%;background:#229ED9;color:#fff;border:none;border-radius:10px;padding:11px;font-weight:500;font-size:0.85em;box-shadow:none;margin:0;">🔗 এখন verify করুন</button>
             </div>
 
@@ -2126,16 +2141,19 @@ HTML;
             <!-- ══ 3) ACTION ROW (availability toggle + update) ══ -->
             <div class="acc-action-row" id="accActionRow" style="display:none;">
                 <div class="acc-seg" role="group" aria-label="Availability">
-                    <button type="button" id="accSegYes" class="acc-seg-btn seg-yes" onclick="setMyWilling('yes')">উপলব্ধ</button>
-                    <button type="button" id="accSegNo" class="acc-seg-btn seg-no" onclick="setMyWilling('no')">অনুপলব্ধ</button>
+                    <button type="button" id="accSegYes" class="acc-seg-btn seg-yes" onclick="setMyWilling('yes')">রক্ত দিতে পারি</button>
+                    <button type="button" id="accSegNo" class="acc-seg-btn seg-no" onclick="setMyWilling('no')">এখন পারছি না</button>
                 </div>
-                <button type="button" class="acc-update-btn" onclick="closeAccountModal(); appSwitchPage('register'); setTimeout(function(){ try{switchTab(1); loadMyDonorInfo();}catch(e){} },220);">✏️ আমার তথ্য Update করুন</button>
+                <button type="button" class="acc-update-btn" onclick="appSwitchPage('register'); setTimeout(function(){ try{switchTab(1); loadMyDonorInfo();}catch(e){} },220);">✏️ আমার তথ্য Update করুন</button>
             </div>
 
             <!-- ══ 4) DONATION HISTORY ══ -->
             <div class="acc-sec-head">
                 <span class="acc-sec-title"><span class="acc-sec-ico">🩸</span>আমার রক্তদান</span>
-                <span id="accDonationCount" class="acc-sec-meta"></span>
+                <span style="display:flex;align-items:center;gap:8px;">
+                    <span id="accDonationCount" class="acc-sec-meta"></span>
+                    <button onclick="openOffDonateModal()" class="acc-sec-action" title="প্ল্যাটফর্মের বাইরে দেওয়া রক্তদান যোগ করুন">✚ বাইরের রক্তদান</button>
+                </span>
             </div>
             <div id="accDonationList"></div>
 
@@ -2202,6 +2220,52 @@ HTML;
         </div>
     </div><!-- .account-page-inner -->
 </div><!-- end page-account -->
+
+<!-- ===== PROFESSIONAL SITE FOOTER (desktop/tablet only) =====
+     Placed AFTER the last .app-page so the always-visible desktop footer
+     follows whichever page is active in document flow. (Previously it sat
+     before #page-account, so on desktop it rendered ABOVE the account
+     dashboard — every other page precedes it, only account came after.) -->
+<footer class="site-footer desk-only" id="siteFooter">
+  <div class="site-footer-inner">
+    <div class="sf-top">
+      <!-- Quick links -->
+      <div class="sf-col sf-links-col">
+        <p class="sf-heading">Quick Links</p>
+        <div class="sf-links-grid">
+          <button class="sf-link" type="button" onclick="openInfoPage('about')"><span class="sf-link-ic">ⓘ</span> About</button>
+          <button class="sf-link" type="button" onclick="openInfoPage('privacy')"><span class="sf-link-ic">🔒</span> Privacy</button>
+          <button class="sf-link" type="button" onclick="openInfoPage('faq')"><span class="sf-link-ic">❓</span> FAQ</button>
+          <button class="sf-link" type="button" onclick="openInfoPage('sponsor')"><span class="sf-link-ic">⭐</span> Sponsors</button>
+        </div>
+        <button class="sf-link sf-link-wide" type="button" onclick="openInfoPage('donate')"><span class="sf-link-ic">❤️</span> Donate Us</button>
+      </div>
+      <!-- Developed by -->
+      <div class="sf-col sf-dev-col">
+        <p class="sf-heading">Developed By</p>
+        <div class="sf-dev-cards">
+          <div class="sf-dev-card" role="button" tabindex="0" onclick="openInfoPage('about')">
+            <img src="siam.jpg" alt="Siam" class="sf-dev-ava sf-dev-ava-img" loading="lazy" decoding="async">
+            <span class="sf-dev-name">Siam <span class="sf-dev-batch">(Sh-20)</span></span>
+            <span class="sf-dev-role">Dev &amp; Planner</span>
+          </div>
+          <div class="sf-dev-card" role="button" tabindex="0" onclick="openInfoPage('about')">
+            <img src="rafi.jpg" alt="Rafi" class="sf-dev-ava sf-dev-ava-img" loading="lazy" decoding="async">
+            <span class="sf-dev-name">Rafi <span class="sf-dev-batch">(Sh-20)</span></span>
+            <span class="sf-dev-role">Planner</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Wide CTAs -->
+    <div class="sf-cta-row">
+      <button class="sf-cta" type="button" onclick="openInfoPage('privacy')">📄 শর্তাবলী ও নীতিমালা</button>
+      <button class="sf-cta" type="button" onclick="openInfoPage('about')">ⓘ আমাদের কথা (About Us)</button>
+    </div>
+    <div class="site-footer-copy">&copy; <?php echo date("Y"); ?> <?= htmlspecialchars(BRAND_NAME) ?> — All Rights Reserved. <span class="sf-ver">v2.5.8</span></div>
+    <div class="site-footer-powered">Powered by Siam Innovations</div>
+  </div>
+</footer>
 
 <div class="popup-overlay" id="faqModal">
     <div class="popup" style="max-width:580px;padding:0;overflow:hidden;">
