@@ -340,7 +340,8 @@ HTML;
       </div>
     </div>
     <div class="notif-bell-wrap" id="nBellWrap">
-      <button class="notif-bell" id="nBell" onclick="toggleNPanel()" title="Live Requests">
+      <button class="notif-bell" id="nBell" onclick="toggleNPanel()" title="Live Requests"
+              aria-label="Notifications" aria-haspopup="dialog" aria-controls="nPanel" aria-expanded="false">
         🔔<span class="notif-badge" id="nBadge"></span>
       </button>
     </div>
@@ -601,23 +602,23 @@ HTML;
 </div>
 <!-- Notif panel rendered at body level to escape header stacking context -->
 <div class="notif-panel-anchor">
-  <div class="notif-panel" id="nPanel">
+  <div class="notif-panel" id="nPanel" role="dialog" aria-label="Notifications" aria-modal="false">
     <!-- Tab header -->
-    <div class="notif-tabs-hdr">
-      <button class="notif-tab-btn active" id="nTabBlood" onclick="switchNTab('blood')">
+    <div class="notif-tabs-hdr" role="tablist" aria-label="Notification categories">
+      <button class="notif-tab-btn active" id="nTabBlood" role="tab" aria-selected="true" aria-controls="nTabBloodContent" tabindex="0" onclick="switchNTab('blood')">
         🆘 Blood Request<span class="notif-tab-badge" id="nTabBloodBadge" style="display:none;"></span>
       </button>
-      <button class="notif-tab-btn" id="nTabSvc" onclick="switchNTab('service')">
+      <button class="notif-tab-btn" id="nTabSvc" role="tab" aria-selected="false" aria-controls="nTabSvcContent" tabindex="-1" onclick="switchNTab('service')">
         ⚙️ Services<span class="notif-tab-badge" id="nTabSvcBadge" style="display:none;"></span>
       </button>
     </div>
     <!-- Blood Request tab -->
-    <div id="nTabBloodContent">
+    <div id="nTabBloodContent" role="tabpanel" aria-labelledby="nTabBlood">
       <div class="notif-panel-subhdr"><span>🆘 Active Requests</span><span id="nCount" style="color:var(--text-muted);font-size:0.82em;"></span></div>
-      <div id="nList"><div class="notif-empty">কোনো active request নেই</div></div>
+      <div id="nList"><div class="notif-skel"><div class="notif-skel-ic"></div><div class="notif-skel-bd"><div class="notif-skel-line"></div><div class="notif-skel-line short"></div></div></div><div class="notif-skel"><div class="notif-skel-ic"></div><div class="notif-skel-bd"><div class="notif-skel-line"></div><div class="notif-skel-line short"></div></div></div></div>
     </div>
     <!-- Services tab -->
-    <div id="nTabSvcContent" style="display:none;">
+    <div id="nTabSvcContent" role="tabpanel" aria-labelledby="nTabSvc" style="display:none;">
       <!-- Incoming contact requests (Allow Call OFF → Request flow, point #3/#8) -->
       <div id="nContactReqSection" style="display:none;">
         <div class="notif-panel-subhdr"><span>✉️ আপনার কাছে আসা Request</span><span id="nContactReqCount" style="color:var(--text-muted);font-size:0.82em;"></span></div>
@@ -629,11 +630,16 @@ HTML;
         <span id="nSvcCount" style="color:var(--text-muted);font-size:0.82em;"></span>
       </div>
       <div class="svc-notif-toolbar">
-        <span class="svc-notif-hint">← swipe করে remove করুন</span>
+        <div class="svc-filter" role="group" aria-label="Filter notifications">
+          <button type="button" class="svc-filter-btn active" id="svcFilterAll" onclick="setSvcFilter('all')">সব</button>
+          <button type="button" class="svc-filter-btn" id="svcFilterUnread" onclick="setSvcFilter('unread')">Unread</button>
+        </div>
         <button class="svc-delete-all-btn" onclick="deleteAllSvcNotifs()">🗑 সব মুছুন</button>
       </div>
-      <div id="nSvcList"><div class="notif-empty">কোনো service notification নেই</div></div>
+      <div id="nSvcList"><div class="notif-skel"><div class="notif-skel-ic"></div><div class="notif-skel-bd"><div class="notif-skel-line"></div><div class="notif-skel-line short"></div></div></div><div class="notif-skel"><div class="notif-skel-ic"></div><div class="notif-skel-bd"><div class="notif-skel-line"></div><div class="notif-skel-line short"></div></div></div></div>
     </div>
+    <!-- "more below" scroll hint (shown by JS only when the panel can scroll further) -->
+    <div class="npanel-fade" aria-hidden="true"></div>
   </div>
 </div>
 
@@ -692,6 +698,10 @@ HTML;
             <span class="hero-act-ic">🆘</span>
             <span class="hero-act-tx"><strong>Emergency Request</strong><small>জরুরি রক্ত প্রয়োজন?</small></span>
         </button>
+        <button class="hero-act hero-act-verify" type="button" onclick="triggerJustDonated()">
+            <span class="hero-act-ic">🎟️</span>
+            <span class="hero-act-tx"><strong>রক্তদান যাচাই</strong><small>Donation count বাড়ান</small></span>
+        </button>
     </div>
 </div>
 <div class="emergency-banner" id="requestSection">
@@ -707,6 +717,16 @@ HTML;
         <button class="btn-emergency" onclick="openBloodRequestModal()">🆘 Emergency Request</button>
     </div>
 </div>
+
+<!-- Home: verify-donation entry (mobile) — rok­todan jachay → donation count +১ -->
+<button type="button" class="home-verify-card mob-only" onclick="triggerJustDonated()">
+    <span class="home-verify-ic">🎟️</span>
+    <span class="home-verify-tx">
+        <strong>রক্তদান যাচাই করুন</strong>
+        <small>Requester-এর 6-সংখ্যার Code দিয়ে আপনার donation count +১ করুন</small>
+    </span>
+    <span class="home-verify-arrow" aria-hidden="true">→</span>
+</button>
 
 <!-- ACTIVE BLOOD REQUESTS SECTION -->
 <!-- ==================== COMPACT LIVE STATS CARDS ==================== -->
@@ -995,12 +1015,17 @@ HTML;
                 <div class="badge-next-label" id="badgeNextLabel"></div>
             </div>
         </div>
-        <!-- Quick action: Just Donated button -->
+        <!-- Quick action: verify a donation with the requester's 6-digit code -->
         <button type="button" id="justDonatedBtn" onclick="triggerJustDonated()" class="just-donated-btn">
-            🩸 আমি এইমাত্র রক্ত দিয়েছি — Update করুন
+            🎟️ রক্তদান যাচাই করুন — Requester Code দিন
         </button>
+        <p style="text-align:center;font-size:0.74em;color:var(--text-muted);margin-top:6px;line-height:1.6;">রক্ত দেওয়ার পর Requester আপনাকে যে <strong>6-সংখ্যার Code</strong> দেবেন সেটি দিলে আপনার donation count +১ হবে।</p>
         <p id="justDonatedLockMsg" style="display:none;text-align:center;font-size:0.82em;color:#f59e0b;margin-top:6px;padding:7px 12px;background:rgba(245,158,11,0.1);border-radius:8px;"></p>
     </div>
+
+    <!-- Donation-verification modal moved to body level (see #dcodeModal near the
+         other modals) — a position:fixed modal must NOT live inside an .app-page,
+         whose pageSlideIn transform would make it the fixed-positioning ancestor. -->
 
     <div id="updateFields" style="display:none; margin-top:20px; border-top:1px solid var(--border-color); padding-top:25px;">
         <div class="input-group">
@@ -1664,6 +1689,22 @@ HTML;
   </div>
 </div>
 
+<!-- ── Donation verification code modal (body-level: must be outside every
+     .app-page so its position:fixed anchors to the viewport, not a transformed
+     page box — this was the "popup mispositioned" bug) ───────────────────── -->
+<div id="dcodeModal" class="dcode-modal-overlay" style="display:none;" onclick="if(event.target===this)closeDcodeModal()">
+    <div class="dcode-modal" role="dialog" aria-modal="true" aria-labelledby="dcodeModalTitle">
+        <button type="button" class="dcode-modal-x" onclick="closeDcodeModal()" aria-label="Close">✕</button>
+        <div class="dcode-modal-icon">🎟️</div>
+        <h3 class="dcode-modal-title" id="dcodeModalTitle">রক্তদান যাচাই করুন</h3>
+        <p class="dcode-modal-sub">রক্ত দেওয়ার পর Requester আপনাকে যে <strong>6-সংখ্যার Code</strong> দিয়েছেন সেটি লিখুন। সঠিক হলে আপনার donation count <strong>+১</strong> হবে।</p>
+        <input type="tel" id="dcodeInput" class="dcode-modal-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="০ ০ ০ ০ ০ ০" autocomplete="one-time-code" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+        <div id="dcodeModalErr" class="dcode-modal-err" style="display:none;"></div>
+        <button type="button" id="dcodeSubmitBtn" class="dcode-modal-submit" onclick="submitDonationCode()">✅ যাচাই করুন</button>
+        <p class="dcode-modal-note">⚠️ একটি Code একজন দাতা একবারই ব্যবহার করতে পারবেন। নিজের Request-এর Code ব্যবহার করা যাবে না।</p>
+    </div>
+</div>
+
 <!-- BLOOD REQUEST MODAL -->
 <div class="popup-overlay" id="bloodReqModal" style="align-items:flex-end;">
     <div style="
@@ -2012,85 +2053,134 @@ HTML;
 </div>
 
 <!-- ══════════ 👤 ACCOUNT DASHBOARD MODAL ══════════ -->
-<div class="popup-overlay" id="accountModal" onclick="if(event.target===this)closeAccountModal()">
-    <div class="popup" style="max-width:440px;padding:0;overflow:hidden;max-height:88vh;display:flex;flex-direction:column;">
-        <!-- Header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-color);flex-shrink:0;">
-            <strong style="font-family:var(--font-heading);font-size:1.1em;color:var(--text-main);">👤 আমার অ্যাকাউন্ট</strong>
-            <button onclick="closeAccountModal()" style="background:none;border:none;color:var(--text-muted);font-size:1.2rem;cursor:pointer;width:auto;min-height:unset;margin:0;padding:6px 10px;box-shadow:none;border-radius:8px;">✕</button>
-        </div>
+<!-- ===== APP PAGE: ACCOUNT (was #accountModal — now a full page) ===== -->
+<div class="app-page" id="page-account">
+    <div class="app-page-header">
+        <button class="ph-back" onclick="appSwitchPage('home')" aria-label="Back" title="Back">‹</button>
+        <span class="ph-icon">👤</span>
+        <span class="ph-title">আমার অ্যাকাউন্ট</span>
+    </div>
+    <div class="account-page-inner">
 
-        <div class="scroll-content" style="padding:18px 20px;overflow-y:auto;flex:1;">
+        <div class="scroll-content">
 
-            <!-- Profile -->
-            <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;">
-                <div id="accAvatar" style="width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,var(--primary-red),#f59e0b);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.6em;font-weight:800;flex-shrink:0;font-family:var(--font-heading);">?</div>
-                <div style="min-width:0;flex:1;">
-                    <div id="accName" style="font-size:1.05em;font-weight:700;color:var(--text-main);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</div>
-                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px;">
-                        <span id="accProvider" style="display:inline-block;font-size:0.7em;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(59,130,246,0.12);color:#3b82f6;border:1px solid rgba(59,130,246,0.25);">—</span>
-                        <span id="accVerifyBadge" style="display:none;font-size:0.7em;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid;">—</span>
+            <!-- ══ 1) PROFILE CARD ══ -->
+            <div class="acc-profile-card">
+                <div class="acc-profile-top">
+                    <div id="accAvatar" class="acc-avatar">?</div>
+                    <div class="acc-id">
+                        <div id="accName" class="acc-name">—</div>
+                        <div class="acc-pills">
+                            <span id="accProvider" class="acc-pill acc-pill-blue">—</span>
+                            <span id="accVerifyBadge" class="acc-pill" style="display:none;">—</span>
+                            <span id="accLevelBadge" class="acc-pill acc-pill-amber" style="display:none;">—</span>
+                        </div>
+                    </div>
+                    <div id="accBloodBadge" class="acc-bg-badge" style="display:none;">—</div>
+                </div>
+                <hr class="acc-divider">
+                <div class="acc-contact">
+                    <div class="acc-contact-row">
+                        <span class="acc-ico">📧</span><span class="acc-lbl">Email</span>
+                        <span id="accEmail" class="acc-val">—</span>
+                    </div>
+                    <div class="acc-contact-row">
+                        <span class="acc-ico">📱</span><span class="acc-lbl">ফোন</span>
+                        <span id="accPhone" class="acc-val">—</span>
+                    </div>
+                    <div class="acc-contact-row" id="accLocationRow" style="display:none;">
+                        <span class="acc-ico">📍</span><span class="acc-lbl">লোকেশন</span>
+                        <span id="accLocation" class="acc-val">—</span>
+                    </div>
+                    <div class="acc-contact-row">
+                        <span class="acc-ico">📅</span><span class="acc-lbl">যুক্ত হয়েছেন</span>
+                        <span id="accMemberSince" class="acc-val">—</span>
                     </div>
                 </div>
             </div>
 
             <!-- Unverified bind prompt — verify না করলে call করা যাবে না -->
             <div id="accVerifyBanner" style="display:none;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.28);border-radius:12px;padding:12px 14px;margin-bottom:16px;">
-                <p style="font-size:0.82em;color:#f59e0b;font-weight:700;margin:0 0 3px;">⚠️ আপনার অ্যাকাউন্ট unverified</p>
+                <p style="font-size:0.82em;color:#f59e0b;font-weight:500;margin:0 0 3px;">⚠️ আপনার অ্যাকাউন্ট unverified</p>
                 <p style="font-size:0.76em;color:var(--text-muted);margin:0 0 10px;line-height:1.6;">দাতাকে <strong>call</strong> করতে Telegram বা WhatsApp দিয়ে নম্বর verify করুন। (blood request এখনই করা যাবে)</p>
                 <button onclick="closeAccountModal(); openVerifyModal();" type="button"
-                    style="width:100%;background:#229ED9;color:#fff;border:none;border-radius:10px;padding:11px;font-weight:700;font-size:0.85em;box-shadow:none;margin:0;">🔗 এখন verify করুন</button>
+                    style="width:100%;background:#229ED9;color:#fff;border:none;border-radius:10px;padding:11px;font-weight:500;font-size:0.85em;box-shadow:none;margin:0;">🔗 এখন verify করুন</button>
             </div>
 
-            <!-- Account meta -->
-            <div style="background:var(--input-bg);border:1px solid var(--border-color);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:0.85em;">
-                <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;">
-                    <span style="color:var(--text-muted);">📧 Email</span>
-                    <span id="accEmail" style="color:var(--text-main);font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;">—</span>
+            <!-- Register-as-donor CTA (shown only when no donor record; filled by JS) -->
+            <div id="accDonorCta" style="display:none;"></div>
+
+            <!-- ══ 2) STATS + ELIGIBILITY ══ -->
+            <div class="acc-stats-grid" id="accStatsRow" style="display:none;">
+                <div class="acc-stat">
+                    <span class="acc-stat-label">মোট রক্তদান</span>
+                    <div><span id="accStatTotal" class="acc-stat-num">0</span><span class="acc-stat-unit">বার</span></div>
+                    <span id="accStatLast" class="acc-stat-sub">এখনো রেকর্ড নেই</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--border-color);">
-                    <span style="color:var(--text-muted);">📱 ফোন</span>
-                    <span id="accPhone" style="color:var(--text-main);font-weight:600;text-align:right;">—</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--border-color);">
-                    <span style="color:var(--text-muted);">📅 যুক্ত হয়েছেন</span>
-                    <span id="accMemberSince" style="color:var(--text-main);font-weight:600;text-align:right;">—</span>
+                <div class="acc-elig">
+                    <div class="acc-ring" id="accEligRing"></div>
+                    <div class="acc-elig-text" id="accEligText">—</div>
                 </div>
             </div>
 
-            <!-- Donor profile link -->
-            <p style="font-size:0.72em;text-transform:uppercase;letter-spacing:1.5px;color:var(--primary-red);font-weight:700;margin:0 0 8px;">🩸 রক্তদাতা প্রোফাইল</p>
-            <div id="accDonorCard" style="margin-bottom:18px;"></div>
-
-            <!-- My Donations / Donation History -->
-            <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 8px;">
-                <p style="font-size:0.72em;text-transform:uppercase;letter-spacing:1.5px;color:var(--success);font-weight:700;margin:0;">🩸 আমার রক্তদান</p>
-                <span id="accDonationCount" style="color:var(--text-muted);font-size:0.72em;"></span>
+            <!-- ══ 3) ACTION ROW (availability toggle + update) ══ -->
+            <div class="acc-action-row" id="accActionRow" style="display:none;">
+                <div class="acc-seg" role="group" aria-label="Availability">
+                    <button type="button" id="accSegYes" class="acc-seg-btn seg-yes" onclick="setMyWilling('yes')">উপলব্ধ</button>
+                    <button type="button" id="accSegNo" class="acc-seg-btn seg-no" onclick="setMyWilling('no')">অনুপলব্ধ</button>
+                </div>
+                <button type="button" class="acc-update-btn" onclick="closeAccountModal(); appSwitchPage('register'); setTimeout(function(){ try{switchTab(1); loadMyDonorInfo();}catch(e){} },220);">✏️ আমার তথ্য Update করুন</button>
             </div>
-            <div id="accDonationList" style="margin-bottom:18px;"></div>
 
-            <!-- My Blood Requests (account-owned, tokenless delete) -->
-            <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 8px;">
-                <p style="font-size:0.72em;text-transform:uppercase;letter-spacing:1.5px;color:var(--danger);font-weight:700;margin:0;">🆘 আমার Requests</p>
-                <span id="accReqCount" style="color:var(--text-muted);font-size:0.72em;"></span>
+            <!-- ══ 4) DONATION HISTORY ══ -->
+            <div class="acc-sec-head">
+                <span class="acc-sec-title"><span class="acc-sec-ico">🩸</span>আমার রক্তদান</span>
+                <span id="accDonationCount" class="acc-sec-meta"></span>
+            </div>
+            <div id="accDonationList"></div>
+
+            <!-- ══ 5) ACTIVE REQUESTS (SOS) ══ -->
+            <div class="acc-sec-head">
+                <span class="acc-sec-title"><span class="acc-sec-ico">🆘</span>সক্রিয় রিকোয়েস্ট</span>
+                <span id="accReqCount" class="acc-sec-meta"></span>
             </div>
             <div id="accReqList" style="margin-bottom:18px;"></div>
 
-            <!-- Messages -->
-            <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 8px;">
-                <p style="font-size:0.72em;text-transform:uppercase;letter-spacing:1.5px;color:var(--info);font-weight:700;margin:0;">💬 Messages</p>
-                <button onclick="openAdminMessageModal()" style="width:auto;min-height:unset;margin:0;padding:5px 12px;border-radius:20px;font-size:0.72em;font-weight:700;background:rgba(59,130,246,0.12);color:#3b82f6;border:1px solid rgba(59,130,246,0.25);box-shadow:none;">✚ নতুন</button>
+            <!-- ══ 6) MESSAGES ══ -->
+            <div class="acc-sec-head">
+                <span class="acc-sec-title"><span class="acc-sec-ico">💬</span>Messages</span>
+                <button onclick="openAdminMessageModal()" class="acc-sec-action">✚ নতুন</button>
             </div>
-            <div id="accMsgList" style="margin-bottom:6px;"></div>
+            <div id="accMsgList" style="margin-bottom:18px;"></div>
 
-            <!-- Delete My Info (account dashboard থেকে সরাসরি) -->
-            <div style="margin-top:18px;border-top:1px solid rgba(220,38,38,0.2);padding-top:16px;">
-                <div onclick="toggleAccDeleteInfo()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 14px;background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:12px;user-select:none;">
-                    <span style="color:var(--danger);font-weight:700;font-size:0.88em;">🗑️ আমার সকল তথ্য মুছে ফেলুন</span>
-                    <span id="accDeleteInfoArrow" style="color:var(--danger);font-size:1.2em;transition:transform 0.2s;">›</span>
+            <!-- ══ 8) CALL HISTORY (new — last 30 days) ══ -->
+            <!-- TODO(backend): no read-endpoint exists for a user's own call_logs yet.
+                 The EXISTING `call_logs` table already records every reveal/call
+                 (donor_id, caller_phone, caller_location, created_at). To populate this
+                 section, add an AJAX action (e.g. get_my_calls) returning this account's
+                 rows — caller_phone = session verify_phone (outgoing) OR donor_id = my
+                 donor id (incoming) — within the last 30 days, then wire fetch in
+                 loadMyCallHistory(). "Clear History" → a clear_my_calls delete action.
+                 30-day retention can reuse/extend existing call_logs cleanup. No NEW table,
+                 schema, or API is invented here — until then only the empty state shows. -->
+            <div class="acc-sec-head">
+                <span class="acc-sec-title"><span class="acc-sec-ico">📞</span>Call History</span>
+                <span style="display:flex;align-items:center;gap:8px;">
+                    <span id="accCallCount" class="acc-count-badge" style="display:none;"></span>
+                    <button id="accCallClearBtn" onclick="clearMyCallHistory()" class="acc-sec-action" style="display:none;background:rgba(239,68,68,0.1);color:var(--danger);border-color:rgba(239,68,68,0.25);">🗑️ Clear History</button>
+                </span>
+            </div>
+            <div id="accCallList" style="margin-bottom:18px;"></div>
+
+            <!-- ══ 7) ACCOUNT ACTIONS (settings rows: delete + logout) ══ -->
+            <div class="acc-settings">
+                <div class="acc-set-row" onclick="toggleAccDeleteInfo()">
+                    <span class="acc-set-ico">🗑️</span>
+                    <span class="acc-set-lbl">আমার সকল তথ্য মুছে ফেলুন</span>
+                    <span id="accDeleteInfoArrow" class="acc-set-chev">›</span>
                 </div>
-                <div id="accDeleteInfoBody" style="display:none;margin-top:12px;padding:16px;background:rgba(220,38,38,0.04);border:1px solid rgba(220,38,38,0.15);border-radius:12px;">
-                    <p style="color:var(--danger);font-weight:700;font-size:0.86em;margin-bottom:6px;">⚠️ সতর্কতা — এই কাজ পূর্বাবস্থায় ফেরানো যাবে না!</p>
+                <div id="accDeleteInfoBody" class="acc-set-body" style="display:none;">
+                    <p style="color:var(--danger);font-weight:500;font-size:0.86em;margin-bottom:6px;">⚠️ সতর্কতা — এই কাজ পূর্বাবস্থায় ফেরানো যাবে না!</p>
                     <p style="color:var(--text-muted);font-size:0.82em;margin-bottom:14px;">আপনার নাম, ফোন নম্বর, রক্তের গ্রুপ, location সহ donor তথ্য database থেকে <strong style="color:var(--danger);">চিরতরে মুছে যাবে।</strong></p>
                     <label style="font-size:0.82em;color:var(--text-muted);display:block;margin-bottom:6px;">নিশ্চিত করতে নিচের বক্সে <strong style="color:var(--danger);">DELETE</strong> লিখুন:</label>
                     <input type="text" id="acc_del_confirm" placeholder="DELETE" maxlength="6"
@@ -2098,20 +2188,20 @@ HTML;
                         oninput="this.value=this.value.toUpperCase()">
                     <div id="acc_del_error" style="display:none;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.3);border-radius:8px;padding:8px 12px;color:var(--danger);font-size:0.82em;margin-bottom:10px;"></div>
                     <button type="button" id="acc_del_btn" onclick="submitAccDeleteInfo()"
-                        style="width:100%;background:var(--danger);color:#fff;border:none;border-radius:12px;padding:12px;font-size:0.9rem;font-weight:700;cursor:pointer;min-height:unset;box-shadow:none;margin:0;">
+                        style="width:100%;background:var(--danger);color:#fff;border:none;border-radius:12px;padding:12px;font-size:0.9rem;font-weight:500;cursor:pointer;min-height:unset;box-shadow:none;margin:0;">
                         🗑️ হ্যাঁ, আমার তথ্য সম্পূর্ণ মুছে দিন
                     </button>
+                </div>
+                <div class="acc-set-divider"></div>
+                <div class="acc-set-row is-danger" onclick="authLogout();">
+                    <span class="acc-set-ico">🚪</span>
+                    <span class="acc-set-lbl">লগ-আউট</span>
                 </div>
             </div>
 
         </div>
-
-        <!-- Footer: logout -->
-        <div style="padding:12px 20px;border-top:1px solid var(--border-color);flex-shrink:0;">
-            <button onclick="authLogout(); closeAccountModal();" style="width:100%;background:rgba(220,38,38,0.1);color:var(--danger);border:1px solid rgba(220,38,38,0.3);border-radius:12px;padding:12px;font-weight:700;font-size:0.9em;box-shadow:none;margin:0;">🚪 লগ-আউট ও ডেটা মুছুন</button>
-        </div>
-    </div>
-</div>
+    </div><!-- .account-page-inner -->
+</div><!-- end page-account -->
 
 <div class="popup-overlay" id="faqModal">
     <div class="popup" style="max-width:580px;padding:0;overflow:hidden;">

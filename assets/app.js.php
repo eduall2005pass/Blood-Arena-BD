@@ -1837,25 +1837,69 @@ function setWilling(val) {
     }
 }
 
+// ── Donation verification ───────────────────────────────────────────
+//  Registration-এর পর donation count বাড়ানোর একমাত্র উপায়: রক্ত নেওয়ার পর
+//  requester যে 6-সংখ্যার Code দেন সেটি এখানে দিলে count +১ হয় (কমে না)।
+//  পুরোনো free self-report "+1" সরিয়ে এই code-verified flow আনা হয়েছে।
 function triggerJustDonated() {
-    const btn = document.getElementById('justDonatedBtn');
-    if(btn && btn.disabled) return; // Already triggered — prevent double click
-    if(!confirm(t('আপনি কি নিশ্চিত যে এইমাত্র রক্ত দিয়েছেন? এতে আপনার donation count বাড়বে।'))) return;
-    document.getElementById('u_just_donated').value = '1';
-    const today = new Date();
-    const dd = String(today.getDate()).padStart(2,'0');
-    const mm = String(today.getMonth()+1).padStart(2,'0');
-    const yyyy = today.getFullYear();
-    const isoToday = yyyy+'-'+mm+'-'+dd;
-    setUpdateDonationDate(isoToday);
-    setWilling('yes');
-    if(btn){
-        btn.disabled = true;
-        btn.style.opacity = '0.7';
-        btn.style.cursor = 'not-allowed';
-        btn.innerHTML = '✅ ধন্যবাদ! "Save Changes" করুন';
-        btn.style.background = 'linear-gradient(135deg,#059669,#10b981)';
-    }
+    openDcodeModal();
+}
+function openDcodeModal() {
+    var m   = document.getElementById('dcodeModal');
+    if(!m) return;
+    var inp = document.getElementById('dcodeInput');
+    var err = document.getElementById('dcodeModalErr');
+    var btn = document.getElementById('dcodeSubmitBtn');
+    if(inp) inp.value = '';
+    if(err){ err.style.display = 'none'; err.textContent = ''; }
+    if(btn){ btn.disabled = false; btn.innerHTML = '✅ যাচাই করুন'; }
+    m.style.display = 'flex';
+    if(typeof lockBodyScroll === 'function') lockBodyScroll();
+    setTimeout(function(){
+        if(inp){ inp.focus();
+            inp.onkeydown = function(e){ if(e.key === 'Enter'){ e.preventDefault(); submitDonationCode(); } };
+        }
+    }, 60);
+}
+function closeDcodeModal() {
+    var m = document.getElementById('dcodeModal');
+    if(m) m.style.display = 'none';
+    if(typeof unlockBodyScroll === 'function') unlockBodyScroll();
+}
+function submitDonationCode() {
+    var inp = document.getElementById('dcodeInput');
+    var err = document.getElementById('dcodeModalErr');
+    var btn = document.getElementById('dcodeSubmitBtn');
+    var code = (inp ? inp.value : '').trim();
+    function showErr(msg){ if(err){ err.textContent = msg; err.style.display = 'block'; } }
+    if(!/^[0-9]{6}$/.test(code)){ showErr('⚠️ সঠিক 6-সংখ্যার Code দিন।'); if(inp) inp.focus(); return; }
+    if(err) err.style.display = 'none';
+    if(btn){ btn.disabled = true; btn.innerHTML = '⏳ যাচাই হচ্ছে...'; }
+    var fd = new FormData();
+    fd.append('redeem_donation_code', '1');
+    fd.append('code', code);
+    fd.append('device_id', (typeof getDeviceId === 'function') ? getDeviceId() : '');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if(d && d.status === 'success'){
+            if(typeof updateBadgeCard === 'function' && d.total_donations !== undefined){
+                updateBadgeCard(d.total_donations, d.badge_icon, d.badge_level);
+            }
+            closeDcodeModal();
+            showToast(d.msg || '🎉 ধন্যবাদ! Donation count +১ হয়েছে।', 'success');
+            // availability / history / badge সব পুরোপুরি reflect করতে হালকা reload
+            setTimeout(function(){ location.reload(); }, 1400);
+        } else {
+            if(btn){ btn.disabled = false; btn.innerHTML = '✅ যাচাই করুন'; }
+            showErr((d && d.msg) ? d.msg : '❌ যাচাই ব্যর্থ হয়েছে।');
+        }
+    })
+    .catch(function(){
+        if(btn){ btn.disabled = false; btn.innerHTML = '✅ যাচাই করুন'; }
+        showErr('❌ Network error। আবার চেষ্টা করুন।');
+    });
 }
 
 // PAGE LOAD → AUTO FETCH FIRST PAGE (pagination always works)
@@ -2625,7 +2669,22 @@ function onReqDocsChange(input){
     }
 }
 
+// Set when a signed-out user taps Emergency Request — after they sign in, the
+// request form auto-reopens so they continue seamlessly.
+var _pendingEmergencyRequest = false;
 function openBloodRequestModal(){
+    // Require sign-in BEFORE showing the form. The backend enforces requireAuth()
+    // anyway, so without this the user fills the whole form + uploads images and
+    // only then fails. Gate here, prompt Google/phone sign-in, then auto-resume.
+    if (typeof _isSignedIn === 'function' && !_isSignedIn()) {
+        showToast('Emergency request পাঠাতে আগে সাইন ইন করুন।', 'info');
+        _pendingEmergencyRequest = true;
+        // Persist too, so the iOS-standalone redirect sign-in (which reloads the
+        // page and wipes the in-memory flag) can still auto-resume.
+        try { sessionStorage.setItem('ba_pending_emg', '1'); } catch(e){}
+        if (typeof openAuthModal === 'function') openAuthModal();
+        return;
+    }
     document.getElementById('req_group').value = '';
     var _ra = document.getElementById('req_required_at'); if (_ra) _ra.value = '';
     var _di = document.getElementById('req_docs');
@@ -3192,16 +3251,24 @@ let _lnTimer = null;
 let _seenIds  = new Set();
 
 function toggleNPanel() {
-    const p = document.getElementById('nPanel');
+    var p = document.getElementById('nPanel');
+    if (!p) return;
     p.classList.toggle('show');
-    if(p.classList.contains('show')) {
-        document.getElementById('nBadge').classList.remove('on');
-        if (typeof _loadContactRequests === 'function') _loadContactRequests();
-        // Clear PWA app icon badge when user opens the panel
-        if ('clearAppBadge' in navigator && Notification.permission === 'granted') {
+    if (p.classList.contains('show')) {
+        var badge = document.getElementById('nBadge');
+        if (badge) badge.classList.remove('on');
+        // Clear PWA app icon badge when the user opens the panel
+        if ('clearAppBadge' in navigator && 'Notification' in window && Notification.permission === 'granted') {
             navigator.clearAppBadge().catch(function(){});
         }
+        // Always refresh incoming contact requests; also refresh the service
+        // list when that tab is the active one.
+        if (typeof _loadContactRequests === 'function') _loadContactRequests();
+        if (typeof _currentNTab !== 'undefined' && _currentNTab === 'service' && typeof _loadSvcNotifs === 'function') _loadSvcNotifs();
+        _focusPanel();
     }
+    // aria-expanded, scroll-lock and the live-time ticker are handled centrally
+    // by the panel observer below, so every open/close path stays in sync.
 }
 document.addEventListener('click', function(e){
     // Close notification panel — check bell wrap AND panel itself
@@ -3220,6 +3287,18 @@ document.addEventListener('click', function(e){
             links.classList.remove('open');
             document.body.style.overflow = '';
         }
+    }
+});
+
+// Escape closes the notification panel and returns focus to the bell (a11y).
+// The panel observer handles aria-expanded / scroll-unlock / ticker on close.
+document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape' && e.key !== 'Esc') return;
+    var p = document.getElementById('nPanel');
+    if (p && p.classList.contains('show')) {
+        p.classList.remove('show');
+        var bell = document.getElementById('nBell');
+        if (bell) { try { bell.focus(); } catch(err){} }
     }
 });
 
@@ -3280,23 +3359,101 @@ function markAllNotifRead() {
     refreshNPanel(_reqAllData || []);
 }
 
+// ============================================================
+// NOTIFICATION PANEL — shared helpers
+// ============================================================
+// Escape server-supplied text before it lands in innerHTML.
+function _escHtml(s){
+    return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+// Friendly empty state — replaces the fragile .notif-empty:first-line trick.
+function _emptyState(ico, title, sub){
+    return '<div class="notif-empty">'
+        + '<div class="notif-empty-ico">' + ico + '</div>'
+        + '<div class="notif-empty-title">' + title + '</div>'
+        + (sub ? '<div class="notif-empty-sub">' + sub + '</div>' : '')
+        + '</div>';
+}
+// Unified bell badge — THE single place the bell number is computed. Both
+// 30s pollers (blood + service) call this, so they can no longer fight over
+// #nBadge (old bug: blood-only vs blood+svc → flicker; service→0 left the
+// bell stuck). Deleting a request drops bloodUnread here too, so the bell
+// clears the instant the request leaves _reqAllData.
+function updateBellBadge(){
+    var badge = document.getElementById('nBadge');
+    var panel = document.getElementById('nPanel');
+    if (!badge) return;
+    var bloodUnread = (_reqAllData    || []).filter(function(r){ return !_readIds.has(String(r.id)); }).length;
+    var svcUnread   = (_svcNotifsData || []).filter(function(n){ return !n.is_read; }).length;
+    var total = bloodUnread + svcUnread;
+    var open  = !!(panel && panel.classList.contains('show'));
+    if (total > 0){
+        badge.textContent = total > 9 ? '9+' : String(total);
+        if (open) badge.classList.remove('on'); else badge.classList.add('on');
+    } else {
+        badge.textContent = '';
+        badge.classList.remove('on');
+    }
+    if ('Notification' in window && Notification.permission === 'granted'){
+        if (total > 0 && 'setAppBadge' in navigator) navigator.setAppBadge(total).catch(function(){});
+        else if ('clearAppBadge' in navigator) navigator.clearAppBadge().catch(function(){});
+    }
+}
+// Live-aging timestamps — re-stamp visible relative times every 60s while the
+// panel is open (started/stopped by the panel observer + toggleNPanel).
+var _nTimeTimer = null;
+function _startNTimeTicker(){ if (!_nTimeTimer) _nTimeTimer = setInterval(_restampTimes, 60000); }
+function _stopNTimeTicker(){ if (_nTimeTimer){ clearInterval(_nTimeTimer); _nTimeTimer = null; } }
+function _restampTimes(){
+    document.querySelectorAll('#nSvcList .svc-notif-time[data-ts]').forEach(function(el){
+        var ts = parseInt(el.getAttribute('data-ts'), 10);
+        if (ts && typeof _relTime === 'function') el.textContent = _relTime(ts);
+    });
+    document.querySelectorAll('#nContactReqList [data-cts]').forEach(function(el){
+        var ts = parseInt(el.getAttribute('data-cts'), 10);
+        if (ts && typeof _ctTimeAgo === 'function') el.textContent = _ctTimeAgo(ts);
+    });
+}
+// a11y: drop keyboard focus into the panel when it opens.
+function _focusPanel(){
+    setTimeout(function(){
+        var p = document.getElementById('nPanel');
+        if (!p || !p.classList.contains('show')) return;
+        var t = p.querySelector('.notif-tab-btn.active') || p.querySelector('button');
+        if (t){ try { t.focus(); } catch(e){} }
+    }, 30);
+}
+// "More below" scroll hint — toggle a bottom fade when the panel can scroll
+// further down (so users can tell there's clipped/long content to scroll to).
+function _updateNScrollHint(){
+    var p = document.getElementById('nPanel');
+    if (!p) return;
+    p.classList.toggle('can-scroll-down', (p.scrollHeight - p.clientHeight - p.scrollTop) > 6);
+}
+var _hintRaf = false;
+function _scheduleHint(){
+    if (_hintRaf) return; _hintRaf = true;
+    requestAnimationFrame(function(){ _hintRaf = false; _updateNScrollHint(); });
+}
+
 function refreshNPanel(reqs) {
     const list  = document.getElementById('nList');
     const count = document.getElementById('nCount');
-    const badge = document.getElementById('nBadge');
     if(!list) return;
 
     // Read filter — read করা IDs বাদ দাও
     const unread = reqs.filter(function(r){ return !_readIds.has(String(r.id)); });
 
     if(!unread.length) {
-        list.innerHTML = reqs.length && _readIds.size
-            ? '<div class="notif-empty">✅ সব পড়া হয়েছে</div>'
-            : '<div class="notif-empty">কোনো active request নেই</div>';
-        if(count) count.textContent = ''; badge.classList.remove('on');
-        if ('clearAppBadge' in navigator && Notification.permission === 'granted') {
-            navigator.clearAppBadge().catch(function(){});
-        }
+        list.innerHTML = (reqs.length && _readIds.size)
+            ? _emptyState('✅', 'সব পড়া হয়েছে', 'নতুন request এলে এখানে দেখা যাবে')
+            : _emptyState('🆘', 'কোনো active request নেই', 'নতুন emergency request এলে সাথে সাথে এখানে আসবে');
+        if(count) count.textContent = '';
+        var btb0 = document.getElementById('nTabBloodBadge');
+        if (btb0) btb0.style.display = 'none';
+        updateBellBadge();
         return;
     }
 
@@ -3306,8 +3463,8 @@ function refreshNPanel(reqs) {
     list.innerHTML = unread.map(function(r){
         return '<div class="notif-row">'
             + '<div class="notif-row-left" onclick="toggleRequestSection();document.getElementById(\'nPanel\').classList.remove(\'show\')">'
-            + '<div class="notif-row-grp">' + r.blood_group + ' <span style="font-size:0.55em;font-weight:700;">' + (icons[r.urgency]||'') + ' ' + r.urgency + '</span></div>'
-            + '<div class="notif-row-info">🏥 ' + r.hospital + '<br>📞 ' + r.contact + '</div>'
+            + '<div class="notif-row-grp">' + _escHtml(r.blood_group) + ' <span style="font-size:0.55em;font-weight:700;">' + (icons[r.urgency]||'') + ' ' + _escHtml(r.urgency) + '</span></div>'
+            + '<div class="notif-row-info">🏥 ' + _escHtml(r.hospital) + '<br>📞 ' + _escHtml(r.contact) + '</div>'
             + '</div>'
             + '<button class="notif-mark-btn" onclick="event.stopPropagation();markNotifRead(' + r.id + ')" title="Mark as read">✓ Read</button>'
             + '</div>';
@@ -3316,21 +3473,13 @@ function refreshNPanel(reqs) {
     // Mark All Read button
     list.innerHTML += '<button class="notif-panel-mark-all" onclick="markAllNotifRead()">✓ সব Mark as Read করুন</button>';
 
-    badge.textContent = unread.length > 9 ? '9+' : unread.length;
-    if(!document.getElementById('nPanel').classList.contains('show')) badge.classList.add('on');
-    // Update blood tab badge
+    // Blood tab badge
     var bloodTabBadge = document.getElementById('nTabBloodBadge');
     if (bloodTabBadge) {
-        if (unread.length) {
-            bloodTabBadge.textContent = unread.length;
-            bloodTabBadge.style.display = '';
-        } else {
-            bloodTabBadge.style.display = 'none';
-        }
+        bloodTabBadge.textContent = unread.length;
+        bloodTabBadge.style.display = '';
     }
-    if ('setAppBadge' in navigator && Notification.permission === 'granted') {
-        navigator.setAppBadge(unread.length).catch(function(){});
-    }
+    updateBellBadge();
 }
 
 function startLiveNotif() {
@@ -3413,41 +3562,46 @@ function switchNTab(tab) {
     var svcBtn    = document.getElementById('nTabSvc');
     var bloodCont = document.getElementById('nTabBloodContent');
     var svcCont   = document.getElementById('nTabSvcContent');
-    if (tab === 'blood') {
-        bloodBtn.classList.add('active');
-        svcBtn.classList.remove('active');
-        bloodCont.style.display = '';
-        svcCont.style.display   = 'none';
-    } else {
-        svcBtn.classList.add('active');
-        bloodBtn.classList.remove('active');
-        svcCont.style.display   = '';
-        bloodCont.style.display = 'none';
-        // Load fresh service notifs when tab is opened
+    var isBlood = (tab === 'blood');
+    if (bloodBtn) {
+        bloodBtn.classList.toggle('active', isBlood);
+        bloodBtn.setAttribute('aria-selected', isBlood ? 'true' : 'false');
+        bloodBtn.tabIndex = isBlood ? 0 : -1;
+    }
+    if (svcBtn) {
+        svcBtn.classList.toggle('active', !isBlood);
+        svcBtn.setAttribute('aria-selected', !isBlood ? 'true' : 'false');
+        svcBtn.tabIndex = !isBlood ? 0 : -1;
+    }
+    if (bloodCont) bloodCont.style.display = isBlood ? '' : 'none';
+    if (svcCont)   svcCont.style.display   = isBlood ? 'none' : '';
+    if (!isBlood) {
+        // Load fresh service notifs when the tab is opened
         _loadSvcNotifs();
     }
 }
 
-// Override toggleNPanel to support tab badge clearing
-(function(){
-    var _orig = window.toggleNPanel;
-    window.toggleNPanel = function() {
-        var p = document.getElementById('nPanel');
-        p.classList.toggle('show');
-        if (p.classList.contains('show')) {
-            document.getElementById('nBadge').classList.remove('on');
-            if ('clearAppBadge' in navigator && Notification.permission === 'granted') {
-                navigator.clearAppBadge().catch(function(){});
-            }
-            // If services tab active, reload
-            if (_currentNTab === 'service') _loadSvcNotifs();
+// Arrow-key roving between the two notification tabs (a11y, role=tablist).
+['nTabBlood','nTabSvc'].forEach(function(id){
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('keydown', function(e){
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+            e.preventDefault();
+            switchNTab(_currentNTab === 'blood' ? 'service' : 'blood');
+            var next = document.getElementById(_currentNTab === 'blood' ? 'nTabBlood' : 'nTabSvc');
+            if (next) { try { next.focus(); } catch(err){} }
         }
-    };
-})();
+    });
+});
 
-// Lock background page scroll while the notification panel is open.
-// Watches the 'show' class so every open/close path (toggle, outside-click,
-// row-click) is covered without touching each call site.
+// (The old toggleNPanel override was removed — the single toggleNPanel above
+//  now handles tab-aware reloads, and the observer below owns the rest.)
+
+// Panel observer — the ONE place that reacts to the panel opening/closing.
+// Every open/close path (toggle, outside-click, Escape, row-click) flips the
+// 'show' class, so all side-effects live here: background scroll-lock,
+// aria-expanded, the live-time ticker, and a final badge recompute on close.
 (function(){
     var p = document.getElementById('nPanel');
     if (!p || !window.MutationObserver) return;
@@ -3467,8 +3621,18 @@ function switchNTab(tab) {
         window.scrollTo(0, _savedY);
     }
     new MutationObserver(function(){
-        if (p.classList.contains('show')) lock(); else unlock();
+        var open = p.classList.contains('show');
+        var bell = document.getElementById('nBell');
+        if (bell) bell.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) { lock(); _startNTimeTicker(); _scheduleHint(); }
+        else { unlock(); _stopNTimeTicker(); updateBellBadge(); }
     }).observe(p, { attributes: true, attributeFilter: ['class'] });
+
+    // "More below" hint: recompute on scroll, on resize, and whenever the panel's
+    // content height changes (polls, mark-read, filter, tab switch).
+    p.addEventListener('scroll', _scheduleHint, { passive: true });
+    window.addEventListener('resize', _scheduleHint);
+    new MutationObserver(_scheduleHint).observe(p, { childList: true, subtree: true });
 })();
 
 // ============================================================
@@ -3507,6 +3671,57 @@ function _loadSvcNotifs() {
     }).catch(function(){});
 }
 
+// Service-notif type → icon + left-accent colour group (shared by render paths).
+var _svcIconMap = {
+    'secret_reset':'🔑', 'location_on':'📍', 'notif_on':'🔔',
+    'secret_code_ready':'✅', 'info':'ℹ️', 'warning':'⚠️', 'admin_reply':'💬',
+    'welcome':'🎉', 'donor_called':'📞', 'blood_request':'🆘', 'contact_request':'🩸',
+    'donation_verified':'🎉', 'code_redeemed':'✅'
+};
+var _svcAccentMap = {
+    'blood_request':'red', 'warning':'red',
+    'contact_request':'pink',
+    'donation_verified':'green', 'code_redeemed':'green', 'secret_code_ready':'green',
+    'notif_on':'green', 'location_on':'green', 'welcome':'green',
+    'donor_called':'blue', 'admin_reply':'blue', 'info':'blue'
+};
+// Ids already shown, so freshly-arrived notifs can pulse once (mirrors the
+// blood "new request" detection). Empty on first paint → no pulse on load.
+var _svcSeenIds = new Set();
+
+// Build a single service-notif row's HTML (escaped). `fresh` adds the pulse.
+function _svcRowHtml(n, fresh) {
+    var icon   = _svcIconMap[n.type] || 'ℹ️';
+    var accent = _svcAccentMap[n.type] || 'grey';
+    var rel    = n.ts ? _relTime(n.ts) : '';
+    var abs    = n.ts ? new Date(n.ts * 1000).toLocaleString('bn-BD') : '';
+    var unreadCls = !n.is_read ? ' unread' : '';
+    var freshCls  = fresh ? ' just-arrived' : '';
+    var readBtn = !n.is_read
+        ? '<button class="svc-notif-read-btn" onclick="event.stopPropagation();markSvcNotifRead(' + n.id + ')" title="Mark as read">✓ পড়েছি</button>'
+        : '';
+    var delBtn = '<button class="svc-notif-del-btn" onclick="event.stopPropagation();deleteSvcNotif(' + n.id + ')" title="মুছুন" aria-label="Delete notification">🗑</button>';
+    return '<div class="svc-notif-row accent-' + accent + unreadCls + freshCls + '" id="svcn_' + n.id + '" data-type="' + _escHtml(n.type||'') + '">'
+        + '<div class="svc-notif-icon">' + icon + '</div>'
+        + '<div class="svc-notif-body">'
+        + '<div class="svc-notif-msg">' + _escHtml(n.message || '') + '</div>'
+        + '<div class="svc-notif-time" data-ts="' + (n.ts || '') + '" title="' + _escHtml(abs) + '">' + rel + '</div>'
+        + '</div>'
+        + '<div class="svc-notif-actions">' + readBtn + delBtn + '</div>'
+        + '</div>';
+}
+
+// All / Unread view filter (Services tab). Data stays intact in _svcNotifsData.
+var _svcFilter = 'all'; // 'all' | 'unread'
+function setSvcFilter(mode){
+    _svcFilter = (mode === 'unread') ? 'unread' : 'all';
+    var a = document.getElementById('svcFilterAll');
+    var u = document.getElementById('svcFilterUnread');
+    if (a) a.classList.toggle('active', _svcFilter === 'all');
+    if (u) u.classList.toggle('active', _svcFilter === 'unread');
+    _renderSvcNotifs(_svcNotifsData || []);
+}
+
 function _renderSvcNotifs(notifs) {
     var list = document.getElementById('nSvcList');
     if (!list) return;
@@ -3514,37 +3729,44 @@ function _renderSvcNotifs(notifs) {
     var unread = notifs.filter(function(n){ return !n.is_read; });
     if (countEl) countEl.textContent = unread.length ? unread.length + 'টি unread' : '';
 
-    if (!notifs.length) {
-        list.innerHTML = '<div class="notif-empty">কোনো service notification নেই</div>';
+    // Apply the All/Unread view filter (the count above always reflects unread).
+    var view = (_svcFilter === 'unread') ? unread : notifs;
+
+    if (!view.length) {
+        list.innerHTML = (_svcFilter === 'unread' && notifs.length)
+            ? _emptyState('✅', 'কোনো unread নেই', 'সব notification পড়া হয়েছে')
+            : _emptyState('🔔', 'কোনো notification নেই', 'নতুন আপডেট এলে এখানে দেখা যাবে');
+        notifs.forEach(function(n){ _svcSeenIds.add(String(n.id)); });
         return;
     }
 
-    var iconMap = {
-        'secret_reset':'🔑', 'location_on':'📍', 'notif_on':'🔔',
-        'secret_code_ready':'✅', 'info':'ℹ️', 'warning':'⚠️', 'admin_reply':'💬',
-        'welcome':'🎉', 'donor_called':'📞', 'blood_request':'🆘', 'contact_request':'🩸'
+    var primed = _svcSeenIds.size > 0; // don't pulse the very first batch
+    var rowOf  = function(n){ return _svcRowHtml(n, primed && !_svcSeenIds.has(String(n.id))); };
+    // Unread first, then newest first (server already sends ts DESC).
+    var byUnreadThenNew = function(a, b){
+        var ar = a.is_read ? 1 : 0, br = b.is_read ? 1 : 0;
+        if (ar !== br) return ar - br;
+        return (b.ts || 0) - (a.ts || 0);
     };
 
-    list.innerHTML = notifs.map(function(n) {
-        var icon = iconMap[n.type] || 'ℹ️';
-        var ts   = n.ts ? new Date(n.ts * 1000).toLocaleString('bn-BD') : '';
-        var unreadCls = !n.is_read ? ' unread' : '';
-        var readBtn = !n.is_read
-            ? '<button class="svc-notif-read-btn" onclick="event.stopPropagation();markSvcNotifRead(' + n.id + ')">✓ পড়েছি</button>'
-            : '';
-        return '<div class="svc-notif-row' + unreadCls + '" id="svcn_' + n.id + '">'
-            + '<div class="svc-notif-icon">' + icon + '</div>'
-            + '<div class="svc-notif-body">'
-            + '<div class="svc-notif-msg">' + (n.message || '') + '</div>'
-            + '<div class="svc-notif-time">' + ts + '</div>'
-            + '</div>'
-            + '<div class="svc-notif-actions">'
-            + readBtn
-            + '</div>'
-            + '</div>';
-    }).join('');
+    // Group by Today / Earlier (local start-of-day). Labels only show when the
+    // list actually spans both — a lone group needs no header.
+    var sod = new Date(); sod.setHours(0,0,0,0);
+    var startOfToday = Math.floor(sod.getTime() / 1000);
+    var today = [], earlier = [];
+    view.forEach(function(n){ ((n.ts||0) >= startOfToday ? today : earlier).push(n); });
+    today.sort(byUnreadThenNew); earlier.sort(byUnreadThenNew);
+    var split = today.length && earlier.length;
 
-    // Attach swipe-to-dismiss handlers
+    var html = '';
+    if (today.length)   html += (split ? '<div class="notif-group-label">আজ</div>'   : '') + today.map(rowOf).join('');
+    if (earlier.length) html += (split ? '<div class="notif-group-label">আগের</div>' : '') + earlier.map(rowOf).join('');
+    list.innerHTML = html;
+
+    // Remember what we've shown so the next render only pulses genuinely-new ids.
+    notifs.forEach(function(n){ _svcSeenIds.add(String(n.id)); });
+
+    // Attach swipe-to-dismiss (touch only — desktop uses the hover 🗑 button).
     list.querySelectorAll('.svc-notif-row').forEach(function(row) {
         _attachSwipeDismiss(row);
     });
@@ -3552,6 +3774,20 @@ function _renderSvcNotifs(notifs) {
     if (unread.length) {
         list.innerHTML += '<button class="notif-panel-mark-all" onclick="markAllSvcNotifsRead()" style="margin-top:4px;">✓ সব Read করুন</button>';
     }
+}
+
+// Relative time in Bangla ("এইমাত্র", "৫ মিনিট আগে", "২ ঘণ্টা আগে", ...)
+function _relTime(ts) {
+    var bn = function(num){ return String(num).replace(/[0-9]/g, function(d){ return '০১২৩৪৫৬৭৮৯'[+d]; }); };
+    var s = Math.max(0, Math.floor(Date.now()/1000 - ts));
+    if (s < 45) return 'এইমাত্র';
+    var m = Math.floor(s/60);
+    if (m < 60) return bn(m) + ' মিনিট আগে';
+    var h = Math.floor(m/60);
+    if (h < 24) return bn(h) + ' ঘণ্টা আগে';
+    var d = Math.floor(h/24);
+    if (d < 7) return bn(d) + ' দিন আগে';
+    return new Date(ts*1000).toLocaleDateString('bn-BD', {day:'numeric', month:'long'});
 }
 
 // ── Incoming contact requests (donor side, point #3 / #8) ─────
@@ -3581,25 +3817,33 @@ function _renderContactRequests(){
     section.style.display='block';
     var pending = _contactReqData.filter(function(r){ return r.status==='pending'; }).length;
     if(cnt) cnt.textContent = pending ? (pending+'টি নতুন') : '';
-    var esc = function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
-    var timeAgo = function(ts){ var u=parseInt(ts,10); if(!u) return ''; var diff=Math.floor((Date.now()-u*1000)/60000); if(diff<1)return'এইমাত্র'; if(diff<60)return diff+'মি আগে'; if(diff<1440)return Math.floor(diff/60)+'ঘ আগে'; return Math.floor(diff/1440)+'দিন আগে'; };
     list.innerHTML = _contactReqData.map(function(r){
-        var head = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
-            + '<strong style="font-size:0.9em;color:var(--text-main);">🩸 '+esc(r.blood_group||'')+' · '+esc(r.requester_name||'একজন')+'</strong>'
-            + '<span style="font-size:0.72em;color:var(--text-muted);">'+timeAgo(r.created_at)+'</span></div>';
-        var msg = r.message ? '<div style="font-size:0.8em;color:var(--text-muted);margin-top:3px;">📝 '+esc(r.message)+'</div>' : '';
+        var head = '<div class="creq-head">'
+            + '<strong class="creq-title">🩸 '+_escHtml(r.blood_group||'')+' · '+_escHtml(r.requester_name||'একজন')+'</strong>'
+            + '<span class="creq-time" data-cts="'+(parseInt(r.created_at,10)||'')+'">'+_ctTimeAgo(r.created_at)+'</span></div>';
+        var msg = r.message ? '<div class="creq-msg">📝 '+_escHtml(r.message)+'</div>' : '';
         var action;
         if(r.status==='accepted' && r.requester_phone){
-            action = '<a href="tel:'+esc(r.requester_phone)+'" style="display:block;text-align:center;margin-top:8px;padding:8px;background:#10b981;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.84em;">📞 '+esc(r.requester_phone)+' — Call করুন</a>';
+            action = '<a class="creq-call" href="tel:'+_escHtml(r.requester_phone)+'">📞 '+_escHtml(r.requester_phone)+' — Call করুন</a>';
         } else if(r.status==='accepted'){
-            action = '<div style="margin-top:8px;font-size:0.8em;color:#10b981;font-weight:700;">✅ Accepted</div>';
+            action = '<div class="creq-accepted">✅ Accepted</div>';
         } else {
-            action = '<div style="margin-top:8px;display:flex;gap:8px;">'
-                + '<button onclick="acceptContactRequest('+r.id+')" style="flex:2;min-height:unset;margin:0;padding:8px;background:var(--primary-red);color:#fff;border-radius:8px;font-size:0.82em;font-weight:700;box-shadow:none;">✅ Accept ও যোগাযোগ</button>'
-                + '<button onclick="declineContactRequest('+r.id+')" style="flex:1;min-height:unset;margin:0;padding:8px;background:transparent;border:1px solid var(--border-color);color:var(--text-muted);border-radius:8px;font-size:0.82em;box-shadow:none;">✖</button></div>';
+            action = '<div class="creq-actions">'
+                + '<button class="creq-accept" onclick="acceptContactRequest('+r.id+')">✅ Accept ও যোগাযোগ</button>'
+                + '<button class="creq-decline" onclick="declineContactRequest('+r.id+')" aria-label="Decline">✖</button></div>';
         }
-        return '<div style="padding:11px 12px;border:1px solid var(--border-color);border-radius:10px;margin-bottom:8px;background:var(--bg-card);">'+head+msg+action+'</div>';
+        return '<div class="creq-card">'+head+msg+action+'</div>';
     }).join('');
+}
+
+// Compact relative time for contact-request cards ("এইমাত্র / ৫মি আগে / ...").
+function _ctTimeAgo(ts){
+    var u = parseInt(ts,10); if(!u) return '';
+    var diff = Math.floor((Date.now()-u*1000)/60000);
+    if(diff<1)    return 'এইমাত্র';
+    if(diff<60)   return diff+'মি আগে';
+    if(diff<1440) return Math.floor(diff/60)+'ঘ আগে';
+    return Math.floor(diff/1440)+'দিন আগে';
 }
 function acceptContactRequest(id){
     var fd = new FormData();
@@ -3627,52 +3871,57 @@ function declineContactRequest(id){
     }).catch(function(){ showToast('Network error।','error'); });
 }
 
-// Swipe to dismiss (touch + mouse)
+// Swipe-to-dismiss — TOUCH ONLY (Pointer Events gated to pointerType==='touch').
+// Desktop deletes via the hover 🗑 button instead, so mouse text-selection can
+// no longer trigger an accidental swipe. Only mostly-horizontal drags count, so
+// vertical scrolling (touch-action:pan-y) still works.
 function _attachSwipeDismiss(el) {
-    var startX = 0, curX = 0, swiping = false;
-    function onStart(e) {
-        startX = (e.touches ? e.touches[0].clientX : e.clientX);
-        swiping = true; curX = 0;
+    if (!window.PointerEvent) return; // graceful: the 🗑 button still works
+    var startX = 0, startY = 0, curX = 0, swiping = false;
+    function onDown(e) {
+        if (e.pointerType !== 'touch') return;
+        startX = e.clientX; startY = e.clientY; curX = 0; swiping = true;
     }
     function onMove(e) {
-        if (!swiping) return;
-        curX = (e.touches ? e.touches[0].clientX : e.clientX) - startX;
-        if (curX > 10) { // only right swipe
+        if (!swiping || e.pointerType !== 'touch') return;
+        curX = e.clientX - startX;
+        var dy = Math.abs(e.clientY - startY);
+        if (curX > 10 && curX > dy) { // right-swipe, mostly-horizontal only
             el.style.transform = 'translateX(' + Math.min(curX, 120) + 'px)';
             el.style.opacity = String(1 - curX / 200);
         }
     }
-    function onEnd() {
+    function onUp() {
+        if (!swiping) return;
         swiping = false;
         if (curX > 80) {
-            // Swipe to dismiss = mark as read + animate out
-            var idMatch = el.id.match(/svcn_(\d+)/);
-            if (idMatch) {
-                var nid = parseInt(idMatch[1]);
-                el.classList.add('swiping-out');
-                setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
-                _svcNotifsData = (_svcNotifsData || []).filter(function(n){ return n.id != nid; });
-                _updateSvcBadge(_svcNotifsData);
-                _deleteSvcNotifServer(nid); // ← DB থেকে delete — পরের poll এ আর আসবে না
-            }
-        } else {
-            el.style.transform = '';
-            el.style.opacity = '';
+            var m = el.id.match(/svcn_(\d+)/);
+            if (m) { deleteSvcNotif(parseInt(m[1], 10)); return; }
         }
+        el.style.transform = '';
+        el.style.opacity = '';
     }
-    el.addEventListener('touchstart', onStart, {passive:true});
-    el.addEventListener('touchmove',  onMove,  {passive:true});
-    el.addEventListener('touchend',   onEnd);
-    el.addEventListener('mousedown',  onStart);
-    el.addEventListener('mousemove',  onMove);
-    el.addEventListener('mouseup',    onEnd);
+    el.addEventListener('pointerdown',   onDown);
+    el.addEventListener('pointermove',   onMove);
+    el.addEventListener('pointerup',     onUp);
+    el.addEventListener('pointercancel', onUp);
 }
 
-function deleteSvcNotif(id, skipConfirm) {
+// Show the empty state once the last service-notif row is gone (single delete
+// only removes its DOM node; this keeps the panel consistent without a poll).
+function _afterSvcRemoval() {
+    var list = document.getElementById('nSvcList');
+    if (list && !list.querySelector('.svc-notif-row')) _renderSvcNotifs([]);
+}
+
+function deleteSvcNotif(id) {
     var el = document.getElementById('svcn_' + id);
     if (el) {
         el.classList.add('swiping-out');
-        setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
+        setTimeout(function() {
+            if (el.parentNode) el.parentNode.removeChild(el);
+            _afterSvcRemoval();
+        }, 320);
     }
     _svcNotifsData = (_svcNotifsData || []).filter(function(n){ return n.id != id; });
     _updateSvcBadge(_svcNotifsData);
@@ -3695,23 +3944,14 @@ function deleteAllSvcNotifs() {
 }
 
 function _updateSvcBadge(notifs) {
-    var badge = document.getElementById('nTabSvcBadge');
-    var mainBadge = document.getElementById('nBadge');
+    var badge  = document.getElementById('nTabSvcBadge');
     var unread = notifs.filter(function(n){ return !n.is_read; });
-    if (!badge) return;
-    if (unread.length) {
-        badge.textContent = unread.length;
-        badge.style.display = '';
-        // Also update main bell badge to show combined
-        var bloodUnread = (_reqAllData||[]).filter(function(r){ return !_readIds.has(String(r.id)); }).length;
-        var total = bloodUnread + unread.length;
-        if (mainBadge && !document.getElementById('nPanel').classList.contains('show')) {
-            mainBadge.textContent = total > 9 ? '9+' : total;
-            mainBadge.classList.add('on');
-        }
-    } else {
-        badge.style.display = 'none';
+    if (badge) {
+        if (unread.length) { badge.textContent = unread.length; badge.style.display = ''; }
+        else { badge.style.display = 'none'; }
     }
+    // The bell number is computed in ONE place now (blood + service combined).
+    updateBellBadge();
 }
 
 function _markSvcNotifReadServer(id) {
@@ -3749,9 +3989,21 @@ function markSvcNotifRead(id) {
 }
 
 function markAllSvcNotifsRead() {
-    (_svcNotifsData || []).forEach(function(n) {
-        if (!n.is_read) markSvcNotifRead(n.id);
+    var hadUnread = (_svcNotifsData || []).some(function(n){ return !n.is_read; });
+    if (!hadUnread) return;
+    // Local state once → render once → badge once (was N renders + N fetches).
+    _svcNotifsData = (_svcNotifsData || []).map(function(n){
+        return n.is_read ? n : Object.assign({}, n, {is_read: 1});
     });
+    _renderSvcNotifs(_svcNotifsData);
+    _updateSvcBadge(_svcNotifsData);
+    // Single server round-trip via the new mark_all branch.
+    var fd = new FormData();
+    fd.append('mark_service_notif_read', '1');
+    fd.append('mark_all', '1');
+    fd.append('device_id', getDeviceId());
+    fd.append('csrf_token', CSRF_TOKEN);
+    fetch(_AJAX_URL, {method:'POST', body:fd}).catch(function(){});
 }
 
 // Send a service push notification to a device (called from admin panel side via PHP)
@@ -4082,6 +4334,9 @@ function appSwitchPage(pageKey) {
                 }).catch(function(){});
             }
         }
+        if (pageKey === 'account' && typeof _loadAccountDashboard === 'function') {
+            _loadAccountDashboard();
+        }
     }
 
     if (prevEl && prevEl !== nextEl) {
@@ -4094,7 +4349,7 @@ function appSwitchPage(pageKey) {
 }
 
 function updateBottomNav(activeKey) {
-    ['home','donors','register','nearby','more','settings','requests'].forEach(function(k) {
+    ['home','donors','register','nearby','more','settings','requests','account'].forEach(function(k) {
         var btn = document.getElementById('mbn-' + k);
         if (btn) btn.classList.toggle('mbn-active', k === activeKey);
         var sd = document.getElementById('sd-' + k);
@@ -4467,8 +4722,14 @@ document.addEventListener('click', function(e){
 // ============================================================
 // 👤 ACCOUNT DASHBOARD
 // ============================================================
+// Account is now a full page (#page-account). Opening = navigate there; the
+// data load happens via _loadAccountDashboard(), called both here and from
+// appSwitchPage('account') so nav/deep-link refreshes too.
 function openAccountDashboard() {
-    openOverlay('accountModal');
+    if (typeof appSwitchPage === 'function') appSwitchPage('account');
+    else _loadAccountDashboard();
+}
+function _loadAccountDashboard() {
     _accDashLoading();
     // Profile + linked donor
     var fd = new FormData();
@@ -4499,6 +4760,8 @@ function openAccountDashboard() {
     loadMyAccountRequests();
     // My donation history (dates)
     loadMyDonations();
+    // Call History (last 30 days) — UI section; see loadMyCallHistory() TODO note
+    loadMyCallHistory();
     // reset delete-info section
     var db = document.getElementById('accDeleteInfoBody');
     if (db) db.style.display = 'none';
@@ -4532,7 +4795,7 @@ function _renderMyAccountRequests(rows) {
     if (!list) return;
     if (cnt) cnt.textContent = rows.length ? (rows.length + ' টি active') : '';
     if (!rows.length) {
-        list.innerHTML = '<div style="background:var(--input-bg);border:1px solid var(--border-color);border-radius:12px;padding:14px;text-align:center;color:var(--text-muted);font-size:0.82em;">কোনো active request নেই</div>';
+        list.innerHTML = '<div class="acc-empty"><span class="acc-empty-ico">🆘</span>এই মুহূর্তে আপনার কোনো সক্রিয় অনুরোধ নেই</div>';
         return;
     }
     var urgBn = { Critical:'🔴 অতিজরুরি', High:'🟠 জরুরি', Medium:'🔵 প্রয়োজন' };
@@ -4552,10 +4815,45 @@ function _renderMyAccountRequests(rows) {
                 (r.required_at ? '<br>⏰ <strong style="color:var(--text-main);">প্রয়োজন:</strong> ' + _esc(new Date(r.required_at * 1000).toLocaleString('bn-BD', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'})) : '') +
                 (r.created_at ? '<br>🗓️ ' + _esc(new Date(r.created_at * 1000).toLocaleString('bn-BD', {day:'numeric', month:'long', hour:'2-digit', minute:'2-digit'})) : '') +
               '</div>' +
+              // ── Private donation-verification code (only the owner sees this) ──
+              (r.donation_code
+                ? '<div class="dcode-box' + (((r.code_uses|0) >= (r.bags_needed|0)) ? ' dcode-box-used' : '') + '">' +
+                    '<div class="dcode-box-top">🎟️ <span class="dcode-box-label">Donation Verification Code</span></div>' +
+                    '<div class="dcode-box-row">' +
+                      '<span class="dcode-box-val">' + _esc(r.donation_code) + '</span>' +
+                      '<button class="dcode-box-copy" onclick="copyDonationCode(\'' + _esc(r.donation_code) + '\', this)">📋 Copy</button>' +
+                    '</div>' +
+                    '<div class="dcode-box-meta">' +
+                      (((r.code_uses|0) >= (r.bags_needed|0))
+                        ? '✅ সম্পূর্ণ ব্যবহৃত — Code-এর মেয়াদ শেষ'
+                        : '🩸 ' + (r.code_uses|0) + '/' + (r.bags_needed|0) + ' ব্যাগ যাচাই হয়েছে · রক্ত নেওয়ার পর দাতাকে এই Code দিন') +
+                    '</div>' +
+                  '</div>'
+                : '') +
               '<button onclick="deleteMyAccountRequest(' + (r.id|0) + ', this)" style="width:100%;margin-top:10px;padding:9px;background:rgba(220,38,38,0.07);border:1px solid rgba(220,38,38,0.35);color:var(--danger);border-radius:10px;font-size:0.82em;cursor:pointer;font-weight:700;min-height:unset;box-shadow:none;">🗑️ এই Request মুছুন</button>' +
             '</div>';
     });
     list.innerHTML = html;
+}
+
+// Copy a request's donation-verification code to clipboard (owner only)
+function copyDonationCode(code, btn) {
+    code = String(code);
+    function done() {
+        if (btn) { var o = btn.innerHTML; btn.innerHTML = '✅ Copied'; setTimeout(function(){ btn.innerHTML = o; }, 1500); }
+        if (typeof showToast === 'function') showToast('🎟️ Code কপি হয়েছে: ' + code, 'success');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(done).catch(function(){ done(); });
+    } else {
+        try {
+            var ta = document.createElement('textarea');
+            ta.value = code; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.focus(); ta.select();
+            document.execCommand('copy'); document.body.removeChild(ta);
+        } catch (e) {}
+        done();
+    }
 }
 
 function deleteMyAccountRequest(reqId, btn) {
@@ -4573,6 +4871,14 @@ function deleteMyAccountRequest(reqId, btn) {
                 showToast(d.msg || '✅ Request মুছে ফেলা হয়েছে।', 'success');
                 // Drop from the account-owned ID set so the Emergency "mine" tab updates
                 try { if (typeof _myReqIds !== 'undefined') _myReqIds.delete(String(reqId)); } catch(e){}
+                // Vanish from the bell panel + badge immediately — don't wait for
+                // the next 30s poll (deleted requests should disappear right away).
+                try {
+                    _reqAllData = (_reqAllData || []).filter(function(r){ return String(r.id) !== String(reqId); });
+                    if (typeof _seenIds !== 'undefined' && _seenIds && _seenIds.delete) _seenIds.delete(String(reqId));
+                    if (typeof refreshNPanel === 'function') refreshNPanel(_reqAllData);
+                    if (typeof updateBellBadge === 'function') updateBellBadge();
+                } catch(e){}
                 loadMyAccountRequests();
                 if (typeof loadBloodRequests === 'function') loadBloodRequests();
             } else {
@@ -4631,17 +4937,20 @@ function submitAccDeleteInfo() {
         });
 }
 
-function closeAccountModal() { closeOverlay('accountModal'); }
+// Account is a full page now. Legacy callers do `closeAccountModal()` — some
+// then navigate elsewhere (e.g. register). Only route home if we're STILL on
+// the account page, so we never fight a caller's own appSwitchPage().
+function closeAccountModal() {
+    if (_currentPage === 'account' && typeof appSwitchPage === 'function') {
+        appSwitchPage('home');
+    }
+}
 
 function _accDashLoading() {
-    var dc = document.getElementById('accDonorCard');
-    if (dc) dc.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.85em;padding:14px;">⏳ লোড হচ্ছে...</div>';
-    var ml = document.getElementById('accMsgList');
-    if (ml) ml.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.82em;padding:10px;">⏳ লোড হচ্ছে...</div>';
-    var rl = document.getElementById('accReqList');
-    if (rl) rl.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.82em;padding:10px;">⏳ লোড হচ্ছে...</div>';
-    var dl = document.getElementById('accDonationList');
-    if (dl) dl.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.82em;padding:10px;">⏳ লোড হচ্ছে...</div>';
+    var ld = '<div style="text-align:center;color:var(--text-muted);font-size:0.82em;padding:10px;">⏳ লোড হচ্ছে...</div>';
+    ['accMsgList','accReqList','accDonationList'].forEach(function(id){
+        var el = document.getElementById(id); if (el) el.innerHTML = ld;
+    });
 }
 
 // ── My Donations: load + render donation history (with dates) ──
@@ -4666,44 +4975,47 @@ function _renderMyDonations(res) {
     var history = Array.isArray(res.history) ? res.history : [];
     if (cnt) cnt.textContent = total ? ('মোট ' + total + ' বার') : '';
 
-    // Build the dated rows. Prefer recorded history; fall back to last_donation.
+    // Vertical timeline. Prefer recorded history; fall back to last_donation.
     var rows = '';
     if (history.length) {
         history.forEach(function(h){
             var dt = h.ts ? new Date(h.ts * 1000) : null;
             var ds = dt ? dt.toLocaleDateString('bn-BD', {year:'numeric', month:'long', day:'numeric'}) : '—';
             rows +=
-                '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:10px;margin-bottom:8px;">' +
-                  '<span style="font-size:1.1em;">🩸</span>' +
-                  '<div style="font-size:0.83em;line-height:1.5;">' +
-                    '<strong style="color:var(--text-main);">' + _esc(ds) + '</strong><br>' +
-                    '<span style="color:var(--text-muted);font-size:0.92em;">রক্তদান করেছেন</span>' +
-                  '</div>' +
+                '<div class="acc-tl-item">' +
+                  '<div class="acc-tl-marker"><span class="acc-tl-dot">🩸</span></div>' +
+                  '<div class="acc-tl-body"><strong>' + _esc(ds) + '</strong><br><span>রক্তদান করেছেন</span></div>' +
                 '</div>';
         });
     } else if (res.last_donation && res.last_donation !== 'no') {
         rows =
-            '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:10px;margin-bottom:8px;">' +
-              '<span style="font-size:1.1em;">🩸</span>' +
-              '<div style="font-size:0.83em;line-height:1.5;">' +
-                '<strong style="color:var(--text-main);">' + _esc(res.last_donation) + '</strong><br>' +
-                '<span style="color:var(--text-muted);font-size:0.92em;">সর্বশেষ রক্তদান</span>' +
-              '</div>' +
+            '<div class="acc-tl-item">' +
+              '<div class="acc-tl-marker"><span class="acc-tl-dot">🩸</span></div>' +
+              '<div class="acc-tl-body"><strong>' + _esc(res.last_donation) + '</strong><br><span>সর্বশেষ রক্তদান</span></div>' +
             '</div>';
     }
 
     if (!rows) {
-        list.innerHTML = '<div style="background:var(--input-bg);border:1px solid var(--border-color);border-radius:12px;padding:14px;text-align:center;color:var(--text-muted);font-size:0.82em;">এখনো কোনো রক্তদানের রেকর্ড নেই।<br>রক্ত দেওয়ার পর "আমি এইমাত্র রক্ত দিয়েছি 🩸" চেপে Save করুন।</div>';
+        list.innerHTML =
+            '<div class="acc-empty">' +
+              '<span class="acc-empty-ico">🩸</span>' +
+              'এখনো কোনো রক্তদানের রেকর্ড নেই' +
+              '<div class="acc-empty-sub">রক্ত দেওয়ার পর নিচের বাটনে চাপুন</div>' +
+              '<button class="acc-empty-btn" onclick="closeAccountModal(); appSwitchPage(\'register\'); setTimeout(function(){ try{switchTab(1); loadMyDonorInfo();}catch(e){} },220);">🩸 আমি এইমাত্র রক্ত দিয়েছি</button>' +
+            '</div>';
         return;
     }
-    list.innerHTML = rows;
+    list.innerHTML = '<div class="acc-timeline">' + rows + '</div>';
 }
 
 function _renderAccountDashboard(res) {
     var a = res.auth || {};
+    var d = res.donor;
     var name = a.name || a.email || a.phone || 'User';
     var setTxt = function(id, val){ var el = document.getElementById(id); if (el) el.textContent = val; };
+    var show   = function(id, on){ var el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
 
+    // ── Avatar (photo → initials on crimson) ──
     var av = document.getElementById('accAvatar');
     if (av) {
         if (a.photo) {
@@ -4717,82 +5029,119 @@ function _renderAccountDashboard(res) {
     }
     setTxt('accName', name);
 
+    // ── Provider pill ──
     var prov = document.getElementById('accProvider');
     if (prov) {
-        if (a.provider === 'phone') {
-            prov.textContent = '📱 ফোন';
-            prov.style.background = 'rgba(16,185,129,0.12)'; prov.style.color = '#10b981';
-            prov.style.borderColor = 'rgba(16,185,129,0.25)';
-        } else {
-            prov.textContent = '🔵 Google';
-            prov.style.background = 'rgba(59,130,246,0.12)'; prov.style.color = '#3b82f6';
-            prov.style.borderColor = 'rgba(59,130,246,0.25)';
-        }
+        prov.className = 'acc-pill ' + (a.provider === 'phone' ? 'acc-pill-green' : 'acc-pill-blue');
+        prov.textContent = (a.provider === 'phone') ? '📱 ফোন' : '🔵 Google';
     }
+
+    // ── Contact rows ──
     setTxt('accEmail', a.email || '—');
-    // Show the number used to VERIFY the account (Telegram/WhatsApp/phone-OTP),
-    // falling back to the Firebase sign-in phone if not yet verified.
+    // Number used to VERIFY the account (Telegram/WhatsApp/phone-OTP), else Firebase sign-in phone.
     setTxt('accPhone', a.verify_phone || a.phone || '—');
     setTxt('accMemberSince', a.member_since || '—');
 
-    // ── Verified / unverified badge + bind banner ──
+    // ── Verified / unverified pill + bind banner ──
     var vb = document.getElementById('accVerifyBadge');
     if (vb) {
         if (a.verified) {
             var chLabel = (a.verify_channel === 'telegram') ? '✈️ Telegram'
                         : (a.verify_channel === 'whatsapp') ? '🟢 WhatsApp'
                         : (a.provider === 'phone') ? '📱 ফোন' : '';
+            vb.className = 'acc-pill acc-pill-green';
             vb.textContent = '✅ Verified' + (chLabel ? ' · ' + chLabel : '');
-            vb.style.background = 'rgba(16,185,129,0.12)'; vb.style.color = '#10b981';
-            vb.style.borderColor = 'rgba(16,185,129,0.3)';
-            vb.style.display = '';
         } else {
+            vb.className = 'acc-pill acc-pill-amber';
             vb.textContent = '⚠️ Unverified';
-            vb.style.background = 'rgba(245,158,11,0.12)'; vb.style.color = '#f59e0b';
-            vb.style.borderColor = 'rgba(245,158,11,0.3)';
-            vb.style.display = '';
+        }
+        vb.style.display = '';
+    }
+    show('accVerifyBanner', !a.verified);
+
+    // ── Donor-dependent UI: blood badge, level pill, location, stats, eligibility, toggle ──
+    var bgBadge    = document.getElementById('accBloodBadge');
+    var levelBadge = document.getElementById('accLevelBadge');
+    if (d) {
+        if (bgBadge)    { bgBadge.textContent = d.blood_group || '—'; bgBadge.style.display = ''; }
+        if (levelBadge) { levelBadge.textContent = (d.badge_icon ? d.badge_icon + ' ' : '') + (d.badge_level || ''); levelBadge.style.display = (d.badge_level ? '' : 'none'); }
+        if (d.location) { setTxt('accLocation', d.location); show('accLocationRow', true); } else { show('accLocationRow', false); }
+
+        // Stat card — total donations + last donation date
+        setTxt('accStatTotal', (d.total_donations != null ? d.total_donations : 0));
+        var lastDon = (d.last_donation && d.last_donation !== 'no') ? d.last_donation : '';
+        setTxt('accStatLast', lastDon ? ('🗓️ ' + lastDon) : 'এখনো রেকর্ড নেই');
+
+        // Eligibility ring (120-day cooldown — matches server getLiveStatus())
+        _renderEligibilityRing(d.last_donation);
+
+        // Availability segmented toggle — calls the SAME existing set_willing endpoint
+        var notWilling = (d.willing === 'no');
+        var segYes = document.getElementById('accSegYes');
+        var segNo  = document.getElementById('accSegNo');
+        if (segYes) segYes.className = 'acc-seg-btn seg-yes' + (notWilling ? '' : ' is-active');
+        if (segNo)  segNo.className  = 'acc-seg-btn seg-no'  + (notWilling ? ' is-active' : '');
+
+        show('accStatsRow', true);
+        show('accActionRow', true);
+        show('accDonorCta', false);
+    } else {
+        if (bgBadge) bgBadge.style.display = 'none';
+        if (levelBadge) levelBadge.style.display = 'none';
+        show('accLocationRow', false);
+        show('accStatsRow', false);
+        show('accActionRow', false);
+        var cta = document.getElementById('accDonorCta');
+        if (cta) {
+            cta.innerHTML =
+                '<div class="acc-empty" style="border-style:solid;">' +
+                  '<span class="acc-empty-ico">🩸</span>' +
+                  '<span style="color:var(--text-main);font-weight:500;">আপনি এখনো রক্তদাতা হিসেবে নিবন্ধিত নন</span>' +
+                  '<div class="acc-empty-sub">রক্তদাতা হিসেবে যুক্ত হয়ে জীবন বাঁচাতে সাহায্য করুন</div>' +
+                  '<button class="acc-empty-btn" style="background:var(--success);" onclick="closeAccountModal(); appSwitchPage(\'register\'); setTimeout(function(){ try{switchTab(0);}catch(e){} },220);">📝 রক্তদাতা হিসেবে যুক্ত হোন</button>' +
+                '</div>';
+            cta.style.display = '';
         }
     }
-    var bn = document.getElementById('accVerifyBanner');
-    if (bn) bn.style.display = a.verified ? 'none' : '';
+}
 
-    // Donor card
-    var dc = document.getElementById('accDonorCard');
-    if (!dc) return;
-    var d = res.donor;
-    if (d) {
-        var notWilling = (d.willing === 'no');
-        var avail = notWilling ? '<span style="color:var(--danger);font-weight:700;">⛔ এখন Unavailable</span>'
-                               : '<span style="color:var(--success);font-weight:700;">✅ Available</span>';
-        var lastDon = (d.last_donation && d.last_donation !== 'no') ? d.last_donation : 'এখনো রেকর্ড নেই';
-        var willBtn = notWilling
-            ? '<button id="accWillBtn" onclick="setMyWilling(\'yes\')" style="width:100%;margin:10px 0 0;background:var(--success);color:#000;border:none;border-radius:10px;padding:11px;font-weight:700;font-size:0.85em;box-shadow:none;">✅ আবার রক্তদানে ইচ্ছুক</button>'
-            : '<button id="accWillBtn" onclick="setMyWilling(\'no\')" style="width:100%;margin:10px 0 0;background:rgba(220,38,38,0.1);color:var(--danger);border:1px solid rgba(220,38,38,0.3);border-radius:10px;padding:11px;font-weight:700;font-size:0.85em;box-shadow:none;">⛔ এখন রক্তদানে অনিচ্ছুক</button>';
-        // server-এর মতো bg-class বানাও: "A+" → bgApos, "AB-" → bgABneg
-        var bgClass = 'bg' + String(d.blood_group || '').replace(/[^a-zA-Z]/g,'') + ((String(d.blood_group||'').indexOf('+') !== -1) ? 'pos' : 'neg');
-        dc.innerHTML =
-            '<div style="background:var(--input-bg);border:1px solid var(--border-color);border-radius:14px;padding:14px;">' +
-              '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
-                '<span class="blood-badge ' + bgClass + '" style="font-size:1.05em;font-weight:800;">' + _esc(d.blood_group) + '</span>' +
-                '<span style="font-size:0.8em;font-weight:700;padding:3px 10px;border-radius:20px;background:' + d.badge_bg + ';color:' + d.badge_color + ';border:1px solid ' + d.badge_border + ';">' + d.badge_icon + ' ' + _esc(d.badge_level) + '</span>' +
-              '</div>' +
-              '<div style="font-size:0.84em;color:var(--text-muted);line-height:1.9;">' +
-                '📍 ' + _esc(d.location || '—') + '<br>' +
-                '🩸 মোট রক্তদান: <strong style="color:var(--text-main);">' + d.total_donations + '</strong> বার<br>' +
-                '🗓️ শেষ রক্তদান: <strong style="color:var(--text-main);">' + _esc(lastDon) + '</strong><br>' +
-                avail +
-              '</div>' +
-              willBtn +
-              '<button onclick="closeAccountModal(); appSwitchPage(\'register\'); setTimeout(function(){ try{switchTab(1); loadMyDonorInfo();}catch(e){} },220);" style="width:100%;margin:8px 0 0;background:var(--info);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:700;font-size:0.85em;box-shadow:none;">✏️ আমার তথ্য Update করুন</button>' +
-            '</div>';
-    } else {
-        dc.innerHTML =
-            '<div style="background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:14px;padding:16px;text-align:center;">' +
-              '<p style="font-size:0.85em;color:var(--text-main);font-weight:600;margin:0 0 4px;">আপনি এখনো রক্তদাতা হিসেবে নিবন্ধিত নন</p>' +
-              '<p style="font-size:0.76em;color:var(--text-muted);margin:0 0 12px;">রক্তদাতা হিসেবে যুক্ত হয়ে জীবন বাঁচাতে সাহায্য করুন</p>' +
-              '<button onclick="closeAccountModal(); appSwitchPage(\'register\'); setTimeout(function(){ try{switchTab(0);}catch(e){} },220);" style="width:100%;background:var(--success);color:#000;border:none;border-radius:10px;padding:11px;font-weight:700;font-size:0.85em;box-shadow:none;margin:0;">📝 রক্তদাতা হিসেবে যুক্ত হোন</button>' +
-            '</div>';
+// ── Eligibility ring — SVG donut showing 120-day donation-cooldown progress.
+//    lastStr is 'd/m/Y' or 'no'/'' (from account_info donor.last_donation).
+//    No last donation OR cooldown passed → full green "ready"; else amber + days left.
+function _renderEligibilityRing(lastStr) {
+    var ringEl = document.getElementById('accEligRing');
+    var textEl = document.getElementById('accEligText');
+    if (!ringEl) return;
+    var INTERVAL = 120; // days — consistent with the backend cooldown rule
+    var hasLast = lastStr && lastStr !== 'no';
+    var daysSince = null;
+    if (hasLast) {
+        var m = String(lastStr).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (m) {
+            var then = new Date(+m[3], (+m[2]) - 1, +m[1]).getTime();
+            daysSince = Math.floor((Date.now() - then) / 86400000);
+        }
     }
+    var pct, color, center, caption;
+    if (!hasLast || daysSince === null || daysSince >= INTERVAL) {
+        pct = 1; color = 'var(--success)';
+        center = '✓';
+        caption = '<strong>এখনই রক্তদানে প্রস্তুত</strong>';
+    } else {
+        var left = INTERVAL - daysSince;
+        pct = Math.max(0.04, Math.min(1, daysSince / INTERVAL));
+        color = '#f59e0b';
+        center = left + '<span style="font-size:0.62em;"> দিন</span>';
+        caption = 'আর <strong>' + left + '</strong> দিন পর<br>আবার দিতে পারবেন';
+    }
+    var R = 26, C = 2 * Math.PI * R, off = C * (1 - pct);
+    ringEl.innerHTML =
+        '<svg width="64" height="64" viewBox="0 0 64 64">' +
+          '<circle cx="32" cy="32" r="' + R + '" fill="none" stroke="var(--border-color)" stroke-width="6"></circle>' +
+          '<circle cx="32" cy="32" r="' + R + '" fill="none" stroke="' + color + '" stroke-width="6" stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + off.toFixed(1) + '"></circle>' +
+        '</svg>' +
+        '<div class="acc-ring-center" style="color:' + color + ';">' + center + '</div>';
+    if (textEl) textEl.innerHTML = caption;
 }
 
 // ── Account Dashboard থেকে এক ট্যাপে willing/not-willing toggle ──
@@ -4825,7 +5174,7 @@ function _renderMyMessages(rows) {
     var ml = document.getElementById('accMsgList');
     if (!ml) return;
     if (!rows.length) {
-        ml.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.8em;padding:14px;background:var(--input-bg);border:1px dashed var(--border-color);border-radius:12px;">এখনো কোনো message নেই। Admin-কে কিছু জানাতে "✚ নতুন" চাপুন।</div>';
+        ml.innerHTML = '<div class="acc-empty"><span class="acc-empty-ico">💬</span>এখনো কোনো message নেই<div class="acc-empty-sub">Admin-কে কিছু জানাতে উপরের "✚ নতুন" বাটনে চাপুন</div></div>';
         return;
     }
     var html = '';
@@ -4847,6 +5196,75 @@ function _renderMyMessages(rows) {
         html += '</div>';
     });
     ml.innerHTML = html;
+}
+
+// ── Call History (last 30 days) ─────────────────────────────────────
+// IMPORTANT: there is currently NO read-endpoint for a user's own calls,
+// so this renders the empty state only — NO new API / table / schema is
+// added here. The EXISTING `call_logs` table already stores every
+// reveal/call (donor_id, caller_phone, caller_location, created_at).
+// To make this live without inventing data:
+//   1) add an AJAX action (e.g. get_my_calls) returning this account's rows
+//      — caller_phone = session verify_phone (outgoing) OR donor_id = my
+//        donor id (incoming) — limited to the last 30 days; then
+//   2) replace the empty render in loadMyCallHistory() with a fetch that
+//      passes the rows to _renderCallHistory() (it already builds the list,
+//      counter badge and Clear-History button for that data shape).
+// Clear History → add a clear_my_calls delete action, call it from
+// clearMyCallHistory(). 30-day retention/cleanup can reuse existing jobs.
+function loadMyCallHistory() {
+    // No endpoint yet → show empty state. (Wire the fetch here once get_my_calls exists.)
+    _renderCallHistory([]);
+}
+
+function _renderCallHistory(rows) {
+    var list = document.getElementById('accCallList');
+    var cnt  = document.getElementById('accCallCount');
+    var clr  = document.getElementById('accCallClearBtn');
+    if (!list) return;
+    rows = Array.isArray(rows) ? rows : [];
+    // Defensive 30-day window (backend should also filter).
+    var cutoff = (Date.now() / 1000) - (30 * 86400);
+    rows = rows.filter(function(c){ return !c.ts || c.ts >= cutoff; });
+    if (cnt) { if (rows.length) { cnt.textContent = rows.length + ' Calls'; cnt.style.display = ''; } else cnt.style.display = 'none'; }
+    if (clr) clr.style.display = rows.length ? '' : 'none';
+
+    if (!rows.length) {
+        list.innerHTML =
+            '<div class="acc-empty">' +
+              '<span class="acc-empty-ico">📞</span>' +
+              'গত ৩০ দিনে কোনো কল রেকর্ড নেই' +
+              '<div class="acc-empty-sub">দাতাকে call করলে এখানে গত ৩০ দিনের কল দেখা যাবে</div>' +
+            '</div>';
+        return;
+    }
+    var html = '';
+    rows.forEach(function(c){
+        var incoming = (c.direction === 'in' || c.direction === 'incoming');
+        var dir = incoming ? '<span style="color:var(--info);">📥 Incoming</span>'
+                           : '<span style="color:var(--success);">📤 Outgoing</span>';
+        var when = c.ts ? new Date(c.ts * 1000).toLocaleString('bn-BD', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}) : '';
+        var bg = c.blood_group ? ' <span class="blood-badge" style="font-size:0.78em;font-weight:500;">' + _esc(c.blood_group) + '</span>' : '';
+        var inner =
+            '<span style="font-size:1.1em;">📞</span>' +
+            '<div style="flex:1;min-width:0;font-size:0.83em;line-height:1.5;">' +
+              '<strong style="color:var(--text-main);font-weight:500;">' + _esc(c.name || c.caller_name || '—') + '</strong>' + bg + '<br>' +
+              '<span style="color:var(--text-muted);">' + dir + ' · ' + _esc(when) + (c.duration ? ' · ' + _esc(c.duration) : '') + '</span>' +
+            '</div>';
+        // Link to the related donor/request when an existing URL is supplied.
+        if (c.url) {
+            html += '<a href="' + _esc(c.url) + '" class="acc-card" style="text-decoration:none;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;">' + inner + '</a>';
+        } else {
+            html += '<div class="acc-card" style="padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;">' + inner + '</div>';
+        }
+    });
+    list.innerHTML = html;
+}
+
+function clearMyCallHistory() {
+    // TODO(backend): no clear_my_calls endpoint exists yet. When added, POST it
+    //   here (with CSRF_TOKEN) then call loadMyCallHistory() on success. This
+    //   button is only shown when entries exist, so it is inert until then.
 }
 
 // ছোট HTML-escape helper (XSS রোধে)

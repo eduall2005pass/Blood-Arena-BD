@@ -35,7 +35,8 @@ messaging.onBackgroundMessage(function(payload) {
   var n    = payload.notification || {};
   var d    = payload.data         || {};
   var url  = d.url || (SITE_URL + '/');
-  var tag  = d.request_id ? ('blood-' + d.request_id)
+  var tag  = d.tag    ? d.tag
+           : d.request_id ? ('blood-' + d.request_id)
            : d.push_id    ? ('adm-'   + d.push_id)
            :                 ('fcm-'  + Date.now());
 
@@ -44,6 +45,12 @@ messaging.onBackgroundMessage(function(payload) {
 
   if (type === 'blood_request') {
     var t = _bloodText(d, n); title = t.title; body = t.body;
+  } else if (type === 'donation_verified') {
+    title = d.title || '🎉 রক্তদান যাচাই হয়েছে!';
+    body  = d.body  || 'আপনার donation count +১ হয়েছে। ধন্যবাদ! 🩸';
+  } else if (type === 'code_redeemed') {
+    title = d.title || '✅ রক্তদান নিশ্চিত হয়েছে';
+    body  = d.body  || 'একজন দাতা আপনার Request-এর বিপরীতে রক্তদান নিশ্চিত করেছেন।';
   } else if (type === 'donor_called') {
     title = d.title || '📞 Blood Arena';
     body  = d.body  || 'একজন রক্তের প্রয়োজনে call করেছেন।';

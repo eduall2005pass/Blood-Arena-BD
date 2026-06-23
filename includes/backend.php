@@ -549,6 +549,35 @@ if(!file_exists($_schema_v12) && isset($conn)){
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     @file_put_contents($_schema_v12, date('Y-m-d H:i:s'));
 }
+// ── Schema v15: requester verification code for donation count ───────
+//  প্রতিটি Emergency request-এর সাথে একটি unique 6-digit code তৈরি হয়। রক্ত
+//  নেওয়ার পর requester সেই code দাতাকে দেয়; দাতা code দিয়ে donation count +1
+//  করতে পারে (কমাতে পারে না)। একটি code `bags_needed` বার পর্যন্ত (ভিন্ন ভিন্ন
+//  দাতা) ব্যবহার করা যায়, তারপর expire। request expire/delete হলেও code মৃত।
+//   - donation_code   : 6 সংখ্যা (string — leading zero রাখা যায়)
+//   - code_uses        : কতবার redeem হয়েছে (display + slot-claim guard)
+//   - req_device_id    : requester-কে notification পাঠানোর জন্য device
+//   - code_redemptions : প্রতি (request, donor) এক row — একজন দাতা একবারই গুনবে
+$_schema_v15 = dirname(__DIR__) . '/.schema_v15_done';
+if(!file_exists($_schema_v15) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("ALTER TABLE blood_requests ADD COLUMN IF NOT EXISTS donation_code VARCHAR(6) DEFAULT NULL");
+    $conn->query("ALTER TABLE blood_requests ADD COLUMN IF NOT EXISTS code_uses INT NOT NULL DEFAULT 0");
+    $conn->query("ALTER TABLE blood_requests ADD COLUMN IF NOT EXISTS req_device_id VARCHAR(100) DEFAULT NULL");
+    $conn->query("ALTER TABLE blood_requests ADD INDEX idx_donation_code (donation_code)"); // dup হলে error suppressed
+    $conn->query("CREATE TABLE IF NOT EXISTS `code_redemptions` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `request_id` INT NOT NULL,
+        `donor_id` INT DEFAULT NULL,
+        `donor_auth_uid` VARCHAR(128) DEFAULT NULL,
+        `donation_code` VARCHAR(6) DEFAULT NULL,
+        `redeemed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY `uniq_req_donor` (`request_id`,`donor_id`),
+        KEY `idx_request` (`request_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v15, date('Y-m-d H:i:s'));
+}
 // === ENHANCED SECURITY HEADERS (XSS + Clickjacking + HSTS + Permissions) ===
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
@@ -737,6 +766,102 @@ function _bot_send($base, $payload, $insecure, $path = '/send') {
     return ["http" => $http, "body" => (string)$body];
 }
 
+// === REUSABLE PUSH / NOTIFICATION HELPERS ============================
+//  পুরোনো FCM helper (_fcm_get_oauth_token/_fcm_base64url) request-creation
+//  ব্লকের ভিতরে define করা — তাই অন্য handler-এ পাওয়া যায় না। নিচের helper-
+//  গুলো top-level + function_exists-guarded, যেকোনো handler থেকে নিরাপদে কল করা
+//  যায় (inline definition-এর সাথে নাম collide করে না)।
+if (!function_exists('ba_fcm_oauth_token')) {
+    function ba_fcm_b64url($data) {
+        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+    }
+    // FCM v1 OAuth token — request-creation ব্লকের মতোই একই service-account ও
+    // একই cache-file (.fcm_token_cache) ব্যবহার করে (token share হয়)।
+    function ba_fcm_oauth_token() {
+        $cache_file = dirname(__DIR__) . '/.fcm_token_cache';
+        if (file_exists($cache_file)) {
+            $cached = @json_decode(@file_get_contents($cache_file), true);
+            if ($cached && isset($cached['token'], $cached['exp']) && time() < $cached['exp']) {
+                return $cached['token'];
+            }
+        }
+        $client_email = "firebase-adminsdk-fbsvc@shsmc-blood-portal.iam.gserviceaccount.com";
+        $private_key  = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCaYTTALQ5tu9/j\n2IviUJI5F6nMwLYIGdAJKIMVdml4gxrgptWEJYXTb7e5p5yFlu9sGpDdcRD+BUlB\nXy8TnRtieQ1B1Kjqko+EyXVsIC+Kf+CN/yq/mVCySFEBgzOe+2efxWSvZiLQdv/6\nV7PfVJS9Mv0/hFtnUC+6EKKRBPDsLo8d4qD8hftdNBL5lWS4XtBP7MjEKLm6S3QO\nMlbgxTeLFspcb7eNZK755c4C3AHyhdnrBNNmHZTlVuVGVtfK5UXq3MVKyW10/Ek2\naurh+kfzow3OgEk6SW46dL31KkGYa2GFxOS/6rlaGMiFK0QkJL1GNa2BCFAQYT7J\nAPAzvJPjAgMBAAECggEAC2xTQZUT6D1qnQASTwtfMSegbNd69gZ9mkU2eIlr1yWn\nANCCJBESt0kg8x/ajm1TXKW/6mLKEGxxCzab09EK4bJ2BKpTsBJq2Yx+n82R4acC\nBVUdjf0uN22acN41x6HFUnvXWL3Z/aA7OK7x+aiB3li+McuoEnD11x1mqgxk4f+X\n2/Iie+fYBnL/OQoHMi7w/XHnHqoqGiWQLP/mTfzX43albR2b/JR0cVHii//hqeMz\nmlF3rv6fTIfh+mBxBH2GtjN93LaNsBWpitMER2hpX7gG/INEy7sUXI6jz2Rh7/Lf\nNWWzKU//xu37j7GtsV+LLak04TZ4ByfaFA4r7VdIYQKBgQDMCbhenujXz6JM0AHR\nde4wAp4xJrxB/wa4EXUJXzEFfPe5rlWjii7dXUWo2oYp6j1sHcBH3GbfhGlrp9oB\nvi+Kb3DwWBhGB6MCE4YJdaIEpIdWEoxEXirzQSf0yE1OKYjEkavENEuoOQssL2lA\nqv0fLsIWWKL6ouQXh1ozuZDBDQKBgQDBsgKAsRyLUvz05d4se3teZhJPgguk52tT\nL3wpFiRSIsB8zuIP0IH+ovp1puerdDZCtvf/lTS431EU/Hfe3orEgZHEd2vWD3xi\nxeHmtw9e0t7UkIu0q7LsUTJM+XhL9p7NydFNXTW1nH2bVNkHCu7JGvNZyvST2KAS\nJSGQTKwMrwKBgDJIhvZSpUFiOzZA4OHU9WFBk+i7ChQdnHNKYhRwMC2REZ/h9dr6\n1/fX363wRLYZsw9s+ZD8ISIeiLhuQkzBqQet1SB2JW1EvohpdVPpeIc6YNv2cDj9\nGAqg2Q77Ogn0NG91EuakmKyZekZmXMMCIKVJqa1GJMwtzpZ51eH/bkwVAoGBAIow\nGaD+usKbfmSp6owJvMZoQ//9Y5lOkT9TzVzysw72RCXG43ks5NFqLQ3q+bVUv7Fx\nIBVzuZ17lTlHta2HT7FKT1i/amvZuIAvdS9Iwup/vwIf7cwEAy6d7ykDglOPq1Rd\n+7kaGstqziIXso5Xumw3kg4pwbwI/Ip1ezCbwtN5AoGALxmWPYZ4bLwd5CkUop+S\nAjk1S4U2XNxVO+WXeEGc1ZyqyV6sjzf/cU0FkXZ8F1UA2WcEj54/9O0bp7d1Asss\nZN4YF8seZuzPSce2KMXdCJK8U6B7yg60CINZ2YxyCbxAJxbyPOt03+/WxTtuNoaR\n7WPRHDoF1VMk/DzBD4d6yP0=\n-----END PRIVATE KEY-----\n";
+        $now = time();
+        $header  = ba_fcm_b64url(json_encode(["alg"=>"RS256","typ"=>"JWT"]));
+        $payload = ba_fcm_b64url(json_encode(["iss"=>$client_email,"scope"=>"https://www.googleapis.com/auth/firebase.messaging","aud"=>"https://oauth2.googleapis.com/token","iat"=>$now,"exp"=>$now+3600]));
+        $signing_input = $header . '.' . $payload;
+        $signature = '';
+        $pkey = openssl_pkey_get_private($private_key);
+        if (!$pkey) return null;
+        openssl_sign($signing_input, $signature, $pkey, 'SHA256');
+        $jwt = $signing_input . '.' . ba_fcm_b64url($signature);
+        $ch = curl_init('https://oauth2.googleapis.com/token');
+        curl_setopt_array($ch, [CURLOPT_POST=>true, CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>8,
+            CURLOPT_POSTFIELDS=>http_build_query(['grant_type'=>'urn:ietf:params:oauth:grant-type:jwt-bearer','assertion'=>$jwt])]);
+        $res = curl_exec($ch); curl_close($ch);
+        if (!$res) return null;
+        $data = json_decode($res, true);
+        if (empty($data['access_token'])) return null;
+        @file_put_contents($cache_file, json_encode(['token'=>$data['access_token'],'exp'=>$now+3300]));
+        return $data['access_token'];
+    }
+    // একটি নির্দিষ্ট device-এ data-only push পাঠায় (device_id → fcm_token resolve করে)।
+    //  $data-তে অন্তত title/body থাকা উচিত — service worker fallback branch
+    //  (firebase-messaging-sw.js) যেকোনো type-এর জন্য title/body render করে।
+    //  best-effort: token/connection না থাকলে চুপচাপ false ফেরত (caller fail করে না)।
+    function ba_push_to_device($conn, $device_id, $data) {
+        if (empty($device_id) || !isset($conn)) return false;
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $tok = null;
+        if ($q = $conn->prepare("SELECT fcm_token FROM fcm_tokens WHERE device_id=? ORDER BY id DESC LIMIT 1")) {
+            $q->bind_param("s", $device_id); $q->execute();
+            $row = $q->get_result()->fetch_assoc(); $q->close();
+            if ($row && !empty($row['fcm_token'])) $tok = $row['fcm_token'];
+        }
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+        if (!$tok) return false;
+        $oauth = @ba_fcm_oauth_token();
+        if (!$oauth) return false;
+        if (empty($data['url'])) $data['url'] = (defined('SITE_URL') ? SITE_URL : '') . "/";
+        // সব value string হতে হবে (FCM data payload constraint)
+        $sdata = [];
+        foreach ($data as $k => $v) $sdata[$k] = (string)$v;
+        $payload = json_encode(["message" => [
+            "token"   => $tok,
+            "webpush" => ["fcm_options" => ["link" => $sdata['url']]],
+            "data"    => $sdata
+        ]]);
+        $ch = curl_init("https://fcm.googleapis.com/v1/projects/shsmc-blood-portal/messages:send");
+        curl_setopt_array($ch, [CURLOPT_POST=>true, CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>6,
+            CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$oauth],
+            CURLOPT_POSTFIELDS=>$payload]);
+        $res = curl_exec($ch); curl_close($ch);
+        // stale token হলে পরিষ্কার করি (অন্য জায়গার মতোই)
+        if ($res) {
+            $r = json_decode($res, true);
+            if (!empty($r['error']['status']) && in_array($r['error']['status'], ['UNREGISTERED','INVALID_ARGUMENT'])) {
+                mysqli_report(MYSQLI_REPORT_OFF);
+                if ($d = $conn->prepare("DELETE FROM fcm_tokens WHERE fcm_token=?")) { $d->bind_param("s",$tok); $d->execute(); $d->close(); }
+                mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+            }
+        }
+        return true;
+    }
+    // in-app notification (bell + Services panel) — device_id দিয়ে keyed।
+    function ba_service_notif($conn, $device_id, $type, $msg) {
+        if (empty($device_id) || !isset($conn)) return false;
+        mysqli_report(MYSQLI_REPORT_OFF);
+        $ok = false;
+        if ($s = $conn->prepare("INSERT INTO service_notifications (device_id, type, message) VALUES (?,?,?)")) {
+            $s->bind_param("sss", $device_id, $type, $msg);
+            $ok = $s->execute(); $s->close();
+        }
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+        return $ok;
+    }
+}
+
 // === LOCATION PRIVACY — server-side coordinate jitter ===
 //  একটি donor-এর exact pinpoint কখনো client-এ পাঠানো হয় না; সবসময় এই helper
 //  দিয়ে jitter করে পাঠানো হয়। $seed (যেমন donor id) + ~10-মিনিটের time-bucket
@@ -796,6 +921,7 @@ $_is_ajax = !empty($_POST['log_call']) || !empty($_POST['get_phone'])
          || !empty($_POST['get_my_messages'])
          || !empty($_POST['get_my_requests'])
          || !empty($_POST['delete_my_request'])
+         || !empty($_POST['redeem_donation_code'])
          || !empty($_POST['wa_send_otp'])
          || !empty($_POST['wa_verify_otp'])
          || !empty($_POST['tg_send_otp'])
@@ -1193,7 +1319,12 @@ if(isset($_POST['ajax_update'])){
     }
 
     $willing      = trim($_POST['willing_to_donate'] ?? 'yes');
-    $just_donated = (int)($_POST['just_donated'] ?? 0);
+    // ── donation count আর এখান থেকে বাড়ে না ──────────────────────────
+    //  Registration-এর পর count বাড়ানোর একমাত্র উপায় হলো requester-এর 6-সংখ্যার
+    //  verification Code (redeem_donation_code handler)। তাই পুরোনো free self-report
+    //  "+1" বন্ধ — $just_donated সবসময় 0 ধরে নিচের increment branch নিষ্ক্রিয় থাকে।
+    //  (এই form-এর বাকি অংশ — নাম/লোকেশন/last_donation/willing/privacy — আগের মতোই।)
+    $just_donated = 0;
     if(!in_array($willing, ['yes','no'], true)) $willing = 'yes';
     // Save device_id to donors table so admin can send notifications
     $upd_device_id = trim($_POST['device_id'] ?? '');
@@ -2225,9 +2356,26 @@ if(isset($_POST['submit_blood_request'])){
         $verified_loc = (trim($_POST['verified_location'] ?? '0') === '1') ? 1 : 0;
         if($h_lat === null || $h_lng === null) $verified_loc = 0; // coords ছাড়া verified হতে পারে না
 
+        // ── Donation verification code ───────────────────────────────
+        //  প্রতিটি request-এর সাথে unique 6-সংখ্যার code তৈরি হয়। রক্ত নেওয়ার পর
+        //  requester এটি দাতাকে দেয়; দাতা code দিয়ে নিজের donation count +1 করে।
+        //  শুধু requester-ই code দেখে ("আমার Requests")। Active request-গুলোর মধ্যে
+        //  unique রাখি; কয়েকবারেও না পেলে NULL (কার্যত কখনো ঘটবে না)।
+        $donation_code = null;
+        mysqli_report(MYSQLI_REPORT_OFF);
+        for($ci=0; $ci<6; $ci++){
+            $cand = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            $ck = $conn->prepare("SELECT 1 FROM blood_requests WHERE donation_code=? AND status='Active' LIMIT 1");
+            if(!$ck){ $donation_code = $cand; break; } // column এখনো না থাকলে fallback
+            $ck->bind_param("s", $cand); $ck->execute();
+            $exists = $ck->get_result()->fetch_row(); $ck->close();
+            if(!$exists){ $donation_code = $cand; break; }
+        }
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+
         try {
-            $stmt = $conn->prepare("INSERT INTO blood_requests (patient_name,blood_group,hospital,contact,urgency,bags_needed,note,required_at,req_ip,auth_uid,hospital_lat,hospital_lng,verified_location) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
-            $stmt->bind_param("sssssissssddi",$patient,$blood_grp,$hospital,$contact,$urgency,$bags,$note,$required_sql,$ip,$req_auth_uid,$h_lat,$h_lng,$verified_loc);
+            $stmt = $conn->prepare("INSERT INTO blood_requests (patient_name,blood_group,hospital,contact,urgency,bags_needed,note,required_at,req_ip,auth_uid,hospital_lat,hospital_lng,verified_location,donation_code,req_device_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            $stmt->bind_param("sssssissssddiss",$patient,$blood_grp,$hospital,$contact,$urgency,$bags,$note,$required_sql,$ip,$req_auth_uid,$h_lat,$h_lng,$verified_loc,$donation_code,$req_device_id);
             if($stmt->execute()){
                 $new_id = $conn->insert_id;
                 // ── Optional document uploads (≤ REQ_DOC_MAX_FILES images) ──
@@ -2272,8 +2420,13 @@ if(isset($_POST['submit_blood_request'])){
                     $sn_msg = "🆘 আপনার Emergency Blood Request সফলভাবে পাঠানো হয়েছে!\n\n"
                             . "🩸 Blood Group: {$blood_grp}\n"
                             . "🏥 Hospital: {$hospital}\n"
-                            . "🆔 Request ID: #{$new_id}\n\n"
-                            . "🗑️ Account Dashboard → \"আমার Requests\" থেকে যেকোনো সময় Request মুছতে পারবেন।\n"
+                            . "🆔 Request ID: #{$new_id}\n"
+                            . ($donation_code
+                                ? "\n🎟️ Donation Verification Code: {$donation_code}\n"
+                                  . "👉 রক্ত নেওয়ার পর এই Code দাতাকে দিন — তিনি এটি দিয়ে নিজের donation count +1 করবেন।\n"
+                                  . "🔒 Code গোপন রাখুন — শুধু আপনিই এটি \"আমার Requests\"-এ দেখতে পাবেন।\n"
+                                : "")
+                            . "\n🗑️ Account Dashboard → \"আমার Requests\" থেকে যেকোনো সময় Request মুছতে পারবেন।\n"
                             . "⏳ ৩ দিন পর Request স্বয়ংক্রিয়ভাবে Expire হয়ে যাবে।";
                     $sn_type = 'blood_request';
                     mysqli_report(MYSQLI_REPORT_OFF);
@@ -2431,7 +2584,8 @@ if(isset($_POST['get_my_requests'])){
     mysqli_report(MYSQLI_REPORT_OFF);
     $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
     $rows = [];
-    $stmt = $conn->prepare("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,verified_location,hospital_lat,hospital_lng,UNIX_TIMESTAMP(required_at) as required_at,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE auth_uid=? AND status='Active' ORDER BY created_at DESC LIMIT 20");
+    // donation_code/code_uses শুধু এই owner-only view-তেই পাঠানো হয় (public feed-এ নয়)।
+    $stmt = $conn->prepare("SELECT id,patient_name,blood_group,hospital,contact,urgency,bags_needed,note,verified_location,hospital_lat,hospital_lng,donation_code,code_uses,UNIX_TIMESTAMP(required_at) as required_at,UNIX_TIMESTAMP(created_at) as created_at FROM blood_requests WHERE auth_uid=? AND status='Active' ORDER BY created_at DESC LIMIT 20");
     if($stmt){
         $stmt->bind_param("s", $uid);
         $stmt->execute();
@@ -2478,6 +2632,186 @@ if(isset($_POST['delete_my_request'])){
         echo json_encode(["status"=>"success","msg"=>"✅ আপনার Request মুছে ফেলা হয়েছে।"]);
     } else {
         echo json_encode(["status"=>"error","msg"=>"❌ মুছতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"]);
+    }
+    exit();
+}
+
+// === REDEEM DONATION VERIFICATION CODE (donor → +1 count) ============
+//  রক্ত নেওয়ার পর requester দাতাকে 6-সংখ্যার code দেয়। দাতা এখানে সেটি দিলে:
+//   - তার total_donations +1 (বাড়ে, কখনো কমে না), badge/history/analytics update
+//   - last_donation=আজ, willing='no' (১২০ দিন Not Available — আগের button-এর মতোই)
+//   - code একটি request-এ bags_needed বার পর্যন্ত (ভিন্ন দাতা) ব্যবহার করা যায়
+//   - একজন দাতা একই code একবারই ব্যবহার করতে পারে (UNIQUE req+donor)
+//   - নিজের request-এর code নিজে ব্যবহার করা যায় না
+//   - request Expired/Deleted হলে code-ও অকেজো (status='Active' শর্ত)
+if(isset($_POST['redeem_donation_code'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('redeem_code', 10, 60);
+    $uid   = requireAuth();
+    $phone = $_SESSION['auth_phone'] ?? null;
+
+    // ── code validate (ঠিক 6 সংখ্যা) ──
+    $code = trim($_POST['code'] ?? '');
+    if(!preg_match('/^\d{6}$/', $code)){
+        echo json_encode(["status"=>"error","msg"=>"⚠️ সঠিক 6-সংখ্যার Code দিন।"]); exit();
+    }
+
+    // ── দাতার donor row বের করি (auth_uid; legacy phone হলে claim) ──
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $find = $conn->prepare("SELECT id, device_id FROM donors WHERE auth_uid=? LIMIT 1");
+    $find->bind_param("s", $uid); $find->execute();
+    $drow = $find->get_result()->fetch_assoc(); $find->close();
+    if(!$drow && $phone){
+        $f2 = $conn->prepare("SELECT id, device_id FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
+        $f2->bind_param("s", $phone); $f2->execute();
+        $drow = $f2->get_result()->fetch_assoc(); $f2->close();
+        if($drow){ // legacy row-টি এই account-এ claim করি
+            $email = $_SESSION['auth_email'] ?? null;
+            $cl = $conn->prepare("UPDATE donors SET auth_uid=?, auth_email=? WHERE id=?");
+            $cl->bind_param("ssi", $uid, $email, $drow['id']); $cl->execute(); $cl->close();
+        }
+    }
+    if(!$drow){
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"error","code"=>"no_donor","msg"=>"⚠️ আপনার donor profile পাওয়া যায়নি। প্রথমে রেজিস্ট্রেশন করুন।"]); exit();
+    }
+    $donor_id = (int)$drow['id'];
+
+    // device_id খালি থাকলে এখন সেট করি (পরে notification পাঠাতে কাজে লাগে)
+    $donor_device = trim($_POST['device_id'] ?? ($drow['device_id'] ?? ''));
+    if(!empty($donor_device) && empty($drow['device_id'])){
+        $udq = $conn->prepare("UPDATE donors SET device_id=? WHERE id=? AND (device_id IS NULL OR device_id='')");
+        if($udq){ $udq->bind_param("si", $donor_device, $donor_id); $udq->execute(); $udq->close(); }
+    }
+
+    // ── পুরোনো Active request-গুলো আগে expire করি, তারপর code খুঁজি ──
+    $conn->query("UPDATE blood_requests SET status='Expired' WHERE status='Active' AND created_at < DATE_SUB(NOW(), INTERVAL 72 HOUR)");
+    $rq = $conn->prepare("SELECT id, auth_uid, req_device_id, patient_name, blood_group, bags_needed, code_uses FROM blood_requests WHERE donation_code=? AND status='Active' LIMIT 1");
+    $rq->bind_param("s", $code); $rq->execute();
+    $req = $rq->get_result()->fetch_assoc(); $rq->close();
+
+    if(!$req){
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"error","msg"=>"❌ Code টি ভুল অথবা মেয়াদ শেষ হয়ে গেছে।"]); exit();
+    }
+    $req_id   = (int)$req['id'];
+    $bags     = max(1, (int)$req['bags_needed']);
+    $uses_now = (int)$req['code_uses'];
+
+    // নিজের request-এর code নিজে ব্যবহার করা যাবে না
+    if(!empty($req['auth_uid']) && $req['auth_uid'] === $uid){
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"error","msg"=>"⚠️ নিজের Request-এর Code নিজে ব্যবহার করা যাবে না।"]); exit();
+    }
+    // সব slot শেষ → code expired
+    if($uses_now >= $bags){
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"error","msg"=>"⚠️ এই Code সম্পূর্ণ ব্যবহৃত হয়ে গেছে (expired)।"]); exit();
+    }
+
+    // ── 1) এই দাতার redemption record বসাই (UNIQUE req+donor → duplicate ধরে) ──
+    $ins = $conn->prepare("INSERT INTO code_redemptions (request_id, donor_id, donor_auth_uid, donation_code) VALUES (?,?,?,?)");
+    $ins->bind_param("iiss", $req_id, $donor_id, $uid, $code);
+    $ins_ok = @$ins->execute();
+    $ins->close();
+    if(!$ins_ok){
+        // duplicate key = এই দাতা আগেই এই code ব্যবহার করেছেন
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"error","msg"=>"⚠️ আপনি এই Code ইতিমধ্যে ব্যবহার করেছেন।"]); exit();
+    }
+
+    // ── 2) একটি slot claim করি (race-safe: code_uses < bags হলেই বাড়ে) ──
+    $claim = $conn->prepare("UPDATE blood_requests SET code_uses = code_uses + 1 WHERE id=? AND status='Active' AND code_uses < ?");
+    $claim->bind_param("ii", $req_id, $bags);
+    $claim->execute();
+    $claimed = ($claim->affected_rows === 1);
+    $claim->close();
+    if(!$claimed){
+        // এর মধ্যেই সব slot ভরে গেছে → আমাদের redemption row রোলব্যাক করি
+        $rb = $conn->prepare("DELETE FROM code_redemptions WHERE request_id=? AND donor_id=?");
+        if($rb){ $rb->bind_param("ii", $req_id, $donor_id); $rb->execute(); $rb->close(); }
+        mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+        echo json_encode(["status"=>"error","msg"=>"⚠️ এই Code এইমাত্র সম্পূর্ণ ব্যবহৃত হয়ে গেছে।"]); exit();
+    }
+    $new_uses = $uses_now + 1;
+
+    // ── 3) দাতার count +1, badge, last_donation=আজ, willing=no ──
+    $today = date('Y-m-d');
+    $badge_expr_inc = "CASE WHEN total_donations+1>=10 THEN 'Legend' WHEN total_donations+1>=5 THEN 'Hero' WHEN total_donations+1>=2 THEN 'Active' ELSE 'New' END";
+    $bump = $conn->prepare("UPDATE donors SET total_donations=total_donations+1, badge_level=$badge_expr_inc, last_donation=?, willing_to_donate='no' WHERE id=?");
+    $bump->bind_param("si", $today, $donor_id);
+    $bump->execute(); $bump->close();
+
+    // নতুন total পড়ি
+    $tot = 0;
+    if($ts = $conn->prepare("SELECT total_donations FROM donors WHERE id=?")){
+        $ts->bind_param("i", $donor_id); $ts->execute();
+        $tr = $ts->get_result()->fetch_assoc(); $ts->close();
+        $tot = (int)($tr['total_donations'] ?? 0);
+    }
+    $badge = getBadgeInfo($tot);
+
+    // donation history + persistent analytics counter
+    if($dh = $conn->prepare("INSERT INTO donation_history (auth_uid, donor_id, donation_date) VALUES (?,?,?)")){
+        $dh->bind_param("sis", $uid, $donor_id, $today); $dh->execute(); $dh->close();
+    }
+    $conn->query("INSERT INTO analytics_counters (counter_name, counter_value) VALUES ('total_donations_ever', 1)
+        ON DUPLICATE KEY UPDATE counter_value = counter_value + 1");
+    mysqli_report(MYSQLI_REPORT_ERROR|MYSQLI_REPORT_STRICT);
+
+    // ── 4) JSON response এখনই পাঠাই; notification/push পরে (browser অপেক্ষা করবে না) ──
+    $resp = [
+        "status"          => "success",
+        "msg"             => "🎉 ধন্যবাদ! আপনার রক্তদান যাচাই হয়েছে — donation count +১ হয়েছে।",
+        "total_donations" => $tot,
+        "badge_level"     => $badge['level'],
+        "badge_icon"      => $badge['icon'],
+        "uses"            => $new_uses,
+        "bags"            => $bags
+    ];
+    while(ob_get_level()) ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Connection: close');
+    ignore_user_abort(true);
+    $resp_json = json_encode($resp, JSON_UNESCAPED_UNICODE);
+    header('Content-Length: ' . strlen($resp_json));
+    echo $resp_json;
+    @ob_flush(); @flush();
+    if(function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
+
+    // ── 5) Notifications (best-effort) ──────────────────────────────
+    //  দাতাকে: যাচাই নিশ্চিত। requester-কে: একজন দাতা নিশ্চিত করেছেন (x/y bag)।
+    //  message client-এ raw render হয় (donor_called-এর মতো) — তাই user-input
+    //  (patient_name/blood_group) আগে esc() করি যাতে stored-XSS না হয়।
+    $rg = esc($req['blood_group']);
+    $pn = esc($req['patient_name']);
+    $donor_notif = "🎉 আপনার রক্তদান যাচাই হয়েছে! মোট donation: {$tot}টি।\n"
+                 . "🩸 Request: {$rg} ({$pn})\n"
+                 . "🛡️ আপনাকে ১২০ দিনের জন্য \"Not Available\" করা হলো।";
+    if(!empty($donor_device)){
+        @ba_service_notif($conn, $donor_device, 'donation_verified', $donor_notif);
+        @ba_push_to_device($conn, $donor_device, [
+            "type"  => "donation_verified",
+            "title" => "🎉 রক্তদান যাচাই হয়েছে!",
+            "body"  => "আপনার donation count এখন {$tot}টি। ধন্যবাদ! 🩸",
+            "url"   => (defined('SITE_URL') ? SITE_URL : '') . "/",
+            "tag"   => "donation-verified-{$req_id}-{$donor_id}"
+        ]);
+    }
+    if(!empty($req['req_device_id'])){
+        $req_notif = "✅ আপনার Request #{$req_id} — একজন দাতা রক্তদান নিশ্চিত করেছেন।\n"
+                   . "🩸 {$req['blood_group']} | 🎟️ Code ব্যবহৃত: {$new_uses}/{$bags} ব্যাগ"
+                   . ($new_uses >= $bags ? "\n✔️ Code সম্পূর্ণ ব্যবহৃত (expired)।" : "");
+        @ba_service_notif($conn, $req['req_device_id'], 'code_redeemed', $req_notif);
+        @ba_push_to_device($conn, $req['req_device_id'], [
+            "type"  => "code_redeemed",
+            "title" => "✅ রক্তদান নিশ্চিত হয়েছে",
+            "body"  => "Request #{$req_id}: একজন দাতা নিশ্চিত করেছেন ({$new_uses}/{$bags} ব্যাগ)।",
+            "url"   => (defined('SITE_URL') ? SITE_URL : '') . "/",
+            "tag"   => "code-redeemed-{$req_id}"
+        ]);
     }
     exit();
 }
@@ -3405,13 +3739,20 @@ if(isset($_POST['mark_service_notif_read'])){
     while(ob_get_level()) ob_end_clean(); ob_start();
     $notif_id  = (int)($_POST['notif_id'] ?? 0);
     $device_id = trim($_POST['device_id'] ?? '');
-    if($notif_id <= 0 || empty($device_id)){
+    $mark_all  = !empty($_POST['mark_all']); // true = mark every unread notif for this device read
+    if(empty($device_id) || (!$mark_all && $notif_id <= 0)){
         echo json_encode(["status"=>"error"]);
         exit();
     }
     mysqli_report(MYSQLI_REPORT_OFF);
-    $stmt = $conn->prepare("UPDATE service_notifications SET is_read=1 WHERE id=? AND device_id=?");
-    $stmt->bind_param("is", $notif_id, $device_id);
+    if($mark_all){
+        // One query for "✓ সব Read করুন" instead of N per-id round-trips
+        $stmt = $conn->prepare("UPDATE service_notifications SET is_read=1 WHERE device_id=? AND is_read=0");
+        $stmt->bind_param("s", $device_id);
+    } else {
+        $stmt = $conn->prepare("UPDATE service_notifications SET is_read=1 WHERE id=? AND device_id=?");
+        $stmt->bind_param("is", $notif_id, $device_id);
+    }
     $stmt->execute();
     $stmt->close();
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);

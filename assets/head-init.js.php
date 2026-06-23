@@ -358,6 +358,19 @@ function _onAuthSuccess(res) {
   var who = res.name || res.email || res.phone || 'User';
   _authToast('✅ স্বাগতম, ' + who + '!', 'success');
   if (typeof _renderAuthState === 'function') _renderAuthState();
+  // Auto-resume a pending Emergency Request (user tapped it while signed out).
+  // ba_auth is already in localStorage above, so _isSignedIn() now passes the
+  // gate. Skip the register/verify redirects — their intent is to send a request.
+  var _emgPending = window._pendingEmergencyRequest;
+  try { if (sessionStorage.getItem('ba_pending_emg') === '1') _emgPending = true; } catch(e){}
+  if (_emgPending) {
+    window._pendingEmergencyRequest = false;
+    try { sessionStorage.removeItem('ba_pending_emg'); } catch(e){}
+    if (typeof openBloodRequestModal === 'function') {
+      setTimeout(function(){ openBloodRequestModal(); }, 300);
+    }
+    return;
+  }
   // verified না হলে account bind করতে উৎসাহ দাও (call করতে লাগবে)
   if (!res.verified && typeof _promptBindIfUnverified === 'function') {
     setTimeout(function(){ _promptBindIfUnverified(); }, 900);

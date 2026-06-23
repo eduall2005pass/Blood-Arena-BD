@@ -1324,6 +1324,116 @@ footer{ background: var(--footer-bg); color: var(--footer-text); padding: 50px 2
 .emergency-banner-text h4 { color:var(--danger); font-family:var(--font-heading); font-size:1.05rem; margin-bottom:2px; }
 .emergency-banner-text p  { color:var(--text-muted); font-size:0.82em; }
 .emergency-banner-btns { display:flex; gap:8px; flex-wrap:wrap; }
+
+/* Home: verify-donation entry card (mobile) — roktodan jachay → count +১ */
+.home-verify-card {
+    display:flex; align-items:center; gap:12px; width:100%; margin:12px 0 0;
+    padding:13px 15px; border-radius:14px; cursor:pointer; text-align:left;
+    background:rgba(245,158,11,0.07); border:1px solid rgba(245,158,11,0.3);
+    color:var(--text-main); box-shadow:none; transition:transform 0.15s, border-color 0.15s;
+}
+.home-verify-card:hover, .home-verify-card:active { transform:translateY(-1px); border-color:var(--accent-orange); }
+.home-verify-ic { font-size:1.7rem; line-height:1; flex-shrink:0; }
+.home-verify-tx { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.home-verify-tx strong { font-size:0.95rem; font-weight:800; color:var(--accent-orange); font-family:var(--font-heading); }
+.home-verify-tx small { font-size:0.76rem; color:var(--text-muted); line-height:1.45; }
+.home-verify-arrow { font-size:1.2rem; color:var(--accent-orange); flex-shrink:0; }
+
+/* Account full page: comfortable centered column (was a 440px modal) */
+#page-account .account-page-inner { width:100%; max-width:560px; margin:0 auto; padding:0 4px; }
+@media (min-width: 651px) {
+    #page-account .account-page-inner { max-width:620px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ACCOUNT DASHBOARD — flat redesign. Design system: crimson accent
+   (var(--primary-red)), only two font-weights (400 / 500), 12px radius,
+   no gradient, no heavy shadow. Everything scoped to #page-account so
+   no other page is affected. Colors use CSS vars → works in both themes.
+   ══════════════════════════════════════════════════════════════════ */
+#page-account .scroll-content { padding: 4px 2px; }
+
+/* generic flat card */
+#page-account .acc-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; }
+
+/* ── 1) Profile card ── */
+#page-account .acc-profile-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 14px; font-weight: 400; }
+#page-account .acc-profile-top { display: flex; align-items: center; gap: 14px; }
+#page-account .acc-avatar { width: 58px; height: 58px; border-radius: 50%; background: var(--primary-red); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.5em; font-weight: 500; flex-shrink: 0; font-family: var(--font-heading); overflow: hidden; }
+#page-account .acc-id { min-width: 0; flex: 1; }
+#page-account .acc-name { font-size: 1.08em; font-weight: 500; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#page-account .acc-pills { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
+#page-account .acc-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 0.7em; font-weight: 500; padding: 3px 10px; border-radius: 20px; border: 1px solid transparent; white-space: nowrap; }
+#page-account .acc-pill-blue { background: rgba(59,130,246,0.12); color: #3b82f6; border-color: rgba(59,130,246,0.25); }
+#page-account .acc-pill-green { background: rgba(16,185,129,0.12); color: var(--success); border-color: rgba(16,185,129,0.3); }
+#page-account .acc-pill-amber { background: rgba(245,158,11,0.12); color: #f59e0b; border-color: rgba(245,158,11,0.3); }
+#page-account .acc-bg-badge { flex-shrink: 0; width: 50px; height: 50px; border-radius: 50%; background: var(--primary-red); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.02em; font-weight: 500; letter-spacing: 0.5px; font-family: var(--font-heading); }
+#page-account .acc-divider { height: 1px; background: var(--border-color); margin: 14px 0; border: 0; }
+#page-account .acc-contact { font-size: 0.85em; }
+#page-account .acc-contact-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+#page-account .acc-contact-row .acc-ico { width: 18px; text-align: center; flex-shrink: 0; opacity: 0.9; }
+#page-account .acc-contact-row .acc-lbl { color: var(--text-muted); flex-shrink: 0; }
+#page-account .acc-contact-row .acc-val { color: var(--text-main); font-weight: 500; margin-left: auto; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 2) Stats + eligibility grid ── */
+#page-account .acc-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+@media (max-width: 430px) { #page-account .acc-stats-grid { grid-template-columns: 1fr; } }
+#page-account .acc-stat, #page-account .acc-elig { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; font-weight: 400; }
+#page-account .acc-stat { display: flex; flex-direction: column; justify-content: center; }
+#page-account .acc-stat-label { font-size: 0.72em; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+#page-account .acc-stat-num { font-size: 2.1em; font-weight: 500; color: var(--primary-red); line-height: 1.15; font-family: var(--font-heading); }
+#page-account .acc-stat-unit { font-size: 0.45em; color: var(--text-muted); font-weight: 400; margin-left: 5px; letter-spacing: 0.5px; }
+#page-account .acc-stat-sub { font-size: 0.76em; color: var(--text-muted); margin-top: 5px; }
+#page-account .acc-elig { display: flex; align-items: center; gap: 12px; }
+#page-account .acc-ring { flex-shrink: 0; width: 64px; height: 64px; position: relative; }
+#page-account .acc-ring svg { transform: rotate(-90deg); display: block; }
+#page-account .acc-ring-center { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 0.86em; font-weight: 500; }
+#page-account .acc-elig-text { font-size: 0.8em; color: var(--text-muted); line-height: 1.5; }
+#page-account .acc-elig-text strong { color: var(--text-main); font-weight: 500; }
+
+/* ── 3) Action row ── */
+#page-account .acc-action-row { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+#page-account .acc-seg { display: inline-flex; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 3px; flex: 1; min-width: 178px; }
+#page-account .acc-seg-btn { flex: 1; border: none; background: transparent; color: var(--text-muted); font-size: 0.82em; font-weight: 500; padding: 8px 10px; border-radius: 8px; cursor: pointer; min-height: unset; margin: 0; box-shadow: none; transition: background .15s, color .15s; width: auto; }
+#page-account .acc-seg-btn.seg-yes.is-active { background: var(--success); color: #fff; }
+#page-account .acc-seg-btn.seg-no.is-active { background: var(--danger); color: #fff; }
+#page-account .acc-update-btn { flex: 1; min-width: 150px; background: var(--primary-red); color: #fff; border: none; border-radius: 10px; padding: 11px 14px; font-weight: 500; font-size: 0.85em; cursor: pointer; min-height: unset; margin: 0; box-shadow: none; width: auto; }
+
+/* ── section headers ── */
+#page-account .acc-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 2px 8px; }
+#page-account .acc-sec-title { display: inline-flex; align-items: center; gap: 7px; font-size: 0.9em; font-weight: 500; color: var(--text-main); }
+#page-account .acc-sec-title .acc-sec-ico { font-size: 1.05em; }
+#page-account .acc-sec-meta { font-size: 0.72em; color: var(--text-muted); font-weight: 400; }
+#page-account .acc-sec-action { width: auto; min-height: unset; margin: 0; padding: 5px 12px; border-radius: 20px; font-size: 0.72em; font-weight: 500; background: rgba(59,130,246,0.12); color: #3b82f6; border: 1px solid rgba(59,130,246,0.25); box-shadow: none; cursor: pointer; }
+#page-account .acc-count-badge { font-size: 0.68em; font-weight: 500; padding: 2px 9px; border-radius: 20px; background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-muted); }
+
+/* ── 4) Donation timeline ── */
+#page-account .acc-timeline { margin: 0 0 18px; }
+#page-account .acc-tl-item { position: relative; display: flex; gap: 12px; padding: 0 0 14px 0; }
+#page-account .acc-tl-item:last-child { padding-bottom: 0; }
+#page-account .acc-tl-marker { position: relative; flex-shrink: 0; width: 26px; display: flex; justify-content: center; }
+#page-account .acc-tl-dot { width: 26px; height: 26px; border-radius: 50%; background: var(--primary-red-soft); display: flex; align-items: center; justify-content: center; font-size: 0.82em; z-index: 1; }
+#page-account .acc-tl-item:not(:last-child) .acc-tl-marker::after { content: ''; position: absolute; top: 26px; bottom: -14px; left: 50%; width: 2px; background: var(--border-color); transform: translateX(-50%); }
+#page-account .acc-tl-body { flex: 1; padding-top: 3px; font-size: 0.84em; line-height: 1.5; }
+#page-account .acc-tl-body strong { color: var(--text-main); font-weight: 500; }
+#page-account .acc-tl-body span { color: var(--text-muted); }
+
+/* ── empty states ── */
+#page-account .acc-empty { background: var(--input-bg); border: 1px dashed var(--border-color); border-radius: 12px; padding: 18px 14px; text-align: center; color: var(--text-muted); font-size: 0.82em; margin-bottom: 18px; line-height: 1.6; }
+#page-account .acc-empty .acc-empty-ico { font-size: 1.7em; display: block; margin-bottom: 6px; opacity: 0.85; }
+#page-account .acc-empty-sub { font-size: 0.92em; opacity: 0.85; margin-top: 4px; }
+#page-account .acc-empty-btn { margin-top: 12px; background: var(--primary-red); color: #fff; border: none; border-radius: 10px; padding: 10px 16px; font-size: 0.84em; font-weight: 500; cursor: pointer; min-height: unset; box-shadow: none; margin-bottom: 0; width: auto; }
+
+/* ── 7) Account settings card (delete + logout rows) ── */
+#page-account .acc-settings { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; margin: 22px 0 18px; }
+#page-account .acc-set-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; user-select: none; }
+#page-account .acc-set-row .acc-set-ico { font-size: 1.05em; width: 22px; text-align: center; flex-shrink: 0; }
+#page-account .acc-set-row .acc-set-lbl { flex: 1; font-size: 0.88em; font-weight: 500; color: var(--text-main); }
+#page-account .acc-set-row .acc-set-chev { color: var(--text-muted); font-size: 1.25em; transition: transform .2s; }
+#page-account .acc-set-row.is-danger .acc-set-lbl { color: var(--danger); }
+#page-account .acc-set-divider { height: 1px; background: var(--border-color); margin: 0 16px; }
+#page-account .acc-set-body { padding: 0 16px 16px; }
+
 .btn-emergency { background:var(--danger); color:#fff; padding:10px 18px; border-radius:25px; font-size:0.9em; font-weight:700; cursor:pointer; border:none; transition:all 0.2s; width:auto; margin:0; }
 .btn-emergency:hover { background:#b91c1c; transform:translateY(-2px); box-shadow:0 6px 15px rgba(220,38,38,0.4); }
 .btn-view-requests { background:transparent; color:var(--accent-orange); border:1.5px solid var(--accent-orange); padding:9px 16px; border-radius:25px; font-size:0.9em; font-weight:700; cursor:pointer; transition:all 0.2s; width:auto; margin:0; }
@@ -2183,7 +2293,7 @@ tr.donor-called-outline > td {
 .notif-panel::-webkit-scrollbar { width: 4px; }
 .notif-panel::-webkit-scrollbar-track { background: transparent; }
 .notif-panel::-webkit-scrollbar-thumb { background: rgba(220,38,38,0.4); border-radius: 4px; }
-.notif-panel.show { display:block; animation:fadeIn 0.2s ease; }
+.notif-panel.show { display:block; transform-origin:top right; animation:notifPanelIn 0.22s cubic-bezier(0.2,0.9,0.3,1.1); }
 /* Lock background scroll while notification panel is open (only the panel scrolls) */
 body.npanel-scroll-lock { position: fixed; width: 100%; overflow: hidden; }
 .notif-panel-hdr { font-weight:700; font-size:0.85em; color:var(--text-main);
@@ -2218,7 +2328,10 @@ body.npanel-scroll-lock { position: fixed; width: 100%; overflow: hidden; }
     border:1px solid var(--border-color); background:var(--input-bg);
     display:flex; align-items:flex-start; gap:10px;
     transition:transform 0.25s ease, opacity 0.25s ease, max-height 0.3s ease;
-    max-height:200px; touch-action:pan-y;
+    /* Generous cap so long messages (admin replies, capped at 500 chars server-side)
+       are never clipped; still finite so the swipe-out collapse can animate. The
+       panel itself scrolls (max-height:420px) to reveal a tall row. */
+    max-height:600px; touch-action:pan-y;
 }
 .svc-notif-row.unread {
     border-color:rgba(59,130,246,0.35);
@@ -2266,6 +2379,192 @@ body.npanel-scroll-lock { position: fixed; width: 100%; overflow: hidden; }
     transition:all 0.15s;
 }
 .svc-delete-all-btn:hover { background:rgba(220,38,38,0.15); }
+/* ── Service notification: type-accent left border (category at a glance) ── */
+.svc-notif-row.accent-red    { border-left:3px solid rgba(242,85,90,0.6); }
+.svc-notif-row.accent-pink   { border-left:3px solid rgba(236,72,153,0.6); }
+.svc-notif-row.accent-green  { border-left:3px solid rgba(16,185,129,0.65); }
+.svc-notif-row.accent-blue   { border-left:3px solid rgba(59,130,246,0.6); }
+.svc-notif-row.accent-grey   { border-left:3px solid var(--border-color); }
+.svc-notif-row.unread { border-left-width:3px; }
+.svc-notif-row.accent-green.unread { background:rgba(16,185,129,0.07); border-color:rgba(16,185,129,0.4); box-shadow:0 0 0 1px rgba(16,185,129,0.14); }
+.svc-notif-row.accent-red.unread   { background:rgba(242,85,90,0.07);  border-color:rgba(242,85,90,0.4);  box-shadow:0 0 0 1px rgba(242,85,90,0.14); }
+.svc-notif-row.accent-pink.unread  { background:rgba(236,72,153,0.07); border-color:rgba(236,72,153,0.4); box-shadow:0 0 0 1px rgba(236,72,153,0.14); }
+/* ── Structured empty state (replaces the fragile :first-line trick) ── */
+.notif-empty {
+    text-align:center; color:var(--text-muted); font-size:0.86em; padding:26px 14px;
+    line-height:1.5; display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+.notif-empty-ico   { font-size:2.2em; line-height:1; margin-bottom:8px; opacity:0.9; }
+.notif-empty-title { font-weight:700; color:var(--text-main); font-size:1em; margin-bottom:3px; }
+.notif-empty-sub   { font-size:0.82em; opacity:0.7; line-height:1.5; }
+
+/* ============================================================
+   NOTIFICATION PANEL — enhancements (skeleton, caret, hover-delete,
+   contact cards, group labels, filter, new-item pulse)
+   ============================================================ */
+
+/* Loading skeleton — shown before the first poll resolves (slow BD networks) */
+.notif-skel { display:flex; align-items:center; gap:10px; padding:10px 12px; margin-bottom:6px;
+    border-radius:12px; border:1px solid var(--border-color); background:var(--input-bg); }
+.notif-skel-ic   { width:24px; height:24px; border-radius:50%; flex-shrink:0; }
+.notif-skel-bd   { flex:1; }
+.notif-skel-line { height:9px; border-radius:5px; margin:5px 0; }
+.notif-skel-line.short { width:55%; }
+.notif-skel-ic, .notif-skel-line {
+    background:linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.13) 37%, rgba(255,255,255,0.05) 63%);
+    background-size:400% 100%; animation:notifShimmer 1.4s ease infinite;
+}
+@keyframes notifShimmer { 0%{background-position:100% 0;} 100%{background-position:0 0;} }
+
+/* Smoother open animation — subtle slide-down + fade from the top-right.
+   (No caret pseudo-element: the panel scrolls with overflow:auto, which would
+   clip anything positioned outside its box.) */
+@keyframes notifPanelIn {
+    from { opacity:0; transform:translateY(-8px) scale(0.985); }
+    to   { opacity:1; transform:translateY(0) scale(1); }
+}
+
+/* "More below" scroll hint — a fade pinned to the panel's bottom edge, shown
+   only when there's more to scroll (JS toggles .can-scroll-down). Sticky so it
+   tracks the scrollport; negative margins give it zero net height and span the
+   full width past the panel's 10px padding. */
+.npanel-fade {
+    position: sticky;
+    bottom: 0;
+    height: 34px;
+    margin: -34px -10px 0;
+    pointer-events: none;
+    background: linear-gradient(to top, var(--bg-glass) 35%, transparent);
+    opacity: 0;
+    transition: opacity 0.18s ease;
+    z-index: 3;
+    display: flex; align-items: flex-end; justify-content: center;
+}
+.npanel-fade::after {
+    content: "⌄";
+    font-size: 14px; line-height: 1; color: var(--text-muted);
+    margin-bottom: 2px; opacity: 0.85;
+}
+.notif-panel.can-scroll-down .npanel-fade { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .npanel-fade { transition: none; } }
+
+/* New-item pulse — briefly highlight a freshly-arrived service notif */
+@keyframes notifJustArrived {
+    0%   { box-shadow:0 0 0 0 rgba(245,158,11,0.55); }
+    70%  { box-shadow:0 0 0 9px rgba(245,158,11,0); }
+    100% { box-shadow:0 0 0 0 rgba(245,158,11,0); }
+}
+.svc-notif-row.just-arrived { animation:notifJustArrived 1.6s ease 1; }
+
+/* Per-row delete: always visible on touch; reveal on hover for mouse/desktop */
+@media (hover:hover) and (pointer:fine) {
+    .svc-notif-del-btn { opacity:0; transition:opacity 0.15s, color 0.15s, border-color 0.15s; }
+    .svc-notif-row:hover .svc-notif-del-btn,
+    .svc-notif-del-btn:focus-visible { opacity:1; }
+}
+
+/* Time-grouping labels (Today / Earlier) */
+.notif-group-label { font-size:0.7em; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+    color:var(--text-muted); padding:8px 4px 4px; opacity:0.8; }
+
+/* All / Unread segmented filter (Services tab) */
+.svc-filter { display:inline-flex; background:var(--input-bg); border:1px solid var(--border-color);
+    border-radius:20px; padding:2px; gap:2px; }
+.svc-filter-btn { min-height:unset; margin:0; padding:3px 12px; border:none; background:transparent;
+    color:var(--text-muted); font-size:0.72em; font-weight:700; border-radius:18px; cursor:pointer;
+    box-shadow:none; transition:background 0.15s, color 0.15s; }
+.svc-filter-btn.active { background:var(--primary-red); color:#fff; }
+
+/* Incoming contact-request cards (moved off inline styles) */
+.creq-card     { padding:11px 12px; border:1px solid var(--border-color); border-radius:10px; margin-bottom:8px; background:var(--bg-card); }
+.creq-head     { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.creq-title    { font-size:0.9em; color:var(--text-main); }
+.creq-time     { font-size:0.72em; color:var(--text-muted); white-space:nowrap; }
+.creq-msg      { font-size:0.8em; color:var(--text-muted); margin-top:3px; word-break:break-word; }
+.creq-actions  { margin-top:8px; display:flex; gap:8px; }
+.creq-accept   { flex:2; min-height:unset; margin:0; padding:8px; background:var(--primary-red); color:#fff; border-radius:8px; font-size:0.82em; font-weight:700; box-shadow:none; }
+.creq-decline  { flex:1; min-height:unset; margin:0; padding:8px; background:transparent; border:1px solid var(--border-color); color:var(--text-muted); border-radius:8px; font-size:0.82em; box-shadow:none; }
+.creq-call     { display:block; text-align:center; margin-top:8px; padding:8px; background:#10b981; color:#fff; border-radius:8px; text-decoration:none; font-weight:700; font-size:0.84em; }
+.creq-accepted { margin-top:8px; font-size:0.8em; color:#10b981; font-weight:700; }
+
+/* Respect reduced-motion — kill the decorative animations */
+@media (prefers-reduced-motion: reduce) {
+    .notif-panel.show           { animation:none !important; }
+    .svc-notif-row.just-arrived { animation:none !important; }
+    .notif-skel-ic, .notif-skel-line { animation:none !important; }
+    .notif-badge.on             { animation:none !important; }
+    .notif-bell.live-ring       { animation:none !important; }
+}
+
+/* ── Private donation-verification code box (My Requests — owner only) ── */
+.dcode-box {
+    margin-top:10px; padding:10px 12px; border-radius:10px;
+    border:1px dashed rgba(245,158,11,0.5); background:rgba(245,158,11,0.07);
+}
+.dcode-box-top { font-size:0.72em; font-weight:700; color:var(--accent-orange); margin-bottom:6px; letter-spacing:0.3px; }
+.dcode-box-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.dcode-box-val {
+    font-family:'Courier New',monospace; font-size:1.35em; font-weight:800; letter-spacing:5px;
+    color:var(--text-main); background:var(--input-bg);
+    border:1px solid var(--border-color); border-radius:8px; padding:4px 12px;
+}
+.dcode-box-copy {
+    background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); color:var(--accent-orange);
+    font-size:0.72em; font-weight:700; border-radius:8px; padding:6px 10px; cursor:pointer;
+    min-height:unset; box-shadow:none; margin:0; white-space:nowrap; transition:all 0.15s;
+}
+.dcode-box-copy:hover { background:rgba(245,158,11,0.22); }
+.dcode-box-meta { font-size:0.72em; color:var(--text-muted); margin-top:7px; line-height:1.5; }
+.dcode-box-used { border-style:solid; border-color:rgba(16,185,129,0.4); background:rgba(16,185,129,0.06); }
+.dcode-box-used .dcode-box-top { color:var(--success); }
+.dcode-box-used .dcode-box-val { opacity:0.55; text-decoration:line-through; }
+.dcode-box-used .dcode-box-copy { display:none; }
+
+/* ── Donation verification code modal (donor enters requester's code) ── */
+.dcode-modal-overlay {
+    position:fixed; inset:0; z-index:100000; padding:18px;
+    background:rgba(0,0,0,0.62); -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center;
+    animation:dcodeFade 0.18s ease;
+}
+@keyframes dcodeFade { from{opacity:0;} to{opacity:1;} }
+.dcode-modal {
+    position:relative; width:100%; max-width:360px; text-align:center;
+    background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-lg);
+    padding:24px 20px 18px; box-shadow:0 20px 60px rgba(0,0,0,0.5);
+    animation:dcodePop 0.22s cubic-bezier(0.2,0.9,0.3,1.2);
+}
+@keyframes dcodePop { from{transform:scale(0.92);opacity:0;} to{transform:scale(1);opacity:1;} }
+/* Close ✕ — explicit small circular button. !important defeats the global
+   button{} rule (red gradient + width:100% + margin-top) that otherwise turns
+   this into a full-width red bar at the top of the modal. */
+.dcode-modal-x {
+    position:absolute !important; top:8px; right:8px;
+    width:36px !important; height:36px !important; min-height:unset !important;
+    padding:0 !important; margin:0 !important;
+    display:flex !important; align-items:center; justify-content:center;
+    background:transparent !important; border:none !important; box-shadow:none !important;
+    color:var(--text-muted); font-size:1.4rem; line-height:1; cursor:pointer;
+    border-radius:50%; transition:background 0.15s, color 0.15s;
+}
+.dcode-modal-x:hover { background:rgba(128,128,128,0.16) !important; color:var(--text-main); transform:none !important; }
+.dcode-modal-icon { font-size:2.6em; line-height:1; }
+.dcode-modal-title { font-size:1.15em; font-weight:800; color:var(--text-main); margin:8px 0 6px; font-family:var(--font-heading); }
+.dcode-modal-sub { font-size:0.82em; color:var(--text-muted); line-height:1.65; margin:0 0 14px; }
+.dcode-modal-input {
+    width:100%; box-sizing:border-box; text-align:center; font-family:'Courier New',monospace;
+    font-size:1.8em; font-weight:800; letter-spacing:10px; padding:12px 10px; border-radius:12px;
+    border:2px solid var(--border-color); background:var(--input-bg); color:var(--text-main);
+}
+.dcode-modal-input:focus { outline:none; border-color:var(--accent-orange); }
+.dcode-modal-err { color:var(--danger); font-size:0.8em; font-weight:600; margin-top:10px; line-height:1.5; }
+.dcode-modal-submit {
+    width:100%; margin-top:14px; padding:13px; border:none; border-radius:12px;
+    background:linear-gradient(135deg,#059669,#10b981); color:#fff; font-size:0.95em; font-weight:800;
+    cursor:pointer; transition:opacity 0.15s;
+}
+.dcode-modal-submit:disabled { opacity:0.7; cursor:not-allowed; }
+.dcode-modal-note { font-size:0.7em; color:var(--text-muted); margin-top:12px; line-height:1.6; }
 .notif-row { padding:9px; border-radius:10px; cursor:pointer; transition:background 0.12s; margin-bottom:3px; display:flex; align-items:flex-start; justify-content:space-between; gap:6px; }
 .notif-row:hover { background:rgba(220,38,38,0.08); }
 .notif-row-grp { font-size:1.3em; font-weight:900; color:var(--primary-red); font-family:var(--font-heading); }
@@ -2579,6 +2878,15 @@ html { scroll-padding-top: 92px; }
     margin-bottom: 0;
 }
 .app-page-header .ph-icon { font-size: 1.25rem; }
+/* Back button + title used by the account page header (others are icon+text only) */
+.app-page-header .ph-back {
+    background: none; border: none; color: var(--text-muted);
+    font-size: 1.9rem; line-height: 1; cursor: pointer;
+    width: auto; min-height: unset; margin: 0; padding: 0 2px 0 0;
+    box-shadow: none; flex-shrink: 0;
+}
+.app-page-header .ph-back:hover { color: var(--text-main); transform: none; box-shadow: none; }
+.app-page-header .ph-title { flex: 1; min-width: 0; }
 
 /* ── Home page modern banner ── */
 .app-page-header.home-banner {
@@ -4374,6 +4682,7 @@ body.fx-on .settings-item:hover .settings-item-icon {
 
 /* shell chrome that must NEVER appear on mobile */
 .desk-only { display: none !important; }
+/* counterpart: hidden on desktop (≥651px) — see the media block below */
 
 @media (min-width: 651px) {
   /* ── 1 · Recolor desktop surfaces to GitHub neutrals (DARK default) ── */
@@ -4566,6 +4875,10 @@ body.fx-on .settings-item:hover .settings-item-icon {
   .hero-act-reg:hover { border-color: #22c55e; filter: brightness(1.05); }
   .hero-act-emg { border-color: rgba(220,38,38,0.4); }
   .hero-act-emg:hover { border-color: var(--primary-red); filter: brightness(1.05); }
+  .hero-act-verify { border-color: rgba(245,158,11,0.45); }
+  .hero-act-verify:hover { border-color: var(--accent-orange); filter: brightness(1.05); }
+  /* mobile-only elements hidden on desktop (counterpart of .desk-only) */
+  .mob-only { display: none !important; }
   /* LIVE badge relocated to the header, beside the install icon */
   .header-live {
     display: inline-flex !important; align-items: center; gap: 5px;

@@ -108,6 +108,19 @@ window.BA_I18N = {
     "← swipe করে remove করুন": "← swipe to remove",
     "🗑 সব মুছুন": "🗑 Delete All",
     "কোনো service notification নেই": "No service notifications",
+    // Structured empty states (title + sub)
+    "সব পড়া হয়েছে": "All caught up",
+    "নতুন request এলে এখানে দেখা যাবে": "New requests will show up here",
+    "নতুন emergency request এলে সাথে সাথে এখানে আসবে": "New emergency requests appear here instantly",
+    "কোনো notification নেই": "No notifications",
+    "নতুন আপডেট এলে এখানে দেখা যাবে": "New updates will show up here",
+    "কোনো unread নেই": "Nothing unread",
+    "সব notification পড়া হয়েছে": "All notifications read",
+    // Filter + time-group labels + row delete title
+    "সব": "All",
+    "আজ": "Today",
+    "আগের": "Earlier",
+    "মুছুন": "Delete",
 
     // ── Home hero / emergency banner ─────────────────────────────────
     "মোট Donors": "Total Donors",
@@ -575,7 +588,15 @@ window.BA_I18N = {
     "Map লোড করতে সমস্যা হয়েছে।": "There was a problem loading the Map.",
 
     // ── Blood request submit ─────────────────────────────────────────
+    "Emergency request পাঠাতে আগে সাইন ইন করুন।": "Sign in first to send an Emergency request.",
     "রক্তের অনুরোধ পাঠাতে আগে সাইন ইন করুন (Google অথবা ফোন নম্বর দিয়ে)।": "Sign in first to send a blood request (with Google or phone number).",
+
+    // ── Account page + home verify-donation entry ────────────────────
+    "আমার অ্যাকাউন্ট": "My Account",
+    "রক্তদান যাচাই": "Verify Donation",
+    "Donation count বাড়ান": "Increase your donation count",
+    "রক্তদান যাচাই করুন": "Verify a blood donation",
+    "Requester-এর 6-সংখ্যার Code দিয়ে আপনার donation count +১ করুন": "Use the requester's 6-digit code to add +1 to your donation count",
     "রোগীর নাম, blood group ও হাসপাতাল দিতে হবে।": "Please provide the patient's name, blood group, and hospital.",
     "সঠিক যোগাযোগ নম্বর দিন (+8801XXXXXXXXX)।": "Enter a valid contact number (+8801XXXXXXXXX).",
     "⏳ পাঠানো হচ্ছে...": "⏳ Sending...",
@@ -649,6 +670,29 @@ window.BA_I18N = {
     "📝 রক্তদাতা হিসেবে যুক্ত হোন": "📝 Join as a blood donor",
     "এখনো কোনো message নেই। Admin-কে কিছু জানাতে \"✚ নতুন\" চাপুন।": "No messages yet. Tap \"✚ New\" to tell the Admin something.",
     "⏳ Reply-এর অপেক্ষায়...": "⏳ Awaiting reply...",
+
+    // ── Account dashboard redesign (profile / stats / eligibility / toggle) ──
+    "ফোন": "Phone",
+    "লোকেশন": "Location",
+    "যুক্ত হয়েছেন": "Joined",
+    "মোট রক্তদান": "Total donations",
+    "এখনই রক্তদানে প্রস্তুত": "Ready to donate now",
+    "উপলব্ধ": "Available",
+    "অনুপলব্ধ": "Unavailable",
+    "আমার রক্তদান": "My Donations",
+    "সক্রিয় রিকোয়েস্ট": "Active Requests",
+    "রক্তদান করেছেন": "Donated blood",
+    "সর্বশেষ রক্তদান": "Last donation",
+    "এখনো কোনো রক্তদানের রেকর্ড নেই": "No donation records yet",
+    "রক্ত দেওয়ার পর নিচের বাটনে চাপুন": "After donating, tap the button below",
+    "🩸 আমি এইমাত্র রক্ত দিয়েছি": "🩸 I just donated blood",
+    "এই মুহূর্তে আপনার কোনো সক্রিয় অনুরোধ নেই": "You have no active requests right now",
+    "এখনো কোনো message নেই": "No messages yet",
+    "Admin-কে কিছু জানাতে উপরের \"✚ নতুন\" বাটনে চাপুন": "Tap \"✚ New\" above to message the Admin",
+    "গত ৩০ দিনে কোনো কল রেকর্ড নেই": "No call records in the last 30 days",
+    "দাতাকে call করলে এখানে গত ৩০ দিনের কল দেখা যাবে": "Calls you make to donors appear here for 30 days",
+    "আমার সকল তথ্য মুছে ফেলুন": "Delete all my information",
+    "লগ-আউট": "Log out",
 
     // ── Settings status text ─────────────────────────────────────────
     "✅ Notifications চালু আছে": "✅ Notifications are on",
