@@ -1,9 +1,9 @@
 /**
- * Blood Solution — Service Worker v6.0
+ * Blood Solution — Service Worker v6.2
  * Cache/PWA handler — FCM push handled by firebase-messaging-sw.js
  */
 
-const APP_VERSION = 'blood-solution-v6.0';
+const APP_VERSION = 'blood-solution-v6.2';
 const STATIC_CACHE = APP_VERSION + '-static';
 const IMG_CACHE = APP_VERSION + '-img';
 const PAGE_CACHE = APP_VERSION + '-pages';
@@ -71,6 +71,16 @@ self.addEventListener('fetch', function(e) {
   // so the browser HTTP cache still handles them sanely.
   if (url.search.indexOf('req_doc=') !== -1) {
     e.respondWith(fetch(req).catch(function() { return new Response('', { status: 503 }); }));
+    return;
+  }
+
+  // Token endpoint (?csrf=) → pure network, NEVER cache. The CSRF self-heal
+  // client fetches this to re-sync after a first-launch session/token desync;
+  // a cached (stale) token would defeat the whole purpose.
+  if (url.search.indexOf('csrf=') !== -1) {
+    e.respondWith(fetch(req).catch(function() {
+      return new Response('{}', { status: 503, headers: { 'Content-Type': 'application/json' } });
+    }));
     return;
   }
 

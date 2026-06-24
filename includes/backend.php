@@ -634,7 +634,13 @@ session_set_cookie_params([
     'domain' => $cookieDomain,
     'secure' => $isHttps, // true on HTTPS production, false on HTTP localhost
     'httponly' => true, // Prevents JS access to session
-    'samesite' => 'Strict' // Prevents cross-site request forgery
+    // Lax (was Strict): Strict withholds the cookie on the first PWA-launch /
+    // notification-open top-level navigation, so the page renders against a
+    // different session than the browser's later POSTs → CSRF_TOKEN mismatch
+    // ("Security check failed") and apparent logout until a manual refresh.
+    // Lax sends the cookie on top-level GET navigations while still blocking
+    // cross-site POSTs; the per-session csrf_token below stays the real defense.
+    'samesite' => 'Lax'
 ]);
 session_start();
 
@@ -646,6 +652,18 @@ if (empty($_SESSION['_initiated'])) {
 
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+// ── CSRF token endpoint — current session token (safe GET, no checkCSRF) ──
+// First-launch session/token desync হলে client এখান থেকে fresh token নিয়ে failed
+// POST একবার retry করে — manual refresh ছাড়াই self-heal হয়। শুধু পড়ে, কিছু বদলায়
+// না; token এই session-এর page-এ এমনিতেই আছে, তাই নতুন কোনো ঝুঁকি তৈরি হয় না।
+if (isset($_GET['csrf'])) {
+    while (ob_get_level()) ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    echo json_encode(['token' => $_SESSION['csrf_token']]);
+    exit;
 }
 
 // ── Online visitor ping — no CSRF needed (just a heartbeat) ──

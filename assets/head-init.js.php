@@ -1,3 +1,63 @@
+// ============================================================
+// 🛡️ CSRF SELF-HEAL — first PWA-launch session/token desync recovery
+// ------------------------------------------------------------
+// প্রথমবার PWA খুললে (home-screen icon / notification থেকে) top-level navigation-এ
+// session cookie বাদ পড়তে পারত → page-এ baked CSRF_TOKEN আর server session-এর
+// token মিলত না → প্রতিটি POST "Security check failed" দিত, এমনকি silent
+// login-restore POST-ও fail করত (manual refresh ছাড়া ঠিক হত না)।
+// এই wrapper fetch-কে ঘিরে রাখে: কোনো same-origin POST যদি 403 "Security check
+// failed" পায়, /?csrf=1 থেকে fresh token এনে FormData আপডেট করে একবার নিজে retry
+// করে। সবার আগে বসে যাতে head-init-এর নিজের POST-ও (silent restore / FCM) heal হয়।
+// SameSite=Lax মূল কারণ ঠিক করে; এটা safety-net — refresh ছাড়াই কাজ চলে।
+// ============================================================
+(function(){
+  if (window._baFetchWrapped || !window.fetch) return;
+  window._baFetchWrapped = true;
+  var _origFetch  = window.fetch.bind(window);
+  var _ajaxUrl    = function(){ return window.location.origin + window.location.pathname; };
+  var _refreshing = null;
+
+  function _isCsrfForm(b){
+    return (typeof FormData !== 'undefined') && (b instanceof FormData) && b.has('csrf_token');
+  }
+
+  // একই সময়ে অনেক POST fail করলেও token একবারই আনি (shared in-flight promise)।
+  function _refreshToken(){
+    if (_refreshing) return _refreshing;
+    _refreshing = _origFetch(_ajaxUrl() + '?csrf=1', { credentials:'same-origin', cache:'no-store' })
+      .then(function(r){ return (r && r.ok) ? r.json() : null; })
+      .then(function(j){
+        var tok = (j && j.token) ? j.token : null;
+        if (tok) window._baCsrfLive = tok;   // CSRF_TOKEN const — তাই live token আলাদা রাখি
+        return tok;
+      })
+      .catch(function(){ return null; })
+      .then(function(tok){ _refreshing = null; return tok; });
+    return _refreshing;
+  }
+
+  window.fetch = function(input, init){
+    init = init || {};
+    var body = init.body;
+    // একবার heal হলে পরের সব POST-এ live token আগেই বসিয়ে দাও — আর fail করবে না।
+    if (window._baCsrfLive && _isCsrfForm(body)) {
+      try { body.set('csrf_token', window._baCsrfLive); } catch(e){}
+    }
+    return _origFetch(input, init).then(function(res){
+      if (!res || res.status !== 403 || !_isCsrfForm(body)) return res;
+      // 403 হলেও আসলেই CSRF কিনা body দেখে নিশ্চিত হই (clone — caller যেন original পড়তে পারে)।
+      return res.clone().text().then(function(txt){
+        if (!txt || txt.indexOf('Security check') === -1) return res;
+        return _refreshToken().then(function(tok){
+          if (!tok) return res;                   // token আনা গেল না → original error ফেরত
+          try { body.set('csrf_token', tok); } catch(e){ return res; }
+          return _origFetch(input, init);         // একবারই retry — fresh token-এ
+        });
+      }).catch(function(){ return res; });
+    });
+  };
+})();
+
 // ── Firebase config (from config.php) ────────────────────
 const _firebaseConfig = {
   apiKey:            "<?= FIREBASE['apiKey'] ?>",
