@@ -2877,6 +2877,21 @@ if(isset($_POST['redeem_donation_code'])){
             "url"   => (defined('SITE_URL') ? SITE_URL : '') . "/",
             "tag"   => "code-redeemed-{$req_id}"
         ]);
+
+        $support_notif = "❤️ Blood Arena-কে সহযোগিতা করুন\n\n"
+                       . "আপনার Request #{$req_id}-এ রক্তদান নিশ্চিত হয়েছে। "
+                       . "এই সেবা চালু রাখতে সার্ভার, ডোমেইন ও SMS/বট খরচে ছোট অনুদানও অনেক সাহায্য করে।\n\n"
+                       . "bKash: 01518981827\n"
+                       . "অ্যাপের Menu → Donate Us থেকেও বিস্তারিত দেখতে পারবেন।";
+        @ba_service_notif($conn, $req['req_device_id'], 'support_donation', $support_notif);
+        @ba_push_to_device($conn, $req['req_device_id'], [
+            "type"    => "support_donation",
+            "title"   => "❤️ Blood Arena-কে সহযোগিতা করুন",
+            "body"    => "আপনার রক্তের Request সফল হয়েছে। সেবা চালু রাখতে ছোট অনুদানও অনেক সাহায্য করে। bKash: 01518981827",
+            "message" => $support_notif,
+            "url"     => (defined('SITE_URL') ? SITE_URL : '') . "/",
+            "tag"     => "support-donation-{$req_id}"
+        ]);
     }
     exit();
 }
