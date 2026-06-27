@@ -1,8 +1,9 @@
-"env/" 
-"*.json" 
+env/ 
+*.json 
 .claude/settings.local.json
 .claude/settings.json
 .claude/_ogimg.py
 .env.depoly
 .deploy_backup/
 .deploy_rollback/
+.env*
