@@ -8,3 +8,4 @@ env/
 .deploy_rollback/
 .env*
 firebase-messaging-sw.js
+db.php
