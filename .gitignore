@@ -7,4 +7,4 @@ env/
 .deploy_backup/
 .deploy_rollback/
 .env*
-*.sw
+firebase-messaging-sw.js
