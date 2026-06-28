@@ -1734,7 +1734,6 @@ HTML;
       <span class="perm-guide-platform" id="permGuidePlatform">Android</span>
     </div>
     <div class="perm-guide-steps" id="permGuideSteps"></div>
-    <div class="perm-guide-dots" id="permGuideDots"></div>
     <div class="perm-guide-reload" id="permGuideReload" style="display:none;">
       <button class="perm-guide-reload-btn" onclick="location.reload()">রিলোড করুন ✓</button>
     </div>
@@ -2925,6 +2924,7 @@ HTML;
 </footer>
 <?php /* Blood Arena — index_part2.php */ ?>
 
+<script><?php include __DIR__ . '/../assets/boot.js.php'; ?></script>
 <script><?php include __DIR__ . '/../assets/app.js.php'; ?></script>
 <script><?php include __DIR__ . '/../assets/fx-3d.js.php'; ?></script>
 
@@ -3007,5 +3007,4 @@ HTML;
 </nav>
 
 <script><?php include __DIR__ . '/../assets/i18n-dict.js.php'; ?></script>
-<script><?php include __DIR__ . '/../assets/boot.js.php'; ?></script>
 <script><?php include __DIR__ . '/../assets/net-lite.js.php'; ?></script>
