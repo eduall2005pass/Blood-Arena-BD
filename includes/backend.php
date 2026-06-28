@@ -594,6 +594,55 @@ if(!file_exists($_schema_v16) && isset($conn)){
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     @file_put_contents($_schema_v16, date('Y-m-d H:i:s'));
 }
+// ── Schema v17: SMS OTP table (separate from TG/WA otp_verifications) ──
+$_schema_v17 = dirname(__DIR__) . '/.schema_v17_done';
+if(!file_exists($_schema_v17) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS `sms_otp` (
+        `id` INT AUTO_INCREMENT PRIMARY KEY,
+        `phone` VARCHAR(15) NOT NULL,
+        `otp` VARCHAR(6) NOT NULL,
+        `purpose` ENUM('register','login','reset') NOT NULL DEFAULT 'register',
+        `is_used` TINYINT(1) DEFAULT 0,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        `expires_at` TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL 5 MINUTE),
+        INDEX `idx_phone_otp` (`phone`, `otp`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v17, date('Y-m-d H:i:s'));
+}
+// ── Schema v18: Community posts + replies ──
+$_schema_v18 = dirname(__DIR__) . '/.schema_v18_done';
+if(!file_exists($_schema_v18) && isset($conn)){
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $conn->query("CREATE TABLE IF NOT EXISTS community_posts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        type ENUM('review','question') NOT NULL,
+        auth_uid VARCHAR(128) NULL,
+        display_name VARCHAR(100) DEFAULT 'Anonymous',
+        content TEXT NOT NULL,
+        rating TINYINT NULL,
+        ip_address VARCHAR(45),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_type (type),
+        INDEX idx_created (created_at),
+        INDEX idx_auth_uid (auth_uid)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $conn->query("CREATE TABLE IF NOT EXISTS community_replies (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        post_id INT NOT NULL,
+        auth_uid VARCHAR(128) NULL,
+        display_name VARCHAR(100) DEFAULT 'Anonymous',
+        content TEXT NOT NULL,
+        ip_address VARCHAR(45),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (post_id) REFERENCES community_posts(id) ON DELETE CASCADE,
+        INDEX idx_post_id (post_id),
+        INDEX idx_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    @file_put_contents($_schema_v18, date('Y-m-d H:i:s'));
+}
 // === ENHANCED SECURITY HEADERS (XSS + Clickjacking + HSTS + Permissions) ===
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
@@ -1698,47 +1747,136 @@ if(isset($_POST['act_contact_request'])){
     exit();
 }
 
-// === DELETE DONOR (Self-delete by signed-in account) ===
+// === DELETE ACCOUNT — complete removal of ALL user data in a transaction ===
 if(isset($_POST['delete_donor'])){
     checkCSRF();
     header('Content-Type: application/json; charset=utf-8');
     while(ob_get_level()) ob_end_clean(); ob_start();
-    checkRateLimit('delete_donor', 5, 300); // Max 5 attempts per 5 min
+    checkRateLimit('delete_donor', 2, 300); // Max 2 attempts per 5 min (irreversible!)
 
     $uid     = requireAuth();
-    $phone   = $_SESSION['auth_phone'] ?? null;
     $confirm = trim($_POST['confirm'] ?? '');
 
-    if($confirm !== 'DELETE'){
-        echo json_encode(["status"=>"error","msg"=>"❌ নিশ্চিত করতে DELETE লিখুন।"]);
+    // Accept both English "DELETE" (legacy) and Bengali "মুছে ফেলুন"
+    if($confirm !== 'DELETE' && $confirm !== 'মুছে ফেলুন'){
+        echo json_encode(["status"=>"error","msg"=>"❌ নিশ্চিত করতে \"মুছে ফেলুন\" লিখুন।"]);
         exit();
     }
 
-    // Find this account's donor row (auth_uid; legacy phone fallback)
+    // Prevent admin accounts from self-deleting through the public endpoint
+    if(!empty($_SESSION['admin_logged_in'])){
+        echo json_encode(["status"=>"error","msg"=>"❌ অ্যাডমিন অ্যাকাউন্ট এইভাবে মুছে ফেলা যাবে না।"]);
+        exit();
+    }
+
     mysqli_report(MYSQLI_REPORT_OFF);
-    $stmt = $conn->prepare("SELECT id FROM donors WHERE auth_uid=? LIMIT 1");
-    $stmt->bind_param("s", $uid); $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
-    if(!$row && $phone){
-        $s2 = $conn->prepare("SELECT id FROM donors WHERE phone=? AND (auth_uid IS NULL OR auth_uid='') LIMIT 1");
-        $s2->bind_param("s", $phone); $s2->execute();
-        $row = $s2->get_result()->fetch_assoc(); $s2->close();
-    }
-    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    $conn->begin_transaction();
 
-    if(!$row){
-        echo json_encode(["status"=>"error","msg"=>"❌ আপনার donor profile পাওয়া যায়নি।"]);
-        exit();
-    }
+    try {
+        // ── 1) Gather user's references (donor id, phone, device_ids) ──
+        $donor_id    = null;
+        $donor_phone = null;
+        $device_ids  = [];
 
-    $del = $conn->prepare("DELETE FROM donors WHERE id=?");
-    $del->bind_param("i", $row['id']);
-    if($del->execute()){
-        echo json_encode(["status"=>"success","msg"=>"✅ আপনার সকল তথ্য database থেকে সম্পূর্ণ মুছে ফেলা হয়েছে।"]);
-    } else {
+        $stmt = $conn->prepare("SELECT id, phone, device_id FROM donors WHERE auth_uid=? LIMIT 1");
+        $stmt->bind_param("s", $uid); $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
+        if($row){
+            $donor_id    = (int)$row['id'];
+            $donor_phone = $row['phone'];
+            if(!empty($row['device_id'])) $device_ids[] = $row['device_id'];
+        }
+
+        $auth_phone = null;
+        $st2 = $conn->prepare("SELECT phone, device_id FROM auth_users WHERE firebase_uid=? LIMIT 1");
+        $st2->bind_param("s", $uid); $st2->execute();
+        $ar = $st2->get_result()->fetch_assoc(); $st2->close();
+        if($ar){
+            $auth_phone = $ar['phone'];
+            if(!empty($ar['device_id'])) $device_ids[] = $ar['device_id'];
+        }
+        $device_ids = array_values(array_unique(array_filter($device_ids)));
+        $user_phone = $donor_phone ?: $auth_phone ?: ($_SESSION['auth_phone'] ?? null);
+
+        // ── 2) admin_messages (user → admin) by sender_phone ──
+        if($user_phone){
+            $d = $conn->prepare("DELETE FROM admin_messages WHERE sender_phone=?");
+            $d->bind_param("s", $user_phone); $d->execute(); $d->close();
+        }
+
+        // ── 3) call_logs by donor_id ──
+        if($donor_id){
+            $d = $conn->prepare("DELETE FROM call_logs WHERE donor_id=?");
+            $d->bind_param("i", $donor_id); $d->execute(); $d->close();
+        }
+
+        // ── 4) donation_history ──
+        $d = $conn->prepare("DELETE FROM donation_history WHERE auth_uid=?");
+        $d->bind_param("s", $uid); $d->execute(); $d->close();
+
+        // ── 5) code_redemptions ──
+        $d = $conn->prepare("DELETE FROM code_redemptions WHERE donor_auth_uid=?");
+        $d->bind_param("s", $uid); $d->execute(); $d->close();
+
+        // ── 6) contact_requests (both sides) ──
+        $d = $conn->prepare("DELETE FROM contact_requests WHERE donor_auth_uid=? OR requester_auth_uid=?");
+        $d->bind_param("ss", $uid, $uid); $d->execute(); $d->close();
+
+        // ── 7) blood_requests + request_documents ──
+        $req_ids = [];
+        $r = $conn->prepare("SELECT id FROM blood_requests WHERE auth_uid=?");
+        $r->bind_param("s", $uid); $r->execute();
+        $rs = $r->get_result();
+        while($rr = $rs->fetch_assoc()) $req_ids[] = (int)$rr['id'];
+        $r->close();
+        if($req_ids){
+            $in = implode(',', $req_ids);
+            $conn->query("DELETE FROM request_documents WHERE request_id IN ($in)");
+        }
+        $d = $conn->prepare("DELETE FROM blood_requests WHERE auth_uid=?");
+        $d->bind_param("s", $uid); $d->execute(); $d->close();
+
+        // ── 8) otp_verifications (phone + WhatsApp OTP) ──
+        $d = $conn->prepare("DELETE FROM otp_verifications WHERE auth_uid=?");
+        $d->bind_param("s", $uid); $d->execute(); $d->close();
+
+        // ── 9) reports where this user was the reported donor ──
+        if($user_phone){
+            $d = $conn->prepare("DELETE FROM reports WHERE donor_phone=?");
+            $d->bind_param("s", $user_phone); $d->execute(); $d->close();
+        }
+
+        // ── 10) service_notifications + fcm_tokens by device_id ──
+        foreach($device_ids as $dev_id){
+            $d = $conn->prepare("DELETE FROM service_notifications WHERE device_id=?");
+            $d->bind_param("s", $dev_id); $d->execute(); $d->close();
+
+            $d = $conn->prepare("DELETE FROM fcm_tokens WHERE device_id=?");
+            $d->bind_param("s", $dev_id); $d->execute(); $d->close();
+        }
+
+        // ── 11) donor_profile (donors) ──
+        $d = $conn->prepare("DELETE FROM donors WHERE auth_uid=?");
+        $d->bind_param("s", $uid); $d->execute(); $d->close();
+
+        // ── 12) auth_users (Firebase OAuth link & phone verification) ──
+        $d = $conn->prepare("DELETE FROM auth_users WHERE firebase_uid=?");
+        $d->bind_param("s", $uid); $d->execute(); $d->close();
+
+        $conn->commit();
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+        // Destroy the session — user no longer exists
+        $_SESSION = [];
+        session_destroy();
+
+        echo json_encode(["status"=>"success","msg"=>"✅ আপনার অ্যাকাউন্ট সম্পূর্ণ মুছে ফেলা হয়েছে।"]);
+    } catch (\Throwable $e) {
+        $conn->rollback();
+        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+        error_log('delete_account failed for uid=' . $uid . ': ' . $e->getMessage());
         echo json_encode(["status"=>"error","msg"=>"❌ মুছতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"]);
     }
-    $del->close();
     exit();
 }
 
@@ -1969,7 +2107,8 @@ if(isset($_POST['ajax_filter'])){
     // Length limits on filter inputs
     $f_search = mb_substr($f_search, 0, 100, 'UTF-8');
     $f_location = mb_substr($f_location, 0, 200, 'UTF-8');
-    $limit = 20;
+    $per_page = (int)($_POST['per_page'] ?? 0);
+    $limit = in_array($per_page, [20, 50, 100], true) ? $per_page : 20;
     $start = ($page - 1) * $limit;
 
     $query_parts = [];
@@ -2170,12 +2309,26 @@ if(isset($_POST['ajax_filter'])){
     
     $total_pages = ceil($total_records / $limit);
     $pag_html = '<div class="pagination">';
+    // Line 1: per-page selector + total count
+    $pag_html .= '<div class="pag-info-row">';
+    $pag_html .= '<span class="pag-per-page">প্রতি পাতায়: <select class="pag-per-page-select" onchange="changeDonorsPerPage(this.value)">';
+    $opts = [20 => '২০', 50 => '৫০', 100 => '১০০'];
+    foreach ($opts as $val => $label) {
+        $sel = ($val === $limit) ? ' selected' : '';
+        $pag_html .= "<option value=\"$val\"$sel>$label</option>";
+    }
+    $pag_html .= '</select></span>';
+    $pag_html .= '<span class="pag-total">মোট ' . number_format($total_records) . ' জন Donor</span>';
+    $pag_html .= '</div>';
+    // Line 2: pagination buttons
+    $pag_html .= '<div class="pag-buttons">';
     if($page > 1) $pag_html .= '<a href="#" onclick="fetchFilteredData('.($page-1).',true); return false;">Previous</a>';
     for($i = 1; $i <= $total_pages; $i++){
         $active = ($i == $page) ? ' class="active-page"' : '';
         $pag_html .= '<a href="#" onclick="fetchFilteredData('.$i.',true); return false;"'.$active.'>'.$i.'</a>';
     }
     if($page < $total_pages) $pag_html .= '<a href="#" onclick="fetchFilteredData('.($page+1).',true); return false;">Next</a>';
+    $pag_html .= '</div>';
     $pag_html .= '</div>';
     
     // Fresh available counts — always global (not filtered) for stat cards
@@ -3451,6 +3604,80 @@ function _has_donor_for_uid($conn, $uid, $phone = null) {
     return $has;
 }
 
+// === SMS — Step 1: OTP পাঠাও (SMS Gateway) ===
+if(isset($_POST['sms_send_otp'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    require_once __DIR__ . '/SmsGateway.php';
+    checkRateLimit('sms_otp_' . ($_SESSION['auth_uid'] ?? session_id()), 5, 600);
+    requireAuth();
+    $phone = trim($_POST['phone'] ?? '');
+    if(preg_match('/^01\d{9}$/', $phone)) $phone = '+88' . $phone;
+    if(!preg_match('/^\+8801\d{9}$/', $phone)){
+        echo json_encode(["status"=>"error","msg"=>"সঠিক বাংলাদেশি নম্বর দিন (+8801XXXXXXXXX)।"]); exit();
+    }
+    $gateway = new SmsGateway();
+    if(!$gateway->isConfigured()){
+        echo json_encode(["status"=>"error","msg"=>"SMS যাচাই এখনো চালু হয়নি।"]); exit();
+    }
+    // DB rate limiting — per phone, 5 min cooldown
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $rc = $conn->prepare("SELECT 1 FROM sms_otp WHERE phone=? AND purpose='register' AND is_used=0 AND created_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE) LIMIT 1");
+    $rc->bind_param("s", $phone); $rc->execute();
+    if($rc->get_result()->fetch_assoc()){
+        echo json_encode(["status"=>"error","msg"=>"ইতিমধ্যে একটি OTP পাঠানো হয়েছে। ৫ মিনিট পর আবার চেষ্টা করুন।"]); exit();
+    }
+    $rc->close();
+    $uid = $_SESSION['auth_uid'];
+    $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $purpose = 'register';
+    $ins = $conn->prepare("INSERT INTO sms_otp (phone, otp, purpose, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))");
+    $ins->bind_param("sss", $phone, $code, $purpose);
+    $ins->execute(); $ins->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    $message = "🩸 Blood Arena OTP: {$code}\n\nএই কোডটি ৫ মিনিটের জন্য বৈধ। কাউকে শেয়ার করবেন না।";
+    $result = $gateway->send($phone, $message);
+    if($result['success']){
+        echo json_encode(["status"=>"success","msg"=>"📲 SMS-এ OTP পাঠানো হয়েছে {$phone} নম্বরে।"]);
+    } else {
+        echo json_encode(["status"=>"error","msg"=>"SMS পাঠানো যায়নি। {$result['error']}"]);
+    }
+    exit();
+}
+
+// === SMS — Step 2: কোড যাচাই করে account verified করো ===
+if(isset($_POST['sms_verify_otp'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('sms_verify_otp', 10, 600);
+    requireAuth();
+    $code = trim($_POST['code'] ?? '');
+    if(!preg_match('/^\d{6}$/', $code)){
+        echo json_encode(["status"=>"error","msg"=>"৬-সংখ্যার কোড দিন।"]); exit();
+    }
+    $uid = $_SESSION['auth_uid'];
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $q = $conn->prepare("SELECT id, phone FROM sms_otp WHERE otp=? AND is_used=0 AND expires_at > NOW() ORDER BY id DESC LIMIT 1");
+    $q->bind_param("s", $code); $q->execute();
+    $row = $q->get_result()->fetch_assoc(); $q->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    if(!$row){
+        echo json_encode(["status"=>"error","msg"=>"কোডের মেয়াদ শেষ বা ভুল কোড। আবার পাঠান।"]); exit();
+    }
+    if(_phone_taken_by_other($conn, $row['phone'], $uid)){
+        echo json_encode(["status"=>"error","msg"=>"এই নম্বরটি দিয়ে আগে অন্য একটি অ্যাকাউন্ট verify করা হয়েছে। একটি নম্বর দিয়ে শুধু একটি অ্যাকাউন্ট verify করা যায়।"]); exit();
+    }
+    mysqli_report(MYSQLI_REPORT_OFF);
+    $u = $conn->prepare("UPDATE sms_otp SET is_used=1 WHERE id=?");
+    $u->bind_param("i", $row['id']); $u->execute(); $u->close();
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    _mark_account_verified($conn, $uid, 'phone', $row['phone']);
+    echo json_encode(["status"=>"success","msg"=>"✅ SMS যাচাই সম্পন্ন!","channel"=>"phone","phone"=>$row['phone']]);
+    exit();
+}
+
 // === WHATSAPP — Step 1: কোড পাঠাও (whatsapp-web.js bot-এ) ===
 if(isset($_POST['wa_send_otp'])){
     checkCSRF();
@@ -4234,6 +4461,210 @@ if(isset($_POST['get_my_messages'])){
     }
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
     echo json_encode($rows, JSON_UNESCAPED_UNICODE);
+    exit();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COMMUNITY — posts + replies
+// ═══════════════════════════════════════════════════════════════
+
+// === GET COMMUNITY POSTS ===
+if(isset($_POST['get_community_posts'])){
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('get_community_posts', 30, 60);
+    $type   = $_POST['type'] ?? 'review';
+    $offset = (int)($_POST['offset'] ?? 0);
+    $limit  = (int)($_POST['limit'] ?? 10);
+    if(!in_array($type, ['review','question'])) $type = 'review';
+    if($limit > 50) $limit = 50;
+    $offset = max(0, $offset);
+    // Total count
+    $total = 0;
+    $tc = $conn->prepare("SELECT COUNT(*) as c FROM community_posts WHERE type=?");
+    $tc->bind_param("s", $type);
+    $tc->execute();
+    $tr = $tc->get_result();
+    if($tr) $total = (int)$tr->fetch_assoc()['c'];
+    $tc->close();
+    // Fetch posts
+    $posts = [];
+    $singlePostId = (int)($_POST['get_all_replies_for'] ?? 0);
+    if ($singlePostId > 0) {
+        $stmt = $conn->prepare("SELECT id, type, auth_uid, display_name, content, rating, ip_address, UNIX_TIMESTAMP(created_at) as created_ts FROM community_posts WHERE id=?");
+        $stmt->bind_param("i", $singlePostId);
+    } else {
+        $stmt = $conn->prepare("SELECT id, type, auth_uid, display_name, content, rating, ip_address, UNIX_TIMESTAMP(created_at) as created_ts FROM community_posts WHERE type=? ORDER BY created_at DESC LIMIT ? OFFSET ?");
+        $stmt->bind_param("sii", $type, $limit, $offset);
+    }
+    $stmt->execute();
+    $rset = $stmt->get_result();
+    $replyLimit = $singlePostId > 0 ? 100 : 3;
+    while($r = $rset->fetch_assoc()){
+        $pid = (int)$r['id'];
+        // Fetch replies
+        $repStmt = $conn->prepare("SELECT id, auth_uid, display_name, content, UNIX_TIMESTAMP(created_at) as created_ts FROM community_replies WHERE post_id=? ORDER BY created_at ASC LIMIT ?");
+        $repStmt->bind_param("ii", $pid, $replyLimit);
+        $repStmt->execute();
+        $repRes = $repStmt->get_result();
+        $replies = [];
+        while($rep = $repRes->fetch_assoc()) $replies[] = $rep;
+        $repStmt->close();
+        $r['replies'] = $replies;
+        // Total reply count
+        $cntRes = $conn->prepare("SELECT COUNT(*) as c FROM community_replies WHERE post_id=?");
+        $cntRes->bind_param("i", $pid);
+        $cntRes->execute();
+        $cr = $cntRes->get_result();
+        $r['reply_count'] = $cr ? (int)$cr->fetch_assoc()['c'] : count($replies);
+        $cntRes->close();
+        $posts[] = $r;
+    }
+    $stmt->close();
+    // When fetching a single post, add has_more=false
+    if ($singlePostId > 0) {
+        $has_more = false;
+        $total = 1;
+    }
+    // Rating breakdown (reviews only)
+    $avgRating = 0;
+    $starBreakdown = [1=>0,2=>0,3=>0,4=>0,5=>0];
+    if($type === 'review'){
+        $rr = $conn->query("SELECT COUNT(*) as c, COALESCE(ROUND(AVG(rating),1),0) as avg FROM community_posts WHERE type='review' AND rating IS NOT NULL");
+        if($rr && $row = $rr->fetch_assoc()){
+            $avgRating = (float)$row['avg'];
+            foreach([1,2,3,4,5] as $s){
+                $cr = $conn->query("SELECT COUNT(*) as c FROM community_posts WHERE type='review' AND rating=$s");
+                if($cr) $starBreakdown[$s] = (int)$cr->fetch_assoc()['c'];
+            }
+        }
+    }
+    echo json_encode([
+        'posts' => $posts,
+        'total' => $total,
+        'offset' => $offset,
+        'has_more' => ($offset + $limit) < $total,
+        'avg_rating' => $avgRating,
+        'star_breakdown' => $starBreakdown
+    ], JSON_UNESCAPED_UNICODE);
+    exit();
+}
+
+// === CREATE COMMUNITY POST ===
+if(isset($_POST['create_community_post'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('community_post', 1, 300);
+    $type    = $_POST['type'] ?? '';
+    $content = trim($_POST['content'] ?? '');
+    $rating  = (int)($_POST['rating'] ?? 0);
+    if(!in_array($type, ['review','question']) || empty($content)){
+        echo json_encode(['status'=>'error','msg'=>'Invalid input.']); exit();
+    }
+    if(mb_strlen($content) > 500){
+        echo json_encode(['status'=>'error','msg'=>'সর্বোচ্চ ৫০০ অক্ষর।']); exit();
+    }
+    if($type === 'review' && ($rating < 1 || $rating > 5)){
+        echo json_encode(['status'=>'error','msg'=>'দয়া করে রেটিং দিন।']); exit();
+    }
+    $authUid = $_SESSION['auth_uid'] ?? null;
+    $displayName = 'Anonymous';
+    if($authUid && !empty($_SESSION['auth_name'])){
+        $displayName = $_SESSION['auth_name'];
+    }
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    $stmt = $conn->prepare("INSERT INTO community_posts (type, auth_uid, display_name, content, rating, ip_address) VALUES (?,?,?,?,?,?)");
+    $ratingVal = $type === 'review' ? $rating : null;
+    $stmt->bind_param("ssssis", $type, $authUid, $displayName, $content, $ratingVal, $ip);
+    $stmt->execute();
+    $newId = $stmt->insert_id;
+    $stmt->close();
+    echo json_encode(['status'=>'success','id'=>$newId], JSON_UNESCAPED_UNICODE);
+    exit();
+}
+
+// === CREATE COMMUNITY REPLY ===
+if(isset($_POST['create_community_reply'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    checkRateLimit('community_reply', 1, 60);
+    $postId  = (int)($_POST['post_id'] ?? 0);
+    $content = trim($_POST['content'] ?? '');
+    if($postId <= 0 || empty($content)){
+        echo json_encode(['status'=>'error','msg'=>'Invalid input.']); exit();
+    }
+    if(mb_strlen($content) > 500){
+        echo json_encode(['status'=>'error','msg'=>'সর্বোচ্চ ৫০০ অক্ষর।']); exit();
+    }
+    $chk = $conn->prepare("SELECT id FROM community_posts WHERE id=?");
+    $chk->bind_param("i", $postId);
+    $chk->execute();
+    if(!$chk->get_result()->fetch_assoc()){
+        echo json_encode(['status'=>'error','msg'=>'পোস্ট পাওয়া যায়নি।']); exit();
+    }
+    $chk->close();
+    $authUid = $_SESSION['auth_uid'] ?? null;
+    $displayName = 'Anonymous';
+    if($authUid && !empty($_SESSION['auth_name'])){
+        $displayName = $_SESSION['auth_name'];
+    }
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    $stmt = $conn->prepare("INSERT INTO community_replies (post_id, auth_uid, display_name, content, ip_address) VALUES (?,?,?,?,?)");
+    $stmt->bind_param("issss", $postId, $authUid, $displayName, $content, $ip);
+    $stmt->execute();
+    $newId = $stmt->insert_id;
+    $stmt->close();
+    $reply = [
+        'id' => $newId,
+        'post_id' => $postId,
+        'auth_uid' => $authUid,
+        'display_name' => $displayName,
+        'content' => $content,
+        'created_ts' => time()
+    ];
+    echo json_encode(['status'=>'success','reply'=>$reply], JSON_UNESCAPED_UNICODE);
+    exit();
+}
+
+// === GET UNREAD REPLY COUNT (badge) ===
+if(isset($_POST['get_community_unread'])){
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    $authUid = $_SESSION['auth_uid'] ?? null;
+    if(!$authUid){
+        echo json_encode(['unread'=>0]); exit();
+    }
+    $lastSeenTs = (int)($_POST['last_seen_ts'] ?? 0);
+    $lastSeenDt = $lastSeenTs > 0 ? date('Y-m-d H:i:s', $lastSeenTs) : '1970-01-01';
+    $stmt = $conn->prepare("SELECT COUNT(*) as c FROM community_replies r JOIN community_posts p ON r.post_id=p.id WHERE p.auth_uid=? AND r.created_at > ?");
+    $stmt->bind_param("ss", $authUid, $lastSeenDt);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $count = $res ? (int)$res->fetch_assoc()['c'] : 0;
+    $stmt->close();
+    echo json_encode(['unread'=> $count > 9 ? 9 : $count]);
+    exit();
+}
+
+// === DELETE COMMUNITY POST (admin only) ===
+if(isset($_POST['delete_community_post'])){
+    checkCSRF();
+    header('Content-Type: application/json; charset=utf-8');
+    while(ob_get_level()) ob_end_clean(); ob_start();
+    if(empty($_SESSION['admin_logged_in'])){
+        echo json_encode(['status'=>'error','msg'=>'Unauthorized.']); exit();
+    }
+    $postId = (int)($_POST['post_id'] ?? 0);
+    if($postId <= 0){
+        echo json_encode(['status'=>'error','msg'=>'Invalid post.']); exit();
+    }
+    $stmt = $conn->prepare("DELETE FROM community_posts WHERE id=?");
+    $stmt->bind_param("i", $postId);
+    $stmt->execute();
+    $stmt->close();
+    echo json_encode(['status'=>'success']);
     exit();
 }
 ?>  

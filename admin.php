@@ -269,7 +269,7 @@ if($logged_in && isset($_POST['act'])){
 
     $act=$_POST['act']; $id=(int)($_POST['id']??0);
     $allowed=[
-        'del_donor','del_req','fulfill_req','del_report','del_call',
+        'del_donor','del_req','fulfill_req','del_report','del_call','del_community_post',
         'del_multiple',
         'adv_search','edit_donor','get_donor',
         'add_token','del_token','toggle_token',
@@ -290,7 +290,7 @@ if($logged_in && isset($_POST['act'])){
 
     // ── Role-based blocks: moderator CANNOT do these ─────
     $super_only_acts = [
-        'del_donor','del_req','del_report','del_call','del_multiple',
+        'del_donor','del_req','del_report','del_call','del_community_post','del_multiple',
         'del_token','del_ip',
         'change_password','toggle_ip_whitelist',
         'add_token','add_ip',
@@ -1137,7 +1137,7 @@ if($logged_in && isset($_POST['act'])){
     if($act==='del_multiple' && $conn){
         $table=trim($_POST['table']??'');
         $ids_raw=trim($_POST['ids']??'');
-        $tableMap=['donors'=>['donors','del_donor'],'requests'=>['blood_requests','del_req'],'reports'=>['reports','del_report'],'calls'=>['call_logs','del_call'],'inbox'=>['admin_messages','del_inbox_msg']];
+        $tableMap=['donors'=>['donors','del_donor'],'requests'=>['blood_requests','del_req'],'reports'=>['reports','del_report'],'calls'=>['call_logs','del_call'],'inbox'=>['admin_messages','del_inbox_msg'],'community'=>['community_posts','del_community_post']];
         if(!isset($tableMap[$table])){ echo json_encode(['ok'=>false,'msg'=>'Invalid table.']); exit(); }
         $tname=$tableMap[$table][0];
         // Parse and validate IDs
@@ -1165,6 +1165,7 @@ if($logged_in && isset($_POST['act'])){
         elseif($act==='fulfill_req') $stmt=$conn->prepare("UPDATE blood_requests SET status='Fulfilled' WHERE id=?");
         elseif($act==='del_report')  $stmt=$conn->prepare("DELETE FROM reports WHERE id=?");
         elseif($act==='del_call')    $stmt=$conn->prepare("DELETE FROM call_logs WHERE id=?");
+        elseif($act==='del_community_post') $stmt=$conn->prepare("DELETE FROM community_posts WHERE id=?");
 
         if($stmt){
             $stmt->bind_param("i",$id);
@@ -1240,6 +1241,11 @@ if($logged_in && $conn){
     $conn->query("ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS device_info VARCHAR(300) DEFAULT NULL");
     $res4=dbq($conn,"SELECT cl.*,d.name donor_name,d.blood_group FROM call_logs cl LEFT JOIN donors d ON cl.donor_id=d.id ORDER BY cl.id DESC LIMIT 200");
     if($res4) while($row=$res4->fetch_assoc()) $calls[]=$row;
+
+    // Community posts
+    $community_posts=[];
+    $cr=dbq($conn,"SELECT cp.*,(SELECT COUNT(*) FROM community_replies WHERE post_id=cp.id) as reply_count FROM community_posts cp ORDER BY cp.id DESC LIMIT 100");
+    if($cr) while($row=$cr->fetch_assoc()) $community_posts[]=$row;
 
     ensureAuditTable($conn);
     $res5=dbq($conn,"SELECT * FROM admin_audit_log ORDER BY id DESC LIMIT 50");
@@ -1574,6 +1580,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
   <div class="mt"     onclick="go('requests',this)">🆘 Requests</div>
   <div class="mt"     onclick="go('reports',this)">⚠️ Reports</div>
   <div class="mt"     onclick="go('calls',this)">📞 Calls</div>
+  <div class="mt"     onclick="go('community',this)">💬 Community</div>
   <div class="mt"     onclick="go('notifications',this)">🔔 Notif</div>
   <?php if($is_super):?><div class="mt" onclick="go('inbox',this)">📬 Inbox<?php if(!empty($inbox_unread)&&$inbox_unread>0):?> (<?=$inbox_unread?>)<?php endif;?></div><?php endif;?>
   <?php if($is_super):?><div class="mt" onclick="go('moderators',this)">👥 Mods</div><?php endif;?>
@@ -1592,6 +1599,7 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
     <div class="ni"    onclick="go('requests',this)">🆘 Requests <span class="cnt"><?=$stats['active_req']?></span></div>
     <div class="ni"    onclick="go('reports',this)">⚠️ Reports <?php if($stats['reports']>0):?><span class="cnt"><?=$stats['reports']?></span><?php endif;?></div>
     <div class="ni"    onclick="go('calls',this)">📞 Call Logs</div>
+    <div class="ni"    onclick="go('community',this)">💬 Community</div>
     <div class="ni-sep"></div>
     <div class="ni-label">Tools</div>
     <div class="ni"    onclick="go('notifications',this)">🔔 Notifications</div>
@@ -1864,6 +1872,46 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
         </table></div>
       </div>
     </div>
+
+    <!-- ══ COMMUNITY ══ -->
+    <div class="tab" id="tab-community">
+      <div class="stitle" style="display:flex;align-items:center;justify-content:space-between;">💬 Community Posts <span style="font-size:.65em;color:var(--muted);font-weight:400;">(<?=count($community_posts)?>)</span><button class="tab-refresh-btn" onclick="location.reload()" title="Page reload করুন">🔄</button></div>
+      <div class="tbox">
+        <div class="tbar">
+          <h3>Reviews &amp; Questions</h3>
+          <input class="srch" placeholder="🔍 কন্টেন্ট / নাম..." oninput="ft('cmtb',this.value)">
+        </div>
+        <div class="bulk-bar" id="bulk-bar-community" <?php if($is_moderator) echo 'style="display:none!important;"'; ?>>
+          <span>✅ <strong id="community-sel-count">0</strong> টি selected</span>
+          <button class="bulk-del-btn" onclick="bulkDelete('community')">🗑 Delete Selected</button>
+          <button class="bulk-cancel-btn" onclick="clearSelection('community')">✕ Cancel</button>
+        </div>
+        <div class="ow"><table>
+          <thead><tr>
+            <th class="cb-th"><input type="checkbox" id="cb-all-community" onchange="toggleAll('community',this.checked)"></th>
+            <th>#</th><th>Type</th><th>User</th><th>Content</th><th>Rating</th><th>Replies</th><th>IP</th><th>Time</th><th>Del</th>
+          </tr></thead>
+          <tbody id="cmtb">
+          <?php foreach($community_posts as $i=>$p):
+            $pt=$p['type']==='review'?'⭐ Review':'❓ Question';
+            $ratingStr=$p['rating'] ? str_repeat('★',(int)$p['rating']).str_repeat('☆',5-(int)$p['rating']) : '—';
+            $ct=!empty($p['created_at'])?date('d M, h:i A',strtotime($p['created_at'])):'—';
+          ?><tr id="crow<?=$p['id']?>">
+            <td class="cb-td"><input type="checkbox" class="row-cb community-cb" value="<?=$p['id']?>" onchange="onRowCbChange('community')"></td>
+            <td style="color:var(--muted);"><?=$i+1?></td>
+            <td><?=$pt?></td>
+            <td style="white-space:nowrap;"><?=esc($p['display_name']??'Anonymous')?></td>
+            <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?=esc($p['content'])?>"><?=esc(mb_substr($p['content'],0,80))?></td>
+            <td><?=$ratingStr?></td>
+            <td><?=(int)$p['reply_count']?></td>
+            <td style="font-family:monospace;font-size:.74em;color:var(--muted);"><?=esc($p['ip_address']??'—')?></td>
+            <td style="font-size:.77em;color:var(--muted);white-space:nowrap;"><?=$ct?></td>
+            <td><?php if($is_super):?><button class="btn bd" onclick="act('del_community_post',<?=$p['id']?>,this,'crow<?=$p['id']?>')">🗑</button><?php endif;?></td>
+          </tr><?php endforeach; if(empty($community_posts)):?><tr><td colspan="10" class="empty">কোনো Community Post নেই</td></tr><?php endif;?>
+          </tbody>
+        </table></div>
+      </div>
+    </div><!-- end tab-community -->
 
     <!-- ══ NOTIFICATIONS ══ -->
     <div class="tab" id="tab-notifications">
@@ -2428,6 +2476,7 @@ function act(action, id, btn, rowId) {
         del_req:     '🗑 এই Request permanently delete করবেন?',
         del_report:  '🗑 এই Report permanently delete করবেন?',
         del_call:    '🗑 এই Call Log permanently delete করবেন?',
+        del_community_post: '🗑 এই Community Post permanently delete করবেন?',
         fulfill_req: '✅ Fulfilled mark করবেন?'
     };
     if(!confirm(msgs[action]||'Delete করবেন?')) return;

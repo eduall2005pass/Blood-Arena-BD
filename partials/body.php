@@ -406,6 +406,13 @@ HTML;
         <span class="sd-ic"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
         <span>Analytics</span>
       </button>
+      <button class="sd-item" id="sd-community" onclick="closeSideDrawer(); appSwitchPage('community')">
+        <span class="sd-ic" style="position:relative;">
+          <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="comm-sd-badge" id="commSdBadge"></span>
+        </span>
+        <span>Community</span>
+      </button>
       <button class="sd-item" id="sd-account" onclick="closeSideDrawer(); openAccountDashboard()">
         <span class="sd-ic"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></span>
         <span>Account Dashboard</span>
@@ -1103,23 +1110,11 @@ HTML;
 
         <!-- ===== DELETE MY INFO SECTION ===== -->
         <div style="margin-top:28px;border-top:1px solid rgba(220,38,38,0.2);padding-top:20px;">
-            <div onclick="toggleDeleteDonorSection()" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 14px;background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:12px;user-select:none;">
-                <span style="color:var(--danger);font-weight:700;font-size:0.9em;">🗑️ আমার সকল তথ্য মুছে ফেলুন</span>
-                <span id="deleteDonorArrow" style="color:var(--danger);font-size:1.2em;transition:transform 0.2s;">›</span>
-            </div>
-            <div id="deleteDonorBody" style="display:none;margin-top:12px;padding:16px;background:rgba(220,38,38,0.04);border:1px solid rgba(220,38,38,0.15);border-radius:12px;">
-                <p style="color:var(--danger);font-weight:700;font-size:0.88em;margin-bottom:6px;">⚠️ সতর্কতা — এই কাজ পূর্বাবস্থায় ফেরানো যাবে না!</p>
-                <p style="color:var(--text-muted);font-size:0.83em;margin-bottom:14px;">আপনার নাম, ফোন নম্বর, রক্তের গ্রুপ, location সহ সকল তথ্য database থেকে <strong style="color:var(--danger);">চিরতরে মুছে যাবে।</strong></p>
-                <label style="font-size:0.83em;color:var(--text-muted);display:block;margin-bottom:6px;">নিশ্চিত করতে নিচের বক্সে <strong style="color:var(--danger);">DELETE</strong> লিখুন:</label>
-                <input type="text" id="del_donor_confirm" placeholder="DELETE" maxlength="6"
-                    style="font-family:monospace;font-size:1.1em;letter-spacing:3px;text-transform:uppercase;margin-bottom:12px;"
-                    oninput="this.value=this.value.toUpperCase()">
-                <div id="del_donor_error" style="display:none;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.3);border-radius:8px;padding:8px 12px;color:var(--danger);font-size:0.82em;margin-bottom:10px;"></div>
-                <button type="button" id="del_donor_btn" onclick="submitDeleteDonor()"
-                    style="width:100%;background:var(--danger);color:#fff;border:none;border-radius:12px;padding:12px;font-size:0.92rem;font-weight:700;cursor:pointer;min-height:unset;box-shadow:none;margin:0;">
-                    🗑️ হ্যাঁ, আমার তথ্য সম্পূর্ণ মুছে দিন
-                </button>
-            </div>
+            <button type="button" onclick="openDeleteAccountModal()"
+                style="width:100%;display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:10px 14px;background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:12px;color:var(--danger);font-weight:700;font-size:0.9em;min-height:unset;box-shadow:none;margin:0;">
+                <span>🗑️ আমার সকল তথ্য মুছে ফেলুন</span>
+                <span style="font-size:1.2em;">›</span>
+            </button>
         </div>
     </div>
 </form>
@@ -1428,6 +1423,57 @@ HTML;
 <div class="page-footer-bar"><span>🩸 © 2026 <?= htmlspecialchars(BRAND_NAME) ?> — All Rights Reserved.</span></div>
 </div><!-- end page-more -->
 
+<!-- ===== APP PAGE: COMMUNITY ===== -->
+<div class="app-page" id="page-community">
+<div class="app-page-header"><span class="ph-icon">💬</span> Community</div>
+
+<div class="container" id="communityContainer">
+  <!-- Rating Summary (Reviews tab only) -->
+  <div id="commRatingSummary" style="display:none;"></div>
+
+  <!-- Tab Bar -->
+  <div class="comm-tab-bar">
+    <button class="comm-tab active" data-type="review" onclick="switchCommTab('review')">⭐ Reviews</button>
+    <button class="comm-tab" data-type="question" onclick="switchCommTab('question')">❓ Questions</button>
+  </div>
+
+  <!-- Posts Container -->
+  <div id="commPostsContainer"></div>
+
+  <!-- FAB -->
+  <button class="comm-fab" id="commFab" onclick="openCommunityForm()">+</button>
+</div>
+
+<!-- Post Form Overlay (bottom sheet) -->
+<div class="comm-form-overlay" id="commFormOverlay">
+  <div class="comm-form-sheet">
+    <div class="comm-form-head">
+      <h3 class="comm-form-title">নতুন পোস্ট</h3>
+      <button class="comm-form-close" onclick="closeCommunityForm()">×</button>
+    </div>
+    <div class="comm-type-toggle">
+      <button class="comm-type-pill active" data-type="review" onclick="setCommType('review')">⭐ Review</button>
+      <button class="comm-type-pill" data-type="question" onclick="setCommType('question')">❓ Question</button>
+    </div>
+    <div class="comm-star-picker" id="commStarPicker">
+      <span data-star="1" onclick="setCommRating(1)">★</span>
+      <span data-star="2" onclick="setCommRating(2)">★</span>
+      <span data-star="3" onclick="setCommRating(3)">★</span>
+      <span data-star="4" onclick="setCommRating(4)">★</span>
+      <span data-star="5" onclick="setCommRating(5)">★</span>
+    </div>
+    <textarea id="commPostContent" placeholder="আপনার মতামত লিখুন... (সর্বোচ্চ ৫০০ অক্ষর)" maxlength="500" oninput="onCommContentInput()"></textarea>
+    <div class="comm-form-foot">
+      <span id="commCharCount">0 / 500</span>
+      <button id="commSubmitBtn" onclick="createCommunityPost()" disabled>পোস্ট করুন</button>
+    </div>
+  </div>
+</div>
+
+<?php render_social_bar(); ?>
+<div class="page-footer-bar"><span>🩸 © 2026 <?= htmlspecialchars(BRAND_NAME) ?> — All Rights Reserved.</span></div>
+</div><!-- end page-community -->
+
 <!-- ===== CONNECT-US FLOATING FAB (desktop/tablet only) ===== -->
 <!-- Bottom-right: 5 social icons stacked vertically, with the LIVE pill below -->
 <div class="social-fab desk-only" id="socialFab">
@@ -1655,6 +1701,16 @@ HTML;
         </div>
         <div class="settings-item-right" id="locStatusBadge">›</div>
       </div>
+      <div class="settings-item si-cam" onclick="requestCameraSetting()">
+        <div class="settings-item-left">
+          <div class="settings-item-icon">📷</div>
+          <div class="settings-item-text">
+            <span class="settings-item-label">Camera Permission</span>
+            <span class="settings-item-sub" id="camStatusText">ভিডিও কলে দরকার</span>
+          </div>
+        </div>
+        <div class="settings-item-right" id="camStatusBadge">›</div>
+      </div>
       <div class="settings-item si-clear" onclick="clearAppData()">
         <div class="settings-item-left">
           <div class="settings-item-icon">🧹</div>
@@ -1665,6 +1721,22 @@ HTML;
         </div>
         <div class="settings-item-right" style="color:var(--danger);">›</div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- PERMISSION GUIDE MODAL -->
+<div class="popup-overlay" id="permGuideOverlay" onclick="if(event.target===this)closePermGuide()">
+  <div class="popup perm-guide-modal">
+    <button class="dd-close" onclick="closePermGuide()">✕</button>
+    <div class="perm-guide-header">
+      <span class="perm-guide-title" id="permGuideTitle">Permission চালু করুন</span>
+      <span class="perm-guide-platform" id="permGuidePlatform">Android</span>
+    </div>
+    <div class="perm-guide-steps" id="permGuideSteps"></div>
+    <div class="perm-guide-dots" id="permGuideDots"></div>
+    <div class="perm-guide-reload" id="permGuideReload" style="display:none;">
+      <button class="perm-guide-reload-btn" onclick="location.reload()">রিলোড করুন ✓</button>
     </div>
   </div>
 </div>
@@ -1926,6 +1998,11 @@ HTML;
                         <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><path fill="#25D366" d="M16 0C7.2 0 0 7.2 0 16c0 2.8.7 5.5 2.1 7.9L0 32l8.3-2.2C10.6 31.2 13.3 32 16 32c8.8 0 16-7.2 16-16S24.8 0 16 0z"/><path fill="#fff" d="M12.4 9.4c-.3-.7-.6-.7-.9-.7h-.8c-.3 0-.7.1-1.1.5s-1.4 1.4-1.4 3.4 1.5 3.9 1.7 4.2c.2.3 2.9 4.6 7.2 6.3 3.6 1.4 4.3 1.1 5.1 1s2.5-1 2.9-2 .4-1.8.3-2c-.1-.2-.4-.3-.9-.5s-2.7-1.3-3.1-1.5c-.4-.1-.7-.2-1 .2s-1.1 1.5-1.4 1.8c-.3.3-.5.3-.9.1s-1.9-.7-3.6-2.2c-1.3-1.2-2.2-2.6-2.5-3.1s0-.7.2-.9c.2-.2.4-.5.6-.8s.3-.4.4-.7.1-.5 0-.7-1-2.5-1.3-3.2z"/></svg>
                         <span style="font-size:0.82em;font-weight:700;color:var(--text-main);">WhatsApp</span>
                     </button>
+                    <button id="vchPhoneBtn" type="button" onclick="selectVerifyChannel('phone')"
+                        style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 8px;border-radius:14px;border:2px solid var(--border-color);background:transparent;cursor:pointer;box-shadow:none;">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m9 10 3 3 3-3"/></svg>
+                        <span style="font-size:0.82em;font-weight:700;color:var(--text-main);">Phone (SMS)</span>
+                    </button>
                 </div>
 
                 <!-- Telegram panel -->
@@ -1970,6 +2047,36 @@ HTML;
                         <input type="text" id="waOtpInput" inputmode="numeric" maxlength="6" placeholder="••••••"
                             style="margin:0;width:100%;box-sizing:border-box;text-align:center;letter-spacing:6px;font-size:1.2em;font-family:monospace;">
                         <button id="waVerifyOtpBtn" onclick="waVerifyOtp()" type="button"
+                            style="width:100%;margin-top:10px;background:var(--success);color:#000;">✅ যাচাই করে verify করুন</button>
+                    </div>
+                </div>
+
+                <!-- SMS panel -->
+                <div id="smsPanel" style="display:none;">
+                    <!-- Step 1: Math Captcha -->
+                    <div id="smsCaptchaStep">
+                        <p style="font-size:0.72em;color:var(--text-muted);margin:0 0 8px;line-height:1.6;">নিচের গণিতের উত্তর দিন, তারপর OTP পাঠানো হবে।</p>
+                        <div id="smsCaptchaDisplay" style="font-size:1.6em;font-weight:800;text-align:center;padding:12px;background:var(--bg-card);border-radius:10px;margin-bottom:10px;letter-spacing:2px;">4 + 7 = ?</div>
+                        <input type="number" id="smsCaptchaInput" inputmode="numeric" placeholder="উত্তর" oninput="_smsCaptchaCheck()"
+                            style="margin:0;width:100%;box-sizing:border-box;text-align:center;">
+                        <p id="smsCaptchaError" style="font-size:0.72em;color:#ef4444;margin:4px 0 0;display:none;">❌ উত্তর ভুল। আবার চেষ্টা করুন।</p>
+                    </div>
+                    <!-- Step 2: Phone + Send OTP -->
+                    <div id="smsSendStep" style="display:none;">
+                        <p style="font-size:0.72em;color:var(--text-muted);margin:0 0 6px;line-height:1.6;">নম্বর দিন — SMS-এ OTP পাঠানো হবে।</p>
+                        <input type="tel" id="smsPhoneInput" placeholder="+8801XXXXXXXXX" value="+880"
+                            style="margin:0;width:100%;box-sizing:border-box;" pattern="^\+8801\d{9}$">
+                        <button id="smsSendOtpBtn" onclick="smsSendOtp()" type="button"
+                            style="width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;background:#9ca3af;color:#fff;font-weight:700;" disabled>
+                            📱 OTP পাঠান
+                        </button>
+                    </div>
+                    <!-- Step 3: OTP Verify -->
+                    <div id="smsOtpStep" style="display:none;margin-top:10px;">
+                        <label style="font-size:0.78em;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;">🔢 SMS-এ পাওয়া ৬-সংখ্যার কোড</label>
+                        <input type="text" id="smsOtpInput" inputmode="numeric" maxlength="6" placeholder="••••••"
+                            style="margin:0;width:100%;box-sizing:border-box;text-align:center;letter-spacing:6px;font-size:1.2em;font-family:monospace;">
+                        <button id="smsVerifyBtn" onclick="smsVerifyOtp()" type="button"
                             style="width:100%;margin-top:10px;background:var(--success);color:#000;">✅ যাচাই করে verify করুন</button>
                     </div>
                 </div>
@@ -2171,6 +2278,15 @@ HTML;
             </div>
             <div id="accMsgList" style="margin-bottom:18px;"></div>
 
+            <!-- ══ 7) COMMUNITY ══ -->
+            <div class="acc-sec-head">
+                <span class="acc-sec-title"><span class="acc-sec-ico">💬</span>Community</span>
+                <button onclick="appSwitchPage('community')" class="acc-sec-action">যান →</button>
+            </div>
+            <div style="padding:0 0 12px;font-size:0.82em;color:var(--text-muted);">
+                Review ও প্রশ্ন শেয়ার করুন, অন্যদের মতামত জানুন।
+            </div>
+
             <!-- ══ 8) CALL HISTORY (new — last 30 days) ══ -->
             <!-- TODO(backend): no read-endpoint exists for a user's own call_logs yet.
                  The EXISTING `call_logs` table already records every reveal/call
@@ -2192,23 +2308,10 @@ HTML;
 
             <!-- ══ 7) ACCOUNT ACTIONS (settings rows: delete + logout) ══ -->
             <div class="acc-settings">
-                <div class="acc-set-row" onclick="toggleAccDeleteInfo()">
+                <div class="acc-set-row is-danger" onclick="openDeleteAccountModal()" style="cursor:pointer;">
                     <span class="acc-set-ico">🗑️</span>
                     <span class="acc-set-lbl">আমার সকল তথ্য মুছে ফেলুন</span>
-                    <span id="accDeleteInfoArrow" class="acc-set-chev">›</span>
-                </div>
-                <div id="accDeleteInfoBody" class="acc-set-body" style="display:none;">
-                    <p style="color:var(--danger);font-weight:500;font-size:0.86em;margin-bottom:6px;">⚠️ সতর্কতা — এই কাজ পূর্বাবস্থায় ফেরানো যাবে না!</p>
-                    <p style="color:var(--text-muted);font-size:0.82em;margin-bottom:14px;">আপনার নাম, ফোন নম্বর, রক্তের গ্রুপ, location সহ donor তথ্য database থেকে <strong style="color:var(--danger);">চিরতরে মুছে যাবে।</strong></p>
-                    <label style="font-size:0.82em;color:var(--text-muted);display:block;margin-bottom:6px;">নিশ্চিত করতে নিচের বক্সে <strong style="color:var(--danger);">DELETE</strong> লিখুন:</label>
-                    <input type="text" id="acc_del_confirm" placeholder="DELETE" maxlength="6"
-                        style="font-family:monospace;font-size:1.1em;letter-spacing:3px;text-transform:uppercase;margin-bottom:12px;"
-                        oninput="this.value=this.value.toUpperCase()">
-                    <div id="acc_del_error" style="display:none;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.3);border-radius:8px;padding:8px 12px;color:var(--danger);font-size:0.82em;margin-bottom:10px;"></div>
-                    <button type="button" id="acc_del_btn" onclick="submitAccDeleteInfo()"
-                        style="width:100%;background:var(--danger);color:#fff;border:none;border-radius:12px;padding:12px;font-size:0.9rem;font-weight:500;cursor:pointer;min-height:unset;box-shadow:none;margin:0;">
-                        🗑️ হ্যাঁ, আমার তথ্য সম্পূর্ণ মুছে দিন
-                    </button>
+                    <span class="acc-set-chev">›</span>
                 </div>
                 <div class="acc-set-divider"></div>
                 <div class="acc-set-row is-danger" onclick="authLogout();">
@@ -2761,6 +2864,38 @@ HTML;
                 <p style="margin-top:4px;opacity:0.5;">Blood Arena — v2.8.0</p>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- ========== DELETE ACCOUNT CONFIRMATION MODAL ========== -->
+<div class="popup-overlay" id="deleteAccountModal" onclick="if(event.target===this)closeDeleteAccountModal()">
+    <div class="popup" style="max-width:380px;">
+        <div style="text-align:center;margin-bottom:14px;">
+            <div style="font-size:44px;margin-bottom:6px;">⚠️</div>
+            <h3 style="color:var(--danger);margin:0;font-size:1.15em;font-family:var(--font-heading);">আপনার অ্যাকাউন্ট মুছে ফেলবেন?</h3>
+        </div>
+        <p style="color:var(--text-muted);font-size:0.84em;line-height:1.7;margin-bottom:14px;">
+            আপনার সম্পূর্ণ অ্যাকাউন্ট — নাম, ফোন নম্বর, রক্তের গ্রুপ, লোকেশন, ডোনার প্রোফাইল,
+            ব্লাড রিকোয়েস্ট, ডোনেশন ইতিহাস, মেসেজ, কল লগ ও অন্যান্য সকল তথ্য
+            <strong style="color:var(--danger);">স্থায়ীভাবে মুছে যাবে</strong>।
+            এই কাজ পূর্বাবস্থায় ফেরানো যাবে না।
+        </p>
+        <label style="font-size:0.82em;color:var(--text-muted);display:block;margin-bottom:6px;">নিশ্চিত করতে নিচে <strong style="color:var(--danger);">মুছে ফেলুন</strong> লিখুন:</label>
+        <input type="text" id="del_account_confirm" placeholder="মুছে ফেলুন"
+            style="width:100%;font-family:inherit;font-size:1em;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-input);color:var(--text-main);outline:none;box-sizing:border-box;margin-bottom:12px;text-align:center;"
+            oninput="document.getElementById('del_account_confirm_err').style.display='none';"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();submitFullDeleteAccount();}">
+        <div id="del_account_confirm_err" style="display:none;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.3);border-radius:8px;padding:8px 12px;color:var(--danger);font-size:0.82em;margin-bottom:10px;text-align:center;"></div>
+        <div id="del_account_server_err" style="display:none;background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.3);border-radius:8px;padding:8px 12px;color:var(--danger);font-size:0.82em;margin-bottom:10px;text-align:center;"></div>
+        <button type="button" id="del_account_btn" onclick="submitFullDeleteAccount()"
+            style="width:100%;background:var(--danger);color:#fff;border:none;border-radius:12px;padding:14px;font-size:0.95rem;font-weight:600;cursor:pointer;margin-bottom:8px;">
+            🗑️ হ্যাঁ, আমার সকল তথ্য মুছে দিন
+        </button>
+        <button type="button" onclick="closeDeleteAccountModal()"
+            style="width:100%;background:transparent;color:var(--text-muted);border:1px solid var(--border-color);border-radius:12px;padding:12px;font-size:0.9rem;cursor:pointer;min-height:unset;box-shadow:none;margin:0;">
+            বাতিল করুন
+        </button>
+        <div id="del_account_spinner" style="display:none;text-align:center;padding:10px;color:var(--text-muted);font-size:0.85em;">⏳ মুছে ফেলা হচ্ছে...</div>
     </div>
 </div>
 

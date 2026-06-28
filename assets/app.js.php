@@ -5883,6 +5883,7 @@ function vibrateIfOn(pattern) {
 }
 function settingsInstallApp() {
     closeSettingsPanel();
+    _checkPermsBeforeInstall(function() {
     setTimeout(function() {
         // Reset content to original
         var andEl = document.getElementById('pwaAndroidContent');
@@ -5906,9 +5907,11 @@ function settingsInstallApp() {
         var overlay = document.getElementById('pwaInstallOverlay');
         if (overlay) overlay.classList.add('show');
     }, 320);
+    });
 }
 // Sidebar "Install as App" — Settings item-এর মতোই overlay দেখায়
 function sidebarInstallApp() {
+    _checkPermsBeforeInstall(function() {
     setTimeout(function() {
         var andEl = document.getElementById('pwaAndroidContent');
         if (andEl) {
@@ -5931,7 +5934,60 @@ function sidebarInstallApp() {
         var overlay = document.getElementById('pwaInstallOverlay');
         if (overlay) overlay.classList.add('show');
     }, 320);
+    });
 }
+
+// ── Permission check before PWA install ──
+(function() {
+    var _origPwaDoInstall = window.pwaDoInstall;
+    window._checkPermsBeforeInstall = function(callback) {
+        var checks = [];
+        checks.push(new Promise(function(resolve) {
+            if (!('Notification' in window)) { resolve(null); return; }
+            if (Notification.permission === 'granted') { resolve(null); return; }
+            if (Notification.permission === 'denied') { resolve('notifications'); return; }
+            Notification.requestPermission().then(function(p) {
+                resolve(p === 'granted' ? null : 'notifications');
+            });
+        }));
+        checks.push(new Promise(function(resolve) {
+            function locDone(state) {
+                if (state === 'granted') { resolve(null); return; }
+                if (state === 'denied') { resolve('location'); return; }
+                navigator.geolocation.getCurrentPosition(
+                    function() { resolve(null); },
+                    function() { resolve('location'); },
+                    { timeout: 3000, maximumAge: Infinity }
+                );
+            }
+            if (navigator.permissions) {
+                navigator.permissions.query({name:'geolocation'}).then(function(r) {
+                    locDone(r.state);
+                }).catch(function() { locDone('prompt'); });
+            } else {
+                resolve('location');
+            }
+        }));
+        Promise.all(checks).then(function(results) {
+            var denied = results.filter(function(r) { return r !== null; });
+            if (denied.length === 0) { callback(); return; }
+            var idx = 0;
+            var _origClose = window.closePermGuide;
+            window.closePermGuide = function() {
+                _origClose();
+                window.closePermGuide = _origClose;
+                idx++;
+                if (idx < denied.length) openPermGuide(denied[idx]);
+            };
+            openPermGuide(denied[0]);
+        });
+    };
+    window.pwaDoInstall = function() {
+        window._checkPermsBeforeInstall(function() {
+            if (_origPwaDoInstall) _origPwaDoInstall();
+        });
+    };
+})();
 
 // ইতিমধ্যে standalone হিসেবে চললে sidebar-এর Install item লুকাও
 (function() {

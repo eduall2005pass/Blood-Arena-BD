@@ -564,20 +564,30 @@ function waVerifyOtp() {
   }).catch(function(){ _authBusy(false, 'waVerifyOtpBtn'); _authToast('নেটওয়ার্ক সমস্যা।', 'error'); });
 }
 
-// ── Verify channel selector — একসাথে একটাই panel খোলে (Telegram বা WhatsApp) ──
+// ── Verify channel selector — একসাথে একটাই panel খোলে (Telegram, WhatsApp বা Phone) ──
 function selectVerifyChannel(ch) {
   var tgP = document.getElementById('tgPanel');
   var waP = document.getElementById('waPanel');
+  var smsP = document.getElementById('smsPanel');
   var tgB = document.getElementById('vchTgBtn');
   var waB = document.getElementById('vchWaBtn');
+  var smsB = document.getElementById('vchPhoneBtn');
   if (tgP) tgP.style.display = (ch === 'tg') ? 'block' : 'none';
   if (waP) waP.style.display = (ch === 'wa') ? 'block' : 'none';
+  if (smsP) smsP.style.display = (ch === 'phone') ? 'block' : 'none';
   if (ch === 'wa') {
     if (waB) { waB.style.borderColor = '#25D366'; waB.style.background = 'rgba(37,211,102,0.10)'; }
     if (tgB) { tgB.style.borderColor = 'var(--border-color)'; tgB.style.background = 'transparent'; }
+    if (smsB) { smsB.style.borderColor = 'var(--border-color)'; smsB.style.background = 'transparent'; }
+  } else if (ch === 'phone') {
+    if (smsB) { smsB.style.borderColor = '#6b7280'; smsB.style.background = 'rgba(107,114,128,0.10)'; }
+    if (tgB) { tgB.style.borderColor = 'var(--border-color)'; tgB.style.background = 'transparent'; }
+    if (waB) { waB.style.borderColor = 'var(--border-color)'; waB.style.background = 'transparent'; }
+    _smsGenerateCaptcha();
   } else {
     if (tgB) { tgB.style.borderColor = '#229ED9'; tgB.style.background = 'rgba(34,158,217,0.10)'; }
     if (waB) { waB.style.borderColor = 'var(--border-color)'; waB.style.background = 'transparent'; }
+    if (smsB) { smsB.style.borderColor = 'var(--border-color)'; smsB.style.background = 'transparent'; }
   }
 }
 
@@ -630,6 +640,82 @@ function tgVerifyOtp() {
     if (res && res.status === 'success') _onVerifySuccess('telegram', res.msg, res.phone);
     else _authToast((res && res.msg) ? res.msg : 'যাচাই ব্যর্থ।', 'error');
   }).catch(function(){ _authBusy(false, 'tgVerifyBtn'); _authToast('নেটওয়ার্ক সমস্যা।', 'error'); });
+}
+
+// ── SMS — Math Captcha ──
+var _smsCaptchaAnswer = 0;
+
+function _smsGenerateCaptcha() {
+  var a = Math.floor(Math.random() * 9) + 1;
+  var b = Math.floor(Math.random() * 9) + 1;
+  _smsCaptchaAnswer = a + b;
+  var display = document.getElementById('smsCaptchaDisplay');
+  if (display) display.textContent = a + ' + ' + b + ' = ?';
+  var step1 = document.getElementById('smsCaptchaStep');
+  if (step1) step1.style.display = '';
+  var step2 = document.getElementById('smsSendStep');
+  if (step2) step2.style.display = '';
+  var step3 = document.getElementById('smsOtpStep');
+  if (step3) step3.style.display = 'none';
+  var input = document.getElementById('smsCaptchaInput');
+  if (input) { input.value = ''; input.focus(); }
+  var err = document.getElementById('smsCaptchaError');
+  if (err) err.style.display = 'none';
+  var phoneInput = document.getElementById('smsPhoneInput');
+  if (phoneInput) phoneInput.value = '+880';
+  var otpInput = document.getElementById('smsOtpInput');
+  if (otpInput) otpInput.value = '';
+  _smsCaptchaCheck();
+}
+
+function _smsCaptchaCheck() {
+  var input = document.getElementById('smsCaptchaInput');
+  var err = document.getElementById('smsCaptchaError');
+  var btn = document.getElementById('smsSendOtpBtn');
+  var val = parseInt((input ? input.value : '').trim(), 10);
+  if (val === _smsCaptchaAnswer) {
+    if (err) { err.style.display = 'none'; if (input) input.style.borderColor = ''; }
+    if (btn) { btn.disabled = false; btn.style.background = '#6b7280'; }
+  } else {
+    if (val && err) { err.style.display = 'block'; if (input) input.style.borderColor = '#ef4444'; }
+    if (btn) { btn.disabled = true; btn.style.background = '#9ca3af'; }
+  }
+}
+
+// ── SMS — Step 1: কোড পাঠাও ──
+function smsSendOtp() {
+  var input = document.getElementById('smsPhoneInput');
+  var phone = (input ? input.value : '').trim();
+  if (/^01\d{9}$/.test(phone)) phone = '+88' + phone;
+  if (!/^\+8801\d{9}$/.test(phone)) { _authToast('সঠিক বাংলাদেশি নম্বর দিন।', 'error'); return; }
+  _authBusy(true, 'smsSendOtpBtn');
+  _verifyPost('sms_send_otp', { phone: phone }).then(function(res){
+    _authBusy(false, 'smsSendOtpBtn');
+    if (res && res.status === 'success') {
+      var step1 = document.getElementById('smsCaptchaStep');
+      if (step1) step1.style.display = 'none';
+      var step2 = document.getElementById('smsSendStep');
+      if (step2) step2.style.display = 'none';
+      var step3 = document.getElementById('smsOtpStep');
+      if (step3) step3.style.display = 'block';
+      _authToast(res.msg || '📲 SMS-এ কোড পাঠানো হয়েছে।', 'success');
+    } else {
+      _authToast((res && res.msg) ? res.msg : 'কোড পাঠানো যায়নি।', 'error');
+    }
+  }).catch(function(){ _authBusy(false, 'smsSendOtpBtn'); _authToast('নেটওয়ার্ক সমস্যা।', 'error'); });
+}
+
+// ── SMS — Step 2: কোড যাচাই ──
+function smsVerifyOtp() {
+  var el = document.getElementById('smsOtpInput');
+  var code = (el ? el.value : '').trim();
+  if (!/^\d{6}$/.test(code)) { _authToast('৬-সংখ্যার কোড দিন।', 'error'); return; }
+  _authBusy(true, 'smsVerifyBtn');
+  _verifyPost('sms_verify_otp', { code: code }).then(function(res){
+    _authBusy(false, 'smsVerifyBtn');
+    if (res && res.status === 'success') _onVerifySuccess('phone', res.msg, res.phone);
+    else _authToast((res && res.msg) ? res.msg : 'যাচাই ব্যর্থ।', 'error');
+  }).catch(function(){ _authBusy(false, 'smsVerifyBtn'); _authToast('নেটওয়ার্ক সমস্যা।', 'error'); });
 }
 
 // ════════════════════════════════════════════════════════════════════

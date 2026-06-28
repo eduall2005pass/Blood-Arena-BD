@@ -76,6 +76,12 @@ $CFG_DEFAULTS = [
     'VERIFY_OTP_TTL'            => 300,
     'PHONE_OTP_COUNTS_VERIFIED' => true,
 
+    // SMS gateway (loaded from .env.sms via getenv; empty strings as fallback)
+    'SMS_GATEWAY_URL'      => getenv('SMS_GATEWAY_URL') ?: '',
+    'SMS_GATEWAY_USERNAME' => getenv('SMS_GATEWAY_USERNAME') ?: '',
+    'SMS_GATEWAY_PASSWORD' => getenv('SMS_GATEWAY_PASSWORD') ?: '',
+    'SMS_GATEWAY_DEVICE_ID'=> getenv('SMS_GATEWAY_DEVICE_ID') ?: '',
+
     // Blood request documents
     'AUTO_DELETE_DAYS'  => 3,
     'REQ_DOC_MAX_FILES' => 2,
@@ -152,6 +158,11 @@ define('WA_BOT_SECRET',             $CFG['WA_BOT_SECRET']);
 define('WA_BOT_INSECURE_TLS',       $CFG['WA_BOT_INSECURE_TLS']);
 define('VERIFY_OTP_TTL',            $CFG['VERIFY_OTP_TTL']);
 define('PHONE_OTP_COUNTS_VERIFIED', $CFG['PHONE_OTP_COUNTS_VERIFIED']);
+
+define('SMS_GATEWAY_URL',       $CFG['SMS_GATEWAY_URL']);
+define('SMS_GATEWAY_USERNAME',  $CFG['SMS_GATEWAY_USERNAME']);
+define('SMS_GATEWAY_PASSWORD',  $CFG['SMS_GATEWAY_PASSWORD']);
+define('SMS_GATEWAY_DEVICE_ID', $CFG['SMS_GATEWAY_DEVICE_ID']);
 
 // UPLOAD_DIR is a filesystem path computed from __DIR__ — deliberately NOT
 // overridable from the UI (a wrong path would break uploads silently).

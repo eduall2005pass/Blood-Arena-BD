@@ -9,3 +9,4 @@ env/
 .env*
 firebase-messaging-sw.js
 db.php
+opencode.json
