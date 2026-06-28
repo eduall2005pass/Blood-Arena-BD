@@ -648,59 +648,72 @@ function openAboutUsModal() {
     openInfoPage('about');
 }
 
-// DELETE DONOR
-function toggleDeleteDonorSection() {
-    var body  = document.getElementById('deleteDonorBody');
-    var arrow = document.getElementById('deleteDonorArrow');
-    if (!body) return;
-    var isOpen = body.style.display !== 'none';
-    body.style.display = isOpen ? 'none' : 'block';
-    if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(90deg)';
-    if (!isOpen) {
-        var inp = document.getElementById('del_donor_confirm');
-        if (inp) inp.value = '';
-        var err = document.getElementById('del_donor_error');
-        if (err) err.style.display = 'none';
-    }
+// DELETE ACCOUNT MODAL
+function openDeleteAccountModal() {
+    var m = document.getElementById('deleteAccountModal');
+    if (!m) return;
+    // Reset
+    var inp = document.getElementById('del_account_confirm');
+    if (inp) inp.value = '';
+    var e1 = document.getElementById('del_account_confirm_err');
+    if (e1) e1.style.display = 'none';
+    var e2 = document.getElementById('del_account_server_err');
+    if (e2) e2.style.display = 'none';
+    var sp = document.getElementById('del_account_spinner');
+    if (sp) sp.style.display = 'none';
+    var btn = document.getElementById('del_account_btn');
+    if (btn) { btn.disabled = false; btn.style.display = 'block'; btn.textContent = '🗑️ হ্যাঁ, আমার সকল তথ্য মুছে দিন'; }
+    m.classList.add('active'); lockBodyScroll();
 }
+function closeDeleteAccountModal() {
+    var m = document.getElementById('deleteAccountModal');
+    if (m) m.classList.remove('active'); unlockBodyScroll();
+}
+function submitFullDeleteAccount() {
+    var inp = document.getElementById('del_account_confirm');
+    var confirmVal = inp ? inp.value.trim() : '';
+    var errEl = document.getElementById('del_account_confirm_err');
+    var serverErr = document.getElementById('del_account_server_err');
+    var spinner = document.getElementById('del_account_spinner');
+    var btn = document.getElementById('del_account_btn');
 
-function submitDeleteDonor() {
-    var confirm = document.getElementById('del_donor_confirm').value.trim();
-    var errEl   = document.getElementById('del_donor_error');
-    var btn     = document.getElementById('del_donor_btn');
-
-    if (confirm !== 'DELETE') {
-        errEl.textContent = '❌ নিশ্চিত করতে DELETE (বড় হাতে) লিখুন।';
-        errEl.style.display = 'block'; return;
+    if (serverErr) serverErr.style.display = 'none';
+    if (confirmVal !== 'মুছে ফেলুন' && confirmVal !== 'DELETE') {
+        if (errEl) { errEl.textContent = '❌ নিশ্চিত করতে "মুছে ফেলুন" লিখুন।'; errEl.style.display = 'block'; }
+        return;
     }
-
-    btn.disabled = true; btn.textContent = '⏳ মুছে ফেলা হচ্ছে...';
-    errEl.style.display = 'none';
+    if (errEl) errEl.style.display = 'none';
+    if (btn) { btn.style.display = 'none'; }
+    if (spinner) spinner.style.display = 'block';
 
     var fd = new FormData();
-    fd.append('delete_donor',  '1');
-    fd.append('confirm',       confirm);
-    fd.append('csrf_token',    CSRF_TOKEN);
+    fd.append('delete_donor', '1');
+    fd.append('confirm', confirmVal);
+    fd.append('csrf_token', CSRF_TOKEN);
 
     fetch(_AJAX_URL, {method:'POST', body:fd})
     .then(safeJSON)
     .then(function(d){
-        if (d.status === 'success') {
-            // Reset the entire form
-            document.getElementById('updateFields').style.display    = 'none';
-            document.getElementById('donorBadgeCard').style.display  = 'none';
-            document.getElementById('deleteDonorBody').style.display = 'none';
-            showToast(d.msg || '✅ তথ্য মুছে ফেলা হয়েছে।', 'success');
+        if (d && d.status === 'success') {
+            showToast(d.msg || '✅ আপনার অ্যাকাউন্ট সম্পূর্ণ মুছে ফেলা হয়েছে।', 'success');
+            closeDeleteAccountModal();
+            // Redirect to homepage after a brief delay
+            setTimeout(function(){ window.location.href = '/'; }, 1500);
         } else {
-            btn.disabled = false; btn.textContent = '🗑️ হ্যাঁ, আমার তথ্য সম্পূর্ণ মুছে দিন';
-            errEl.textContent = d.msg || '❌ ব্যর্থ হয়েছে।';
-            errEl.style.display = 'block';
+            if (spinner) spinner.style.display = 'none';
+            if (btn) { btn.style.display = 'block'; btn.disabled = false; btn.textContent = '🗑️ হ্যাঁ, আমার সকল তথ্য মুছে দিন'; }
+            if (serverErr) { serverErr.textContent = (d && d.msg) ? d.msg : '❌ ব্যর্থ হয়েছে। আবার চেষ্টা করুন।'; serverErr.style.display = 'block'; }
         }
-    }).catch(function(){
-        btn.disabled = false; btn.textContent = '🗑️ হ্যাঁ, আমার তথ্য সম্পূর্ণ মুছে দিন';
-        errEl.textContent = '❌ Network error। আবার চেষ্টা করুন।';
-        errEl.style.display = 'block';
+    })
+    .catch(function(){
+        if (spinner) spinner.style.display = 'none';
+        if (btn) { btn.style.display = 'block'; btn.disabled = false; btn.textContent = '🗑️ হ্যাঁ, আমার সকল তথ্য মুছে দিন'; }
+        if (serverErr) { serverErr.textContent = '❌ Network error। আবার চেষ্টা করুন।'; serverErr.style.display = 'block'; }
     });
+}
+
+function submitDeleteDonor() {
+    openDeleteAccountModal();
 }
 
 // UPDATE FORM
@@ -1303,9 +1316,27 @@ function showConfirmPopup(callerName, callerPhone) {
                     callBtn.innerHTML = "📞 Call"; callBtn.disabled = false;
                     waBtn.innerHTML   = "💬 WhatsApp"; waBtn.disabled = false;
                     showToast('Network error। Internet connection চেক করুন।', 'error');
-                });
-        }
+        });
     }
+
+    // Camera status
+    var ct = document.getElementById('camStatusText');
+    var cb = document.getElementById('camStatusBadge');
+    if (navigator.permissions && navigator.mediaDevices) {
+        navigator.permissions.query({name:'camera'}).then(function(r) {
+            if (r.state === 'granted') {
+                if(ct) ct.textContent = '✅ Camera চালু আছে';
+                if(cb) { cb.textContent = '✅'; cb.style.color = 'var(--success)'; }
+            } else if (r.state === 'denied') {
+                if(ct) ct.textContent = '❌ Browser settings থেকে Allow করুন';
+                if(cb) { cb.textContent = '❌'; cb.style.color = 'var(--danger)'; }
+            } else {
+                if(ct) ct.textContent = 'ভিডিও কলে দরকার';
+                if(cb) { cb.textContent = '›'; cb.style.color = ''; }
+            }
+        }).catch(function(){});
+    }
+}
 
     document.getElementById("finalCallBtn").onclick = function(){ execContact('call'); };
     document.getElementById("finalWaBtn").onclick   = function(){ execContact('wa'); };
@@ -1476,9 +1507,15 @@ function kpiGoto(type) {
 // ── PERFORMANCE: abort previous filter requests ──
 let _filterController = null;
 
+function changeDonorsPerPage(val) {
+    try { localStorage.setItem('donors_per_page', String(val)); } catch(e){}
+    fetchFilteredData(1, true);
+}
+
 function fetchFilteredData(page = 1, doScroll = false) {
     if (_filterController) _filterController.abort();
     _filterController = new AbortController();
+    var perPage = parseInt(localStorage.getItem('donors_per_page')) || 20;
     const group    = document.getElementById('groupFilter').value;
     const search   = document.getElementById('searchInput').value;
     const status   = document.getElementById('statusFilter').value;
@@ -1512,6 +1549,7 @@ function fetchFilteredData(page = 1, doScroll = false) {
     formData.append('filter_badge', badge);
     formData.append('filter_donated', donated);
     formData.append('page', page);
+    formData.append('per_page', perPage);
     formData.append('csrf_token', CSRF_TOKEN);
 
     fetch(_AJAX_URL, { method: 'POST', body: formData, signal: _filterController.signal })
@@ -1541,6 +1579,9 @@ function fetchFilteredData(page = 1, doScroll = false) {
                 if (heroAvail) heroAvail.textContent = data.total_available;
             }
         }
+
+        // Save current page to localStorage for page-memory feature
+        try { localStorage.setItem('donors_current_page', String(page)); } catch(e){}
 
         // Update bottom nav active state — only if currently on donors page
         if (_currentPage === 'donors') updateBottomNav('donors');
@@ -4575,7 +4616,10 @@ function appSwitchPage(pageKey) {
         });
         nextEl.classList.add('page-active');
         window.scrollTo(0, 0);
-        if (pageKey === 'donors')  fetchFilteredData(1);
+        if (pageKey === 'donors') {
+            var _savedDonorPage = parseInt(localStorage.getItem('donors_current_page')) || 1;
+            fetchFilteredData(_savedDonorPage);
+        }
         if (pageKey === 'requests') loadBloodRequests();
         if (pageKey === 'more')    loadAnalytics();
         if (pageKey === 'home')    {
@@ -4594,6 +4638,13 @@ function appSwitchPage(pageKey) {
         if (pageKey === 'account' && typeof _loadAccountDashboard === 'function') {
             _loadAccountDashboard();
         }
+        if (pageKey === 'community') {
+            _commLoadPosts('review');
+            // Clear badge on open
+            var b = document.getElementById('commSdBadge');
+            if (b) { b.style.display = 'none'; b.textContent = ''; }
+            try { localStorage.setItem('last_seen_community_ts', String(Math.floor(Date.now()/1000))); } catch(e){}
+        }
     }
 
     if (prevEl && prevEl !== nextEl) {
@@ -4606,7 +4657,7 @@ function appSwitchPage(pageKey) {
 }
 
 function updateBottomNav(activeKey) {
-    ['home','donors','register','nearby','more','settings','requests','account'].forEach(function(k) {
+    ['home','donors','register','nearby','more','settings','requests','account','community'].forEach(function(k) {
         var btn = document.getElementById('mbn-' + k);
         if (btn) btn.classList.toggle('mbn-active', k === activeKey);
         var sd = document.getElementById('sd-' + k);
@@ -4855,11 +4906,11 @@ function openVerifyModal() {
 function closeAuthModal() {
     var m = document.getElementById('authModal');
     if (m) m.classList.remove('active');
-    // reset Telegram/WhatsApp verify steps
-    ['waOtpStep','tgOtpStep','tgOpenBotDiv'].forEach(function(id){
+    // reset Telegram/WhatsApp/SMS verify steps
+    ['waOtpStep','tgOtpStep','tgOpenBotDiv','smsOtpStep','smsCaptchaStep','smsSendStep'].forEach(function(id){
         var e = document.getElementById(id); if (e) e.style.display = 'none';
     });
-    ['waOtpInput','tgOtpInput'].forEach(function(id){
+    ['waOtpInput','tgOtpInput','smsOtpInput','smsCaptchaInput','smsPhoneInput'].forEach(function(id){
         var e = document.getElementById(id); if (e) e.value = '';
     });
 }
@@ -5022,13 +5073,11 @@ function _loadAccountDashboard() {
     loadMyDonations();
     // Call History (last 30 days) — UI section; see loadMyCallHistory() TODO note
     loadMyCallHistory();
-    // reset delete-info section
+    // reset delete-info section (legacy — kept for safety)
     var db = document.getElementById('accDeleteInfoBody');
     if (db) db.style.display = 'none';
     var ar = document.getElementById('accDeleteInfoArrow');
     if (ar) ar.style.transform = '';
-    var dc2 = document.getElementById('acc_del_confirm'); if (dc2) dc2.value = '';
-    var de2 = document.getElementById('acc_del_error');   if (de2) de2.style.display = 'none';
 }
 
 // ── My account requests: load + render + delete (no token) ──
@@ -5153,50 +5202,10 @@ function deleteMyAccountRequest(reqId, btn) {
         });
 }
 
-// ── Delete My Info — account dashboard section ──
-function toggleAccDeleteInfo() {
-    var body  = document.getElementById('accDeleteInfoBody');
-    var arrow = document.getElementById('accDeleteInfoArrow');
-    if (!body) return;
-    var open = body.style.display === 'none' || !body.style.display;
-    body.style.display = open ? 'block' : 'none';
-    if (arrow) arrow.style.transform = open ? 'rotate(90deg)' : '';
-}
-
-function submitAccDeleteInfo() {
-    var inp = document.getElementById('acc_del_confirm');
-    var err = document.getElementById('acc_del_error');
-    var btn = document.getElementById('acc_del_btn');
-    var val = (inp ? inp.value : '').trim().toUpperCase();
-    if (val !== 'DELETE') {
-        if (err) { err.textContent = '❌ নিশ্চিত করতে DELETE লিখুন।'; err.style.display = 'block'; }
-        return;
-    }
-    if (err) err.style.display = 'none';
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ মুছছে...'; }
-    var fd = new FormData();
-    fd.append('delete_donor', '1');
-    fd.append('confirm', 'DELETE');
-    fd.append('csrf_token', CSRF_TOKEN);
-    fetch(_AJAX_URL, {method:'POST', body:fd})
-        .then(safeJSON)
-        .then(function(d){
-            if (btn) { btn.disabled = false; btn.textContent = '🗑️ হ্যাঁ, আমার তথ্য সম্পূর্ণ মুছে দিন'; }
-            if (d && d.status === 'success') {
-                showToast(d.msg || '✅ তথ্য মুছে ফেলা হয়েছে।', 'success');
-                if (inp) inp.value = '';
-                // donor card refresh — এখন আর donor নেই
-                loadMyAccountRequests();
-                openAccountDashboard();
-            } else {
-                if (err) { err.textContent = (d && d.msg) ? d.msg : '❌ মুছতে ব্যর্থ হয়েছে।'; err.style.display = 'block'; }
-            }
-        })
-        .catch(function(){
-            if (btn) { btn.disabled = false; btn.textContent = '🗑️ হ্যাঁ, আমার তথ্য সম্পূর্ণ মুছে দিন'; }
-            if (err) { err.textContent = '❌ Network error। আবার চেষ্টা করুন।'; err.style.display = 'block'; }
-        });
-}
+// ── This function is now handled by the shared delete modal ──
+// Kept as alias for legacy inline onclick references.
+function toggleAccDeleteInfo() { openDeleteAccountModal(); }
+function submitAccDeleteInfo() { openDeleteAccountModal(); }
 
 // Account is a full page now. Legacy callers do `closeAccountModal()` — some
 // then navigate elsewhere (e.g. register). Only route home if we're STILL on
@@ -5948,25 +5957,116 @@ function sidebarInstallApp() {
 
 function requestBrowserNotif() {
     if (!('Notification' in window)) { showToast('এই browser notification সাপোর্ট করে না।', 'error'); return; }
-    _saveDeviceId('notif_prompt');
-    if (Notification.permission === 'granted') { _saveDeviceId('notif_allow'); showToast('✅ Notifications ইতিমধ্যে চালু আছে।', 'success'); return; }
-    if (Notification.permission === 'denied') { _saveDeviceId('notif_deny'); showToast('❌ Browser URL bar-এ 🔒 icon → Site settings → Notifications → Allow করুন।', 'error'); return; }
-    Notification.requestPermission().then(function(p) {
-        if (p==='granted') { _saveDeviceId('notif_allow'); showToast('✅ Notifications চালু হয়েছে! নতুন request এলে জানানো হবে।', 'success'); }
-        else { _saveDeviceId('notif_deny'); showToast('❌ Notification blocked। Browser settings থেকে Allow করুন।', 'error'); }
-        updateSettingsToggles();
-    });
+    if (Notification.permission === 'granted') { showToast('✅ Notifications ইতিমধ্যে চালু আছে।', 'success'); return; }
+    closeSettingsPanel();
+    openPermGuide('notifications');
 }
 function requestLocationSetting() {
     if (!navigator.geolocation) { showToast('এই browser geolocation সাপোর্ট করে না।', 'error'); return; }
-    _saveDeviceId('loc_prompt');
     closeSettingsPanel();
-    // Reset so prompt can show again
-    localStorage.removeItem('gps_prompted');
-    const msgEl = document.getElementById('gpsPromptMsg');
-    if (msgEl) msgEl.textContent = 'Nearby Donors feature ও Call log-এর জন্য আপনার Location দরকার। Allow করলে কাছের রক্তদাতা খুঁজে পাবেন।';
-    const el = document.getElementById('gpsPermPrompt');
-    if (el) el.classList.add('active');
+    if (navigator.permissions) {
+        navigator.permissions.query({name:'geolocation'}).then(function(r) {
+            if (r.state === 'granted') { showToast('✅ Location ইতিমধ্যে চালু আছে।', 'success'); }
+            else { openPermGuide('location'); }
+        }).catch(function(){ openPermGuide('location'); });
+    } else {
+        openPermGuide('location');
+    }
+}
+function requestCameraSetting() {
+    if (!navigator.mediaDevices) { showToast('এই browser camera সাপোর্ট করে না।', 'error'); return; }
+    closeSettingsPanel();
+    if (navigator.permissions) {
+        navigator.permissions.query({name:'camera'}).then(function(r) {
+            if (r.state === 'granted') { showToast('✅ Camera ইতিমধ্যে চালু আছে।', 'success'); }
+            else { openPermGuide('camera'); }
+        }).catch(function(){ openPermGuide('camera'); });
+    } else {
+        openPermGuide('camera');
+    }
+}
+function openPermGuide(type) {
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    var isAndroid = /Android/.test(navigator.userAgent);
+    var platform = isAndroid ? 'android' : 'ios';
+    var steps = getPermSteps(type, platform);
+    if (!steps) return;
+    var titles = { notifications:'🔔 Notification চালু করুন', location:'📍 Location চালু করুন', camera:'📷 Camera চালু করুন' };
+    document.getElementById('permGuideTitle').textContent = titles[type] || 'Permission চালু করুন';
+    document.getElementById('permGuidePlatform').textContent = platform === 'android' ? 'Android' : 'iOS';
+    var container = document.getElementById('permGuideSteps');
+    container.innerHTML = steps.map(function(s, i) {
+        var cn = 'perm-guide-step-num' + (i === steps.length - 1 ? ' done' : '');
+        return '<div class="perm-guide-step">' +
+            '<div class="' + cn + '">' + (i + 1) + '</div>' +
+            '<div class="perm-guide-step-content">' + s + '</div></div>';
+    }).join('');
+    var dotsContainer = document.getElementById('permGuideDots');
+    dotsContainer.innerHTML = steps.map(function(_, i) {
+        return '<span class="perm-guide-dot' + (i === 0 ? ' active' : '') + '" onclick="goPermStep(' + i + ')"></span>';
+    }).join('');
+    document.getElementById('permGuideReload').style.display = 'none';
+    window._permSteps = steps.length;
+    window._permCurrentStep = 0;
+    goPermStep(0);
+    window._permTimer = setInterval(autoAdvancePerm, 3000);
+    openOverlay('permGuideOverlay');
+}
+function getPermSteps(type, platform) {
+    if (platform === 'android') {
+        var step3Labels = { notifications:'"Notifications" → "Allow"', location:'"Location" → "Allow"', camera:'"Camera" → "Allow"' };
+        return [
+            'Chrome address bar-এ <span class="perm-guide-step-icon"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="5" x2="17" y2="5"/><circle cx="12" cy="5" r="2.5" fill="currentColor" stroke="none"/><line x1="3" y1="10" x2="17" y2="10"/><circle cx="7" cy="10" r="2.5" fill="currentColor" stroke="none"/><line x1="3" y1="15" x2="17" y2="15"/><circle cx="14" cy="15" r="2.5" fill="currentColor" stroke="none"/></svg></span> icon এ tap করুন',
+            '<span class="perm-guide-step-icon"><svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="5" x2="16" y2="5"/><line x1="4" y1="10" x2="16" y2="10"/><circle cx="10" cy="10" r="2.5" fill="currentColor" stroke="none"/><line x1="4" y1="15" x2="16" y2="15"/><circle cx="10" cy="15" r="2.5" fill="currentColor" stroke="none"/></svg></span> "Permissions" select করুন',
+            step3Labels[type] || step3Labels.notifications,
+            'পেজ reload করুন ✓'
+        ];
+    }
+    var iosMap = {
+        notifications: [
+            'iPhone Settings app খুলুন',
+            'Safari → "Advanced" → "Website Data" এ যান',
+            'অথবা Settings → Notifications → Safari → Allow',
+            'Blood Arena reload করুন ✓'
+        ],
+        location: [
+            'iPhone Settings app খুলুন',
+            'Privacy & Security → Location Services',
+            'Safari → "While Using" select করুন',
+            'Blood Arena reload করুন ✓'
+        ],
+        camera: [
+            'iPhone Settings app খুলুন',
+            'Privacy & Security → Camera',
+            'Safari toggle ON করুন',
+            'Blood Arena reload করুন ✓'
+        ]
+    };
+    return iosMap[type] || iosMap.notifications;
+}
+function autoAdvancePerm() {
+    var next = window._permCurrentStep + 1;
+    if (next >= window._permSteps) {
+        clearInterval(window._permTimer);
+        document.getElementById('permGuideReload').style.display = 'block';
+        return;
+    }
+    goPermStep(next);
+}
+function goPermStep(idx) {
+    var steps = document.querySelectorAll('.perm-guide-step');
+    var dots = document.querySelectorAll('.perm-guide-dot');
+    steps.forEach(function(s, i) { s.classList.toggle('active', i === idx); });
+    dots.forEach(function(d, i) { d.classList.toggle('active', i === idx); });
+    window._permCurrentStep = idx;
+    if (idx === window._permSteps - 1) {
+        clearInterval(window._permTimer);
+        document.getElementById('permGuideReload').style.display = 'block';
+    }
+}
+function closePermGuide() {
+    clearInterval(window._permTimer);
+    closeOverlay('permGuideOverlay');
 }
 
 // Patch sound to respect sound setting
@@ -6154,3 +6254,503 @@ document.documentElement.style.scrollPaddingTop = '80px';
         setInterval(pingVisitors, 30000);
     });
 })();
+
+// ═══════════════════════════════════════════════════════════════
+// COMMUNITY — posts, replies, badge poll, infinite scroll
+// ═══════════════════════════════════════════════════════════════
+
+// ── Bengali relative time (shared with existing _relTime pattern) ──
+function _commTimeAgo(ts) {
+    var u = parseInt(ts,10); if(!u) return '';
+    var bn = function(num){ return String(num).replace(/[0-9]/g, function(d){ return '০১২৩৪৫৬৭৮৯'[+d]; }); };
+    var diff = Math.floor((Date.now() - u*1000) / 1000);
+    if (diff < 45) return 'এইমাত্র';
+    var m = Math.floor(diff/60);
+    if (m < 60) return bn(m) + ' মিনিট আগে';
+    var h = Math.floor(m/60);
+    if (h < 24) return bn(h) + ' ঘণ্টা আগে';
+    var d = Math.floor(h/24);
+    if (d < 7) return bn(d) + ' দিন আগে';
+    return new Date(u*1000).toLocaleDateString('bn-BD', {day:'numeric', month:'long'});
+}
+
+// ── Community state ──
+var _commState = {
+    type: 'review',
+    offset: 0,
+    limit: 10,
+    loading: false,
+    hasMore: true,
+    formType: 'review',
+    formRating: 0,
+    _infiniteObs: null
+};
+
+// ── Switch tab ──
+function switchCommTab(type) {
+    if (_commState.loading) return;
+    _commState.type = type;
+    _commState.offset = 0;
+    _commState.hasMore = true;
+    document.querySelectorAll('.comm-tab').forEach(function(t){
+        t.classList.toggle('active', t.getAttribute('data-type') === type);
+    });
+    var rs = document.getElementById('commRatingSummary');
+    if (rs) rs.style.display = (type === 'review') ? '' : 'none';
+    _commLoadPosts(type);
+}
+
+// ── Load posts ──
+function _commLoadPosts(type, append) {
+    if (_commState.loading) return;
+    _commState.loading = true;
+    var container = document.getElementById('commPostsContainer');
+    if (!container) return;
+    if (!append) {
+        container.innerHTML = '<div class="comm-loading" style="text-align:center;padding:30px;color:var(--text-muted);">লোড হচ্ছে...</div>';
+    }
+    var fd = new FormData();
+    fd.append('get_community_posts','1');
+    fd.append('type', type || _commState.type);
+    fd.append('offset', String(_commState.offset));
+    fd.append('limit', String(_commState.limit));
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        _commState.loading = false;
+        if (!d || !d.posts) {
+            container.innerHTML = '<div class="comm-empty"><div class="comm-empty-icon">💬</div><div class="comm-empty-text">কিছু লোড হয়নি।</div></div>';
+            return;
+        }
+        if (!append) container.innerHTML = '';
+        // Rating summary
+        var rs = document.getElementById('commRatingSummary');
+        if (rs && type === 'review') {
+            rs.style.display = '';
+            rs.innerHTML = _commRenderRatingSummary(d);
+        } else if (rs) {
+            rs.style.display = 'none';
+        }
+        if (d.posts.length === 0 && !append) {
+            var emptyMsg = (type === 'review')
+                ? 'এখনো কোনো Review দেওয়া হয়নি।<br>প্রথম Review দিন!'
+                : 'এখনো কোনো প্রশ্ন করা হয়নি।<br>প্রথম প্রশ্ন করুন!';
+            container.innerHTML = '<div class="comm-empty"><div class="comm-empty-icon">'+(type==='review'?'⭐':'❓')+'</div><div class="comm-empty-text">'+emptyMsg+'</div><button class="comm-empty-btn" onclick="openCommunityForm()">পোস্ট করুন</button></div>';
+        }
+        d.posts.forEach(function(p){
+            container.insertAdjacentHTML('beforeend', _commRenderPost(p));
+        });
+        _commState.offset += d.posts.length;
+        _commState.hasMore = d.has_more;
+        // Re-init infinite scroll
+        _commInitInfiniteScroll();
+    })
+    .catch(function(){
+        _commState.loading = false;
+        if (!append) container.innerHTML = '<div class="comm-empty"><div class="comm-empty-icon">⚠️</div><div class="comm-empty-text">লোড করতে সমস্যা হয়েছে।</div></div>';
+    });
+}
+
+// ── Render rating summary ──
+function _commRenderRatingSummary(d) {
+    var avg = d.avg_rating || 0;
+    var sb = d.star_breakdown || {};
+    var total = d.total || 0;
+    var fullStars = Math.round(avg);
+    var starsHtml = '';
+    for (var i = 1; i <= 5; i++) {
+        starsHtml += '<span class="comm-star' + (i <= fullStars ? ' filled' : '') + '">★</span>';
+    }
+    var barsHtml = '';
+    for (var s = 5; s >= 1; s--) {
+        var count = sb[s] || 0;
+        var pct = total > 0 ? (count / total * 100) : 0;
+        barsHtml += '<div class="comm-rating-bar">'
+            + '<span style="width:16px;text-align:right;font-size:0.72em;">' + s + '</span>'
+            + '<div class="comm-rating-bar-bg"><div class="comm-rating-bar-fill" style="width:' + pct + '%"></div></div>'
+            + '<span style="font-size:0.72em;min-width:20px;">' + count + '</span>'
+            + '</div>';
+    }
+    return '<div class="comm-rating-summary">'
+        + '<div><div class="comm-rating-big">' + avg.toFixed(1) + '</div><div class="comm-rating-stars">' + starsHtml + '</div><div style="font-size:0.68em;color:var(--text-muted);margin-top:2px;">' + total + 'টি review</div></div>'
+        + '<div class="comm-rating-bar-wrap">' + barsHtml + '</div>'
+        + '</div>';
+}
+
+// ── Render a single post card ──
+function _commRenderPost(p) {
+    var isReview = p.type === 'review';
+    var starsHtml = '';
+    if (isReview && p.rating) {
+        var r = parseInt(p.rating, 10);
+        for (var i = 1; i <= 5; i++) {
+            starsHtml += '<span class="comm-star' + (i <= r ? ' filled' : '') + '">★</span>';
+        }
+        starsHtml = '<div class="comm-stars">' + starsHtml + '</div>';
+    }
+    var name = _escHtml(p.display_name || 'Anonymous');
+    var verified = p.auth_uid ? '<span class="comm-verified" title="Verified Account">✓</span>' : '';
+    var avatar = p.auth_uid
+        ? '<div class="comm-avatar" style="background:var(--info-soft);color:var(--info);">' + (name.charAt(0).toUpperCase()) + '</div>'
+        : '<div class="comm-avatar">👤</div>';
+    var content = _escHtml(p.content);
+    var time = _commTimeAgo(p.created_ts);
+    var replyCount = p.reply_count || 0;
+    var replyBadge = replyCount > 0 ? '<span class="comm-reply-count" onclick="toggleCommReplies('+p.id+')">💬 '+replyCount+'টি উত্তর</span>' : '';
+    var replySection = '';
+    if (p.replies && p.replies.length > 0) {
+        var repliesHtml = '';
+        p.replies.forEach(function(rp){
+            var rn = _escHtml(rp.display_name || 'Anonymous');
+            var ra = rp.auth_uid ? '<span class="comm-verified" title="Verified Account">✓</span>' : '';
+            repliesHtml += '<div class="comm-reply">'
+                + '<span class="comm-reply-name">' + rn + ra + '</span>'
+                + '<span class="comm-reply-time">' + _commTimeAgo(rp.created_ts) + '</span>'
+                + '<div class="comm-reply-content">' + _escHtml(rp.content) + '</div>'
+                + '</div>';
+        });
+        var showAllBtn = replyCount > 3 ? '<button class="comm-show-all-btn" onclick="toggleCommReplies('+p.id+')">সব উত্তর দেখুন ('+replyCount+')</button>' : '';
+        replySection = '<div class="comm-reply-section" id="commReplySection_'+p.id+'">'
+            + repliesHtml
+            + showAllBtn
+            + '<div class="comm-reply-form">'
+            + '<textarea id="commReplyInput_'+p.id+'" placeholder="উत्तर দিন..." maxlength="500" oninput="onCommReplyInput(this)"></textarea>'
+            + '<button onclick="createCommunityReply('+p.id+')" id="commReplyBtn_'+p.id+'" disabled>উত্তর</button>'
+            + '</div>'
+            + '</div>';
+    } else {
+        replySection = '<div class="comm-reply-section" id="commReplySection_'+p.id+'">'
+            + '<div class="comm-reply-form">'
+            + '<textarea id="commReplyInput_'+p.id+'" placeholder="উत्तर দিন..." maxlength="500" oninput="onCommReplyInput(this)"></textarea>'
+            + '<button onclick="createCommunityReply('+p.id+')" id="commReplyBtn_'+p.id+'" disabled>উত্তর</button>'
+            + '</div>'
+            + '</div>';
+    }
+    return '<div class="comm-post-card" id="commPost_'+p.id+'">'
+        + '<div class="comm-post-head">'
+        + avatar
+        + '<span class="comm-name">' + name + verified + '</span>'
+        + '<span class="comm-time">' + time + '</span>'
+        + '</div>'
+        + starsHtml
+        + '<div class="comm-post-content">' + content + '</div>'
+        + '<div style="display:flex;align-items:center;gap:8px;">'
+        + replyBadge
+        + '</div>'
+        + replySection
+        + '</div>';
+}
+
+// ── Toggle replies expand/collapse ──
+var _commRepliesExpanded = {};
+function toggleCommReplies(postId) {
+    var section = document.getElementById('commReplySection_' + postId);
+    if (!section) return;
+    if (_commRepliesExpanded[postId]) {
+        // Collapse — reload the full post list view (re-render)
+        _commRepliesExpanded[postId] = false;
+        _commReloadPost(postId);
+        return;
+    }
+    _commRepliesExpanded[postId] = true;
+    // Fetch all replies
+    var fd = new FormData();
+    fd.append('get_community_posts','1');
+    fd.append('type', _commState.type);
+    fd.append('offset', '0');
+    fd.append('limit', '1');
+    // We need to get the single post with full replies. Use a trick: fetch with a high limit and find our post
+    // Actually, let's just fetch all replies through a separate call
+    // For now, a simpler approach: re-fetch the post with limit=1000 and offset=0, find our post
+    // But that's wasteful. Let me instead build a simple get_post_replies endpoint.
+    // For simplicity in this implementation, let me use the existing approach of re-fetching with a high limit.
+    // Actually, I'll refetch with limit=1 targeting this specific post's ID via backend filter.
+    // The backend doesn't filter by post ID. Let me just do it differently:
+    // We'll just fetch the post with a separate endpoint or just re-fetch and find it.
+    // For now, simplest: toggleAllReplies via a dedicated endpoint call.
+    // Let me just use the comment above and do a simple inline expand.
+    // Actually let me just make a direct request for this post's replies.
+    // Since we don't have a dedicated endpoint, let me just re-fetch and replace.
+    // Actually, the simplest approach: just do a full re-fetch and find our post
+    fd.append('get_all_replies_for', String(postId));
+    // I'll just re-fetch the whole page but that's overkill. Instead, fetch the post directly.
+    // The cleanest approach: fetch with limit high and find the post.
+    // Let me just use the data from the already-loaded page and store the replies.
+    // Shortcut: just load more replies by showing all that we have + fetching remaining.
+    // For now, I'll load all replies by fetching post with high offset.
+    // Simpler: just use the existing reply section and load remaining replies via a custom query.
+    // OK let me just create a simple mechanism: re-fetch with limit=1 and offset to find our post, then show all replies.
+    // Actually, the most practical approach: since we already have limited replies (3), 
+    // we need the remaining ones. Let me create a simple inline fetch.
+    _commLoadAllReplies(postId);
+}
+
+function _commLoadAllReplies(postId) {
+    var fd = new FormData();
+    fd.append('get_community_posts','1');
+    fd.append('get_all_replies_for', String(postId));
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if (!d || !d.posts || !d.posts[0]) return;
+        var found = d.posts[0];
+        if (found) {
+            // Re-render just the reply section with all replies
+            var section = document.getElementById('commReplySection_' + postId);
+            if (!section) return;
+            var repliesHtml = '';
+            (found.replies || []).forEach(function(rp){
+                var rn = _escHtml(rp.display_name || 'Anonymous');
+                var ra = rp.auth_uid ? '<span class="comm-verified" title="Verified Account">✓</span>' : '';
+                repliesHtml += '<div class="comm-reply">'
+                    + '<span class="comm-reply-name">' + rn + ra + '</span>'
+                    + '<span class="comm-reply-time">' + _commTimeAgo(rp.created_ts) + '</span>'
+                    + '<div class="comm-reply-content">' + _escHtml(rp.content) + '</div>'
+                    + '</div>';
+            });
+            var collapseBtn = '<button class="comm-show-all-btn" onclick="toggleCommReplies('+postId+')">সংকুচিত করুন</button>';
+            section.innerHTML = repliesHtml + collapseBtn
+                + '<div class="comm-reply-form">'
+                + '<textarea id="commReplyInput_'+postId+'" placeholder="উत्तर দিন..." maxlength="500" oninput="onCommReplyInput(this)"></textarea>'
+                + '<button onclick="createCommunityReply('+postId+')" id="commReplyBtn_'+postId+'" disabled>উত্তর</button>'
+                + '</div>';
+        }
+    })
+    .catch(function(){});
+}
+
+function _commReloadPost(postId) {
+    _commState.offset = 0;
+    _commLoadPosts(_commState.type, false);
+}
+
+// ── Create community post ──
+function createCommunityPost() {
+    var content = document.getElementById('commPostContent');
+    var btn = document.getElementById('commSubmitBtn');
+    if (!content || !content.value.trim()) { showToast('কন্টেন্ট লিখুন।','info'); return; }
+    if (btn) btn.disabled = true;
+    var fd = new FormData();
+    fd.append('create_community_post','1');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fd.append('type', _commState.formType);
+    fd.append('content', content.value.trim());
+    if (_commState.formType === 'review') fd.append('rating', String(_commState.formRating));
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if (d && d.status === 'success') {
+            showToast('পোস্ট করা হয়েছে!','success');
+            closeCommunityForm();
+            _commState.offset = 0;
+            _commLoadPosts(_commState.type, false);
+        } else {
+            showToast((d&&d.msg)||'পোস্ট করতে সমস্যা হয়েছে।','error');
+            if (btn) btn.disabled = false;
+        }
+    })
+    .catch(function(){
+        showToast('নেটওয়ার্ক সমস্যা।','error');
+        if (btn) btn.disabled = false;
+    });
+}
+
+// ── Open/close community form ──
+function openCommunityForm() {
+    var overlay = document.getElementById('commFormOverlay');
+    if (overlay) overlay.classList.add('active');
+    _commState.formType = 'review';
+    _commState.formRating = 0;
+    document.getElementById('commPostContent').value = '';
+    document.getElementById('commCharCount').textContent = '0 / 500';
+    document.getElementById('commSubmitBtn').disabled = true;
+    // Reset type toggle
+    document.querySelectorAll('.comm-type-pill').forEach(function(p){
+        p.classList.toggle('active', p.getAttribute('data-type') === 'review');
+    });
+    // Reset star picker
+    document.querySelectorAll('#commStarPicker span').forEach(function(s){ s.classList.remove('active'); });
+    document.getElementById('commStarPicker').style.display = '';
+    // Focus textarea
+    setTimeout(function(){ document.getElementById('commPostContent').focus(); }, 300);
+}
+
+function closeCommunityForm() {
+    var overlay = document.getElementById('commFormOverlay');
+    if (overlay) overlay.classList.remove('active');
+}
+
+// ── Set post type in form ──
+function setCommType(type) {
+    _commState.formType = type;
+    document.querySelectorAll('.comm-type-pill').forEach(function(p){
+        p.classList.toggle('active', p.getAttribute('data-type') === type);
+    });
+    var picker = document.getElementById('commStarPicker');
+    if (picker) picker.style.display = (type === 'review') ? '' : 'none';
+}
+
+// ── Set rating in form ──
+function setCommRating(n) {
+    _commState.formRating = n;
+    document.querySelectorAll('#commStarPicker span').forEach(function(s){
+        s.classList.toggle('active', parseInt(s.getAttribute('data-star'),10) <= n);
+    });
+    _commUpdateSubmitBtn();
+}
+
+// ── Content input handler ──
+function onCommContentInput() {
+    var ta = document.getElementById('commPostContent');
+    var cc = document.getElementById('commCharCount');
+    if (ta && cc) cc.textContent = ta.value.length + ' / 500';
+    _commUpdateSubmitBtn();
+}
+
+function _commUpdateSubmitBtn() {
+    var btn = document.getElementById('commSubmitBtn');
+    var ta = document.getElementById('commPostContent');
+    if (!btn || !ta) return;
+    var ok = ta.value.trim().length > 0;
+    if (_commState.formType === 'review' && _commState.formRating < 1) ok = false;
+    btn.disabled = !ok;
+}
+
+// ── Create reply ──
+function createCommunityReply(postId) {
+    var input = document.getElementById('commReplyInput_' + postId);
+    var btn = document.getElementById('commReplyBtn_' + postId);
+    if (!input || !input.value.trim()) return;
+    if (btn) btn.disabled = true;
+    var fd = new FormData();
+    fd.append('create_community_reply','1');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fd.append('post_id', String(postId));
+    fd.append('content', input.value.trim());
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if (d && d.status === 'success' && d.reply) {
+            input.value = '';
+            // Append reply to the section
+            var section = document.getElementById('commReplySection_' + postId);
+            if (section) {
+                var rp = d.reply;
+                var rn = _escHtml(rp.display_name || 'Anonymous');
+                var ra = rp.auth_uid ? '<span class="comm-verified" title="Verified Account">✓</span>' : '';
+                var replyHtml = '<div class="comm-reply">'
+                    + '<span class="comm-reply-name">' + rn + ra + '</span>'
+                    + '<span class="comm-reply-time">' + _commTimeAgo(rp.created_ts) + '</span>'
+                    + '<div class="comm-reply-content">' + _escHtml(rp.content) + '</div>'
+                    + '</div>';
+                // Insert before reply-form
+                var form = section.querySelector('.comm-reply-form');
+                if (form) form.insertAdjacentHTML('beforebegin', replyHtml);
+                // Update reply count in card
+                var cntSpan = section.closest('.comm-post-card')?.querySelector('.comm-reply-count');
+                if (cntSpan) {
+                    var m = cntSpan.textContent.match(/(\d+)/);
+                    var c = m ? parseInt(m[1],10) + 1 : 1;
+                    cntSpan.textContent = '💬 ' + c + 'টি উত্তর';
+                }
+            }
+            if (btn) btn.disabled = false;
+            showToast('উত্তর দেওয়া হয়েছে।','success');
+        } else {
+            showToast((d&&d.msg)||'উত্তর দিতে সমস্যা।','error');
+            if (btn) btn.disabled = false;
+        }
+    })
+    .catch(function(){
+        showToast('নেটওয়ার্ক সমস্যা।','error');
+        if (btn) btn.disabled = false;
+    });
+}
+
+function onCommReplyInput(el) {
+    var btn = el.parentElement.querySelector('button');
+    if (btn) btn.disabled = !el.value.trim();
+}
+
+// ── Admin delete post ──
+function deleteCommunityPost(postId) {
+    if (!confirm('এই পোস্টটি মুছে ফেলবেন?')) return;
+    var fd = new FormData();
+    fd.append('delete_community_post','1');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fd.append('post_id', String(postId));
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        if (d && d.status === 'success') {
+            var card = document.getElementById('commPost_' + postId);
+            if (card) card.remove();
+            showToast('মুছে ফেলা হয়েছে।','success');
+        } else {
+            showToast((d&&d.msg)||'মুছতে সমস্যা।','error');
+        }
+    })
+    .catch(function(){ showToast('নেটওয়ার্ক সমস্যা।','error'); });
+}
+
+// ── Badge: unread reply count ──
+var _commBadgeTimer = null;
+
+function _commUpdateBadge() {
+    // Only for signed-in users
+    if (typeof _isSignedIn !== 'function' || !_isSignedIn()) {
+        var b = document.getElementById('commSdBadge');
+        if (b) { b.style.display = 'none'; b.textContent = ''; }
+        return;
+    }
+    var lastSeen = 0;
+    try { lastSeen = parseInt(localStorage.getItem('last_seen_community_ts'), 10) || 0; } catch(e){}
+    var fd = new FormData();
+    fd.append('get_community_unread','1');
+    fd.append('csrf_token', CSRF_TOKEN);
+    fd.append('last_seen_ts', String(lastSeen));
+    fetch(_AJAX_URL, {method:'POST', body:fd})
+    .then(safeJSON)
+    .then(function(d){
+        var badge = document.getElementById('commSdBadge');
+        if (!badge) return;
+        var count = (d && d.unread) || 0;
+        if (count > 0) {
+            badge.textContent = count > 9 ? '9+' : String(count);
+            badge.style.display = 'flex';
+        } else {
+            badge.textContent = '';
+            badge.style.display = 'none';
+        }
+    })
+    .catch(function(){});
+}
+
+function startCommunityBadgePoll() {
+    _commUpdateBadge();
+    if (_commBadgeTimer) clearInterval(_commBadgeTimer);
+    _commBadgeTimer = setInterval(_commUpdateBadge, 60000);
+}
+
+// ── Infinite scroll ──
+function _commInitInfiniteScroll() {
+    if (_commState._infiniteObs) _commState._infiniteObs.disconnect();
+    var sentinel = document.getElementById('commInfiniteSentinel');
+    if (!sentinel) {
+        var container = document.getElementById('commPostsContainer');
+        if (!container) return;
+        sentinel = document.createElement('div');
+        sentinel.id = 'commInfiniteSentinel';
+        sentinel.style.height = '1px';
+        container.appendChild(sentinel);
+    }
+    _commState._infiniteObs = new IntersectionObserver(function(entries){
+        if (entries[0].isIntersecting && _commState.hasMore && !_commState.loading) {
+            _commLoadPosts(_commState.type, true);
+        }
+    }, { rootMargin: '200px' });
+    _commState._infiniteObs.observe(sentinel);
+}
+
+// ── Start badge poll on load ──
+window.addEventListener('load', startCommunityBadgePoll);
