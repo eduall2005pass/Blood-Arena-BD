@@ -7,3 +7,4 @@ env/
 .deploy_backup/
 .deploy_rollback/
 .env*
+*.sw
