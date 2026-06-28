@@ -284,7 +284,8 @@ if($logged_in && isset($_POST['act'])){
         'add_moderator','del_moderator','list_moderators',
         'get_admin_poll',
         'clear_service_notifs',
-        'cfg_unlock','cfg_get','cfg_save','cfg_change_pass','cfg_reset'
+        'cfg_unlock','cfg_get','cfg_save','cfg_change_pass','cfg_reset',
+        'sms_get','sms_save','sms_test'
     ];
     if(!in_array($act,$allowed,true)){ echo json_encode(['ok'=>false,'msg'=>'Unknown action']); exit(); }
 
@@ -297,7 +298,8 @@ if($logged_in && isset($_POST['act'])){
         'reply_inbox_msg',  // moderator cannot reply messages
         'revoke_self_report',  // moderator cannot revoke a donation count
         'add_moderator','del_moderator',
-        'cfg_unlock','cfg_get','cfg_save','cfg_change_pass','cfg_reset'  // Site Config = super admin only
+        'cfg_unlock','cfg_get','cfg_save','cfg_change_pass','cfg_reset',  // Site Config = super admin only
+        'sms_get','sms_save','sms_test'
     ];
     if($is_moderator && in_array($act,$super_only_acts,true)){
         echo json_encode(['ok'=>false,'msg'=>'🚫 এই কাজটি শুধুমাত্র Super Admin করতে পারবে।']); exit();
@@ -611,6 +613,80 @@ if($logged_in && isset($_POST['act'])){
             auditLog($conn,'CFG_CHANGE_PASS','config editor password changed');
             echo json_encode(['ok'=>true,'msg'=>'✅ Config password পরিবর্তন হয়েছে।']); exit();
         }
+    }
+
+    // ── SMS Gateway — load env.sms ────────────────────────
+    if($act==='sms_get'){
+        $path=__DIR__.'/.env.sms';
+        $cfg=[];
+        if(is_file($path)){
+            $lines=file($path,FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES);
+            foreach($lines as $line){
+                if(substr(trim($line),0,1)==='#') continue;
+                if(strpos($line,'=')===false) continue;
+                [$k,$v]=explode('=',$line,2);
+                $cfg[trim($k)]=trim($v);
+            }
+        }
+        echo json_encode(['ok'=>true,'values'=>$cfg]); exit();
+    }
+
+    // ── SMS Gateway — save env.sms ────────────────────────
+    if($act==='sms_save'){
+        guardSuper('SMS Gateway');
+        $payload=$_POST['sms']??[];
+        if(is_string($payload)) $payload=json_decode($payload,true);
+        if(!is_array($payload)){
+            echo json_encode(['ok'=>false,'msg'=>'Invalid data.']); exit();
+        }
+        $allowedKeys=[
+            'SMS_ENDPOINT','SMS_SERVER_ADDRESS','SMS_USERNAME','SMS_PASSWORD',
+            'SMS_DEVICE_ID','SMS_ENABLED','SMS_AUTH_TYPE'
+        ];
+        $lines=[];
+        $lines[]='# SMS Gateway Config';
+        foreach($allowedKeys as $key){
+            $v=trim((string)($payload[$key]??''));
+            if($v!=='') $lines[]="{$key}={$v}";
+        }
+        $lines[]='';
+        $lines[]='# basic = SMSGate style (Basic Auth + JSON)';
+        $lines[]='# bearer = Bearer token style';
+        $lines[]='# custom = custom header';
+        $content=implode("\n",$lines);
+        $path=__DIR__.'/.env.sms';
+        $tmp=$path.'.tmp';
+        if(@file_put_contents($tmp,$content)===false || !@rename($tmp,$path)){
+            @unlink($tmp);
+            echo json_encode(['ok'=>false,'msg'=>'❌ env.sms লিখতে পারছি না — permission চেক করুন।']); exit();
+        }
+        auditLog($conn,'SMS_SAVE','SMS gateway config updated');
+        echo json_encode(['ok'=>true,'msg'=>'✅ SMS Gateway config সংরক্ষিত!']); exit();
+    }
+
+    // ── SMS Gateway — test send ───────────────────────────
+    if($act==='sms_test'){
+        guardSuper('SMS Gateway');
+        require_once __DIR__.'/includes/SmsGateway.php';
+        $gateway=new SmsGateway();
+        if(!$gateway->isConfigured()){
+            echo json_encode(['ok'=>false,'msg'=>'❌ SMS gateway configured না।']);
+            exit();
+        }
+        $phone=trim($_POST['test_phone']??'');
+        if(empty($phone)) $phone=defined('CONTACT_PHONE')?CONTACT_PHONE:'';
+        if(empty($phone)){
+            echo json_encode(['ok'=>false,'msg'=>'❌ Test SMS এর জন্য phone number দিন।']); exit();
+        }
+        $testMsg="🩸 Blood Arena — SMS Gateway test message.\n\nIf you receive this, your SMS config is working correctly.";
+        $result=$gateway->send($phone,$testMsg);
+        $errMsg=$result['error']??'unknown';
+        if($result['success']){
+            echo json_encode(['ok'=>true,'msg'=>"✅ Test SMS পাঠানো হয়েছে {$phone} নম্বরে।"]);
+        } else {
+            echo json_encode(['ok'=>false,'msg'=>"❌ Test ব্যর্থ: {$errMsg}"]);
+        }
+        exit();
     }
 
     // ── Send Bulk Notification ───────────────────────────
@@ -2332,6 +2408,66 @@ if(el){const t=setInterval(()=>{s--;if(el)el.textContent=Math.ceil(s/60);if(s<=0
       </div>
       <?php endif;?>
 
+      <!-- ══ SMS GATEWAY SETTINGS ══ -->
+      <?php if($is_super):?>
+      <div class="settings-section" id="smsSection">
+        <h4>📱 SMS Gateway Settings <span style="font-size:.72em;color:var(--muted);">(env.sms)</span></h4>
+        <p style="font-size:.82em;color:var(--muted);margin-bottom:12px;">SMS gateway credentials এবং endpoint <code>.env.sms</code> ফাইল থেকে read/write করা হয়। পরিবর্তন <strong>সাথে সাথে</strong> কার্যকর হয়।</p>
+        <div id="smsForm" style="display:grid;gap:12px;max-width:520px;">
+          <div>
+            <label style="font-size:.78em;color:var(--muted);font-weight:700;display:block;margin-bottom:4px;">API Endpoint URL</label>
+            <input type="url" id="sms_endpoint" placeholder="https://api.sms-gate.app/api/3rdparty/v1/message" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);font-family:monospace;font-size:.85em;">
+          </div>
+          <div>
+            <label style="font-size:.78em;color:var(--muted);font-weight:700;display:block;margin-bottom:4px;">Auth Type</label>
+            <select id="sms_auth_type" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);font-size:.85em;">
+              <option value="basic">Basic Auth (SMSGate)</option>
+              <option value="bearer">Bearer Token</option>
+              <option value="custom">Custom Header</option>
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <label style="font-size:.78em;color:var(--muted);font-weight:700;display:block;margin-bottom:4px;">Username / Key</label>
+              <input type="text" id="sms_username" placeholder="your_username" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);font-family:monospace;font-size:.85em;">
+            </div>
+            <div>
+              <label style="font-size:.78em;color:var(--muted);font-weight:700;display:block;margin-bottom:4px;">Password / Token</label>
+              <div style="position:relative;">
+                <input type="password" id="sms_password" placeholder="••••••" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);font-family:monospace;font-size:.85em;padding-right:36px;">
+                <span onclick="smsTogglePass()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:1.1rem;user-select:none;">👁</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:.78em;color:var(--muted);font-weight:700;display:block;margin-bottom:4px;">Device ID <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
+            <input type="text" id="sms_device_id" placeholder="device-id" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);font-family:monospace;font-size:.85em;">
+          </div>
+          <div>
+            <label style="font-size:.78em;color:var(--muted);font-weight:700;display:block;margin-bottom:4px;">Server Address <span style="font-weight:400;color:var(--muted);">(optional, device ID resolve)</span></label>
+            <input type="text" id="sms_server_address" placeholder="api.sms-gate.app:443" style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2,#11141b);color:var(--fg,#e5e7eb);font-family:monospace;font-size:.85em;">
+          </div>
+          <div class="toggle-row" style="margin-bottom:0;">
+            <span>SMS Enabled <span id="smsEnabledBadge" style="font-size:.78em;"></span></span>
+            <button class="toggle-btn" id="smsEnabledToggle" onclick="smsToggleEnabled(this)"></button>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center;">
+          <button onclick="smsSave()" id="smsSaveBtn" style="padding:10px 22px;background:var(--green);color:#fff;border:none;border-radius:9px;font-weight:800;cursor:pointer;">💾 Save</button>
+          <button onclick="smsTest()" id="smsTestBtn" style="padding:10px 18px;background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.3);border-radius:9px;font-weight:700;cursor:pointer;">📱 Test SMS</button>
+          <span id="smsMsg" style="font-size:.85em;"></span>
+        </div>
+        <div id="smsTestArea" style="display:none;margin-top:12px;padding:12px;border-radius:8px;border:1px solid var(--bdr);background:var(--card2);max-width:520px;">
+          <label style="font-size:.78em;color:var(--muted);font-weight:700;display:block;margin-bottom:4px;">Test phone number</label>
+          <div style="display:flex;gap:8px;">
+            <input type="tel" id="smsTestPhone" placeholder="<?=defined('CONTACT_PHONE')?htmlspecialchars(CONTACT_PHONE):'+8801XXXXXXXXX'?>" style="flex:1;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr);background:var(--inp);color:var(--text);font-family:monospace;font-size:.85em;">
+            <button id="smsDoTestBtn" onclick="smsSendTest()" style="padding:9px 16px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;">পাঠান</button>
+          </div>
+          <div id="smsTestResult" style="font-size:.82em;margin-top:6px;"></div>
+        </div>
+      </div>
+      <?php endif;?>
+
       <!-- Password Change -->
       <?php if($is_super):?>
       <div class="settings-section">
@@ -3140,6 +3276,90 @@ function cfgLoad(){
   });
 }
 
+// ── SMS Gateway ──────────────────────────────────────────
+function smsLoad(){
+  smsPost({act:'sms_get'}).then(d=>{
+    if(!d.ok) return;
+    const v=d.values||{};
+    gid('sms_endpoint').value=v.SMS_ENDPOINT||'';
+    gid('sms_server_address').value=v.SMS_SERVER_ADDRESS||'';
+    gid('sms_username').value=v.SMS_USERNAME||'';
+    gid('sms_password').value=v.SMS_PASSWORD||'';
+    gid('sms_device_id').value=v.SMS_DEVICE_ID||'';
+    gid('sms_auth_type').value=v.SMS_AUTH_TYPE||'basic';
+    updateSmsToggle(v.SMS_ENABLED!=='false');
+  });
+}
+
+function smsCollect(){
+  return {
+    SMS_ENDPOINT:       gid('sms_endpoint').value.trim(),
+    SMS_SERVER_ADDRESS: gid('sms_server_address').value.trim(),
+    SMS_USERNAME:       gid('sms_username').value.trim(),
+    SMS_PASSWORD:       gid('sms_password').value,
+    SMS_DEVICE_ID:      gid('sms_device_id').value.trim(),
+    SMS_AUTH_TYPE:      gid('sms_auth_type').value,
+    SMS_ENABLED:        _smsEnabled?'true':'false',
+  };
+}
+
+function smsSave(){
+  if(!guardSuper("SMS Gateway")) return;
+  const btn=gid('smsSaveBtn'); btn.disabled=true; const old=btn.textContent; btn.textContent='⏳ সংরক্ষণ...';
+  smsPost({act:'sms_save', sms:JSON.stringify(smsCollect())}).then(d=>{
+    btn.disabled=false; btn.textContent=old;
+    smsMsg(d.msg||(d.ok?'Saved':'Failed'),d.ok);
+  }).catch(e=>{btn.disabled=false;btn.textContent=old;smsMsg('Network error: '+e.message,false);});
+}
+
+function smsTest(){
+  gid('smsTestArea').style.display=gid('smsTestArea').style.display==='none'?'block':'none';
+  gid('smsTestResult').textContent='';
+}
+
+function smsSendTest(){
+  const phone=gid('smsTestPhone').value.trim()||'<?=defined('CONTACT_PHONE')?CONTACT_PHONE:''?>';
+  if(!phone){ smsMsg('Test phone number দিন।',false); return; }
+  const btn=gid('smsDoTestBtn'); if(btn) btn.disabled=true;
+  smsPost({act:'sms_test', test_phone:phone}).then(d=>{
+    if(btn) btn.disabled=false;
+    gid('smsTestResult').textContent=d.msg||'';
+    gid('smsTestResult').style.color=d.ok?'var(--green)':'var(--red)';
+  }).catch(e=>{if(btn) btn.disabled=false;gid('smsTestResult').textContent='Network error';gid('smsTestResult').style.color='var(--red)';});
+}
+
+let _smsEnabled=true;
+function smsToggleEnabled(el){
+  _smsEnabled=!_smsEnabled;
+  el.classList.toggle('on');
+  updateSmsBadge();
+}
+function updateSmsToggle(on){
+  _smsEnabled=on;
+  const el=gid('smsEnabledToggle');
+  if(el) el.classList.toggle('on',on);
+  updateSmsBadge();
+}
+function updateSmsBadge(){
+  const el=gid('smsEnabledBadge');
+  if(el) el.textContent=_smsEnabled?'● Enabled':'● Disabled';
+}
+function smsTogglePass(){
+  const el=gid('sms_password');
+  el.type=el.type==='password'?'text':'password';
+}
+function smsPost(extra){
+  const fd=new FormData(); fd.append('csrf',CSRF);
+  for(const k in extra) fd.append(k,extra[k]);
+  return fetch(window.location.href,{method:'POST',body:fd,headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.json());
+}
+function smsMsg(msg,ok){
+  const el=gid('smsMsg'); if(!el) return;
+  el.textContent=msg||''; el.style.color=ok?'var(--green)':'var(--red)';
+  if(msg) setTimeout(()=>{el.textContent='';},5000);
+}
+function gid(id){ return document.getElementById(id); }
+
 function _cfgInput(key,type,val,fb){
   const id='cfgf_'+(fb?'FIREBASE__'+key:key);
   const esc=s=>String(s==null?'':s).replace(/"/g,'&quot;');
@@ -3504,6 +3724,8 @@ window.addEventListener('DOMContentLoaded',function(){
     });
     // Init admin notifications
     adminNotifInit();
+    // Load SMS gateway config
+    if(document.getElementById('sms_endpoint')) smsLoad();
 });
 
 document.addEventListener('contextmenu',e=>e.preventDefault());

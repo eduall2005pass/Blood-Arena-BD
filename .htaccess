@@ -53,3 +53,11 @@
 </IfModule>
 
 FileETag None
+
+# ── 6. Block sensitive files ────────────────────────────────
+#  LiteSpeed-compatible: RewriteRule works where <Files> + Require may not.
+RewriteEngine On
+RewriteRule ^\.env\.sms$ - [F,L]
+<Files "env.sms">
+    Require all denied
+</Files>

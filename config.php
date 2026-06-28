@@ -76,7 +76,7 @@ $CFG_DEFAULTS = [
     'VERIFY_OTP_TTL'            => 300,
     'PHONE_OTP_COUNTS_VERIFIED' => true,
 
-    // SMS gateway (loaded from .env.sms via getenv; empty strings as fallback)
+    // SMS gateway (loaded from .env.sms via load_sms_env; kept here as getenv fallback)
     'SMS_GATEWAY_URL'      => getenv('SMS_GATEWAY_URL') ?: '',
     'SMS_GATEWAY_USERNAME' => getenv('SMS_GATEWAY_USERNAME') ?: '',
     'SMS_GATEWAY_PASSWORD' => getenv('SMS_GATEWAY_PASSWORD') ?: '',
